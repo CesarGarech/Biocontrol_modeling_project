@@ -9,8 +9,8 @@ from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
 import openpyxl
 import seaborn as sns
-from casadi import *
-from qpsolvers import solve_qp
+from casadi import ca
+# from qpsolvers import solve_qp
 
 # -------------------------
 # Página principal (Home)
@@ -722,7 +722,30 @@ if menu == "Ajuste de Parámetros":
         st.warning("⏳ Por favor suba un archivo de datos para comenzar el ajuste")
 
 # -------------------------
-# Página Control RTO 
+# Página principal (Home)
+# -------------------------
+st.set_page_config(page_title="Modelado de Bioprocesos", layout="wide")
+
+menu = st.sidebar.selectbox("Seleccione una opción", ["Home", "Lote", "Lote Alimentado", "Continuo", "Análisis de sensibilidad", "Ajuste de parámetros", "Control RTO"])
+
+if menu == "Home":
+    st.title("Modelado de Bioprocesos")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.image("imagenes/Batch.eps", caption="### Reactor Batch", use_container_width=True)
+    with col2:
+        st.image("imagenes/fed_batch.eps", caption="### Reactor Fed-Batch", use_container_width=True)
+    with col3:
+        st.image("imagenes/continous.eps", caption="### Reactor Continuo", use_container_width=True)
+
+    st.markdown("""
+    ## Fundamento Teórico
+    El modelado de bioprocesos permite describir matemáticamente la evolución de las variables de interés en un biorreactor...
+    """)
+
+# -------------------------
+# Página Control RTO
 # -------------------------
 if menu == "Control RTO":
     st.header("🧠 Control RTO - Optimización del perfil de alimentación")
@@ -735,8 +758,6 @@ if menu == "Control RTO":
         Yxs = st.number_input("Yxs [g/g]", value=0.5, min_value=0.1, max_value=1.0)
         Yxo = st.number_input("Yxo [g/g]", value=0.1, min_value=0.01, max_value=1.0)
         Yps = st.number_input("Yps [g/g]", value=0.3, min_value=0.1, max_value=1.0)
-        kLa = st.number_input("kLa [1/h]", value=180.0, min_value=0.0)
-        O_sat = st.number_input("Oxígeno saturado [g/L]", value=0.18, min_value=0.01)
         Sf = st.number_input("Concentración del alimentado Sf [g/L]", value=350.0)
         V_max = st.number_input("Volumen máximo del reactor [L]", value=10.0)
 
@@ -750,6 +771,7 @@ if menu == "Control RTO":
         st.subheader("⏳ Configuración temporal")
         t_batch = st.number_input("Tiempo de lote (t_batch) [h]", value=5, min_value=0)
         t_total = st.number_input("Tiempo total del proceso [h]", value=24, min_value=t_batch+1)
+        dt_control = st.number_input("Intervalo de control [h]", value=1.0, min_value=0.1)
 
         st.subheader("🔧 Restricciones de operación")
         F_min = st.number_input("Flujo mínimo [L/h]", value=0.01, min_value=0.0)
@@ -759,120 +781,156 @@ if menu == "Control RTO":
         st.subheader("🔬 Selección del modelo cinético")
         tipo_mu = st.selectbox("Modelo cinético", ["Monod simple", "Monod sigmoidal", "Monod con restricciones"])
 
-    n_seg = int(t_total - t_batch)
-    dt = 1.0
+    n_fed_batch_intervals = int((t_total - t_batch) / dt_control)
 
     if st.button("🚀 Ejecutar Optimización RTO"):
         st.info("Optimizando perfil de alimentación...")
-        progress_bar = st.progress(0)
 
         try:
             opti = ca.Opti()
-            F = opti.variable(n_seg)
-            X = ca.MX(X0); S = ca.MX(S0); P = ca.MX(P0); O = ca.MX(O0); V = ca.MX(V0)
-            J = 0
 
-            for i in range(n_seg):
-                F_i = F[i]
-                opti.subject_to(F_i >= F_min)
-                opti.subject_to(F_i <= F_max)
+            F_profile = opti.variable(n_fed_batch_intervals)
+            opti.set_initial(F_profile, 0.1)
+            x_initial = ca.MX([X0, S0, P0, O0, V0])
 
-                for _ in range(4):
-                    mu = {
-                        "Monod simple": mu_max * S / (Ks + S),
-                        "Monod sigmoidal": mu_max * (S**2) / (Ks**2 + S**2),
-                        "Monod con restricciones": mu_max * S / (Ks + S) * O / (Ko + O)
-                    }[tipo_mu]
+            x_sym = ca.MX.sym('x', 5)
+            u_sym = ca.MX.sym('u')
 
-                    D = ca.if_else(V > 0, F_i / V, 0)
-                    dX = mu * X - D * X
-                    dS = -mu * X / Yxs + D * (Sf - S)
-                    dP = Yps * mu * X - D * P
-                    dO = kLa * (O_sat - O) - mu * X / Yxo
-                    dV = ca.if_else(V < V_max, F_i, 0.0)
+            def odefun(x, u):
+                X, S, P, O, V = ca.vertsplit(x)
+                S = ca.fmax(S, 1e-9)
+                O = ca.fmax(O, 1e-9)
+                V = ca.fmax(V, 1e-9)
 
-                    X += dX * dt / 4
-                    S += dS * dt / 4
-                    P += dP * dt / 4
-                    O += dO * dt / 4
-                    V += dV * dt / 4
+                if tipo_mu == "Monod simple":
+                    mu = mu_max * S / (Ks + S)
+                elif tipo_mu == "Monod sigmoidal":
+                    mu = mu_max * S**2 / (Ks**2 + S**2)
+                else:
+                    mu = mu_max * S / (Ks + S) * O / (Ko + O)
 
-                opti.subject_to(S <= S_max)
-                J -= P * V
-                progress_bar.progress((i+1)/n_seg)
+                D = u / V
 
+                dX = mu * X - D * X
+                dS = -mu * X / Yxs + D * (Sf - S)
+                dP = Yps * mu * X - D * P
+                dO = 0.0
+                dV = ca.if_else(V < V_max, u, 0.0)
+
+                return ca.vertcat(dX, dS, dP, dO, dV)
+
+            ode_casadi = {'x': x_sym, 'p': u_sym, 'ode': odefun(x_sym, u_sym)}
+
+            intg_batch = ca.integrator('intg_batch', 'idas', ode_casadi, 0, t_batch)
+            intg_control = ca.integrator('intg_control', 'idas', ode_casadi, 0, dt_control)
+
+            res_batch = intg_batch(x0=x_initial, p=0.0)
+            xk = res_batch['xf']
+
+            all_states_sym = [x_initial, xk]
+
+            for i in range(n_fed_batch_intervals):
+                Fi = F_profile[i]
+                opti.subject_to(Fi >= F_min)
+                opti.subject_to(Fi <= F_max)
+
+                res_interval = intg_control(x0=xk, p=Fi)
+                xk = res_interval['xf']
+                X_, S_, P_, O_, V_ = ca.vertsplit(xk)
+                opti.subject_to(xk >= 0)
+                opti.subject_to(S_ <= S_max)
+                all_states_sym.append(xk)
+
+            x_final = xk
+            J = -x_final[2] * x_final[4]
             opti.minimize(J)
-            opti.solver=nlpsol('solver', 'ipopt', nlp, opts)
+
+            solver_options = {
+                "ipopt.print_level": 0,
+                "ipopt.max_iter": 500,
+                "print_time": False
+            }
+            opti.solver('ipopt', solver_options)
             sol = opti.solve()
 
-            F_opt = sol.value(F)
-            st.success("Optimización completada ✅")
+            F_opt = sol.value(F_profile)
+            st.success("✅ Optimización completada")
 
-            def simulate(F_profile):
-                X, S, P, O, V = X0, S0, P0, O0, V0
-                ts, Xs, Ss, Ps, Os, Vs, Fs = [0], [X0], [S0], [P0], [O0], [V0], [0]
-                for i in range(n_seg):
-                    F_val = F_profile[i] if i < len(F_profile) else 0
-                    for _ in range(4):
-                        mu = {
-                            "Monod simple": mu_max * S / (Ks + S),
-                            "Monod sigmoidal": mu_max * (S**2) / (Ks**2 + S**2),
-                            "Monod con restricciones": mu_max * S / (Ks + S) * O / (Ko + O)
-                        }[tipo_mu]
-                        D = F_val / V if V > 0 else 0
-                        dX = mu*X - D*X
-                        dS = -mu*X/Yxs + D*(Sf - S)
-                        dP = Yps*mu*X - D*P
-                        dO = kLa * (O_sat - O) - mu * X / Yxo
-                        dV = F_val if V < V_max else 0
-                        X += dX * dt/4
-                        S += dS * dt/4
-                        P += dP * dt/4
-                        O += dO * dt/4
-                        V += dV * dt/4
-                    ts.append(t_batch + i + 1)
-                    Xs.append(X)
-                    Ss.append(S)
-                    Ps.append(P)
-                    Os.append(O)
-                    Vs.append(V)
-                    Fs.append(F_val)
-                return ts, Xs, Ss, Ps, Os, Vs, Fs
+            # Simulación posterior para graficar trayectoria
+            t_sim_plot = np.linspace(0, t_total, 201)
+            dt_plot = t_sim_plot[1] - t_sim_plot[0]
+            intg_plot = ca.integrator('intg_plot', 'idas', ode_casadi, 0, dt_plot)
 
-            ts, Xs, Ss, Ps, Os, Vs, Fs = simulate(F_opt)
+            x_current = np.array([X0, S0, P0, O0, V0])
+            trajectory = [x_current]
+            F_values_plot = []
 
-            st.subheader("📊 Resultados del perfil óptimo")
-            fig, ax = plt.subplots(3, 2, figsize=(14, 12))
-            ax[0,0].step(ts[1:], Fs[1:], where='post', color='darkred')
-            ax[0,0].set_title("Perfil Óptimo de Flujo")
-            ax[0,0].set_ylabel("Flujo [L/h]")
-            ax[0,0].grid(True)
-            variables = [
-                (Xs, 'Biomasa [g/L]', 'blue'),
-                (Ss, 'Sustrato [g/L]', 'green'),
-                (Ps, 'Producto [g/L]', 'purple'),
-                (Os, 'Oxígeno [g/L]', 'orange'),
-                (Vs, 'Volumen [L]', 'brown')
-            ]
-            for i, (data, title, color) in enumerate(variables, 1):
-                row = i // 2
-                col = i % 2
-                ax[row,col].plot(ts, data, color=color)
-                ax[row,col].set_title(title)
-                ax[row,col].grid(True)
-                ax[row,col].set_xlabel("Tiempo [h]")
-            plt.tight_layout()
+            for t_now in t_sim_plot[:-1]:
+                if t_now < t_batch:
+                    current_F = 0.0
+                else:
+                    idx = min(int((t_now - t_batch) // dt_control), n_fed_batch_intervals - 1)
+                    current_F = F_opt[idx]
+
+                F_values_plot.append(current_F)
+                res = intg_plot(x0=x_current, p=current_F)
+                x_current = res['xf'].full().flatten()
+                trajectory.append(x_current)
+
+            trajectory = np.array(trajectory)
+            X_plot, S_plot, P_plot, O_plot, V_plot = trajectory.T
+
+            fig, axs = plt.subplots(2, 3, figsize=(14, 8), constrained_layout=True)
+            fig.suptitle('Simulación Fed-Batch Optimizada (CasADi)', fontsize=16)
+
+            axs[0, 0].stairs(np.concatenate(([0.0], F_opt)), np.concatenate(([0.0, t_batch], t_batch + np.arange(1, n_fed_batch_intervals + 1) * dt_control)), color='r', linewidth=2)
+            axs[0, 0].set_title('Perfil óptimo de alimentación')
+            axs[0, 0].set_ylabel("F (L/h)")
+            axs[0, 0].set_xlim(0, t_total)
+            axs[0, 0].set_ylim(bottom=0)
+
+            axs[0, 1].plot(t_sim_plot, X_plot, 'b', linewidth=2)
+            axs[0, 1].set_title("Biomasa")
+            axs[0, 1].set_ylabel("X (g/L)")
+
+            axs[0, 2].plot(t_sim_plot, S_plot, 'k', linewidth=2)
+            axs[0, 2].axhline(S_max, color='grey', linestyle='--')
+            axs[0, 2].set_title("Sustrato")
+            axs[0, 2].set_ylabel("S (g/L)")
+
+            axs[1, 0].plot(t_sim_plot, P_plot, 'm', linewidth=2)
+            axs[1, 0].set_title("Producto")
+            axs[1, 0].set_ylabel("P (g/L)")
+
+            axs[1, 1].plot(t_sim_plot, O_plot, 'g', linewidth=2)
+            axs[1, 1].set_title("Oxígeno disuelto (Constante)")
+            axs[1, 1].set_ylabel("O (g/L)")
+
+            axs[1, 2].plot(t_sim_plot, V_plot, 'c', linewidth=2)
+            axs[1, 2].axhline(V_max, color='grey', linestyle='--')
+            axs[1, 2].set_title("Volumen")
+            axs[1, 2].set_ylabel("V (L)")
+
+            for ax in axs.flat:
+                ax.set_xlabel("Tiempo (h)")
+                ax.grid(True)
+
             st.pyplot(fig)
+
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Producto total acumulado", f"{Ps[-1]*Vs[-1]:.2f} g")
-                st.metric("Rendimiento Producto/Sustrato", f"{(Ps[-1]*Vs[-1])/(Sf*(Vs[-1]-V0)):.3f} g/g")
+                st.metric("Producto total acumulado", f"{P_plot[-1]*V_plot[-1]:.2f} g")
+                s_in_total = Sf * (V_plot[-1] - V0)
+                rend = (P_plot[-1]*V_plot[-1]) / s_in_total if s_in_total > 1e-9 else 0
+                st.metric("Rendimiento Producto/Sustrato", f"{rend:.3f} g/g")
             with col2:
-                st.metric("Tiempo óptimo de alimentación", f"{n_seg} h")
-                st.metric("Volumen final", f"{Vs[-1]:.2f} L")
+                st.metric("Tiempo óptimo de alimentación", f"{n_fed_batch_intervals} h")
+                st.metric("Volumen final", f"{V_plot[-1]:.2f} L")
+
         except Exception as e:
             st.error(f"Error en la optimización: {str(e)}")
             st.stop()
+
 
 # -------------------------
 # Ejecución principal
