@@ -1,0 +1,97 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.cache/
+*.log
+
+# Streamlit-specific
+.streamlit/config.toml
+.streamlit/credentials.toml
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+*.env
+*.venv
+Pipfile.lock
+poetry.lock
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# PyInstaller
+*.spec
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# Coverage reports
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+.cache
+nosetests.xml
+test-results.xml
+
+# Other
+*.sqlite3
+*.db
+*.bak
+*.swp
+*.swo
+*.tmp
+*.out
+
+# Optional: ignore output files
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.h5
+*.npy
+*.pkl
+*.joblib
+*.sav
+
+# Optional: ignore figures or exports
+*.png
+*.jpg
+*.jpeg
+*.pdf
+figures/
+exports/
+outputs/
+
+# Optional: ignore data folders
+data/
+datasets/
+input/
+output/
+results/
+
+# Optional: ignore notebooks (if only for local experiments)
+*.ipynb
+notebooks/
