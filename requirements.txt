@@ -6,3 +6,5 @@ openpyxl
 scipy
 scikit-learn
 seaborn
+casadi
+casadi ipopt
