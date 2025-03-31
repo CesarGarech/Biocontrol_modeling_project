@@ -27,7 +27,7 @@ n_fed_batch_intervals = int((t_total - t_batch) / dt_control)
 # t_grid_fed_batch = np.arange(n_fed_batch_intervals) * dt_control + t_batch # Tiempo solo para fase fed-batch
 
 # Restricciones de alimentación
-F_min = 0.01
+F_min = 0.0
 F_max = 0.3
 S_max = 30.0 # Límite para S
 
@@ -66,7 +66,7 @@ def odefun(x, u):
     dP = Yps * mu * X - D * P
     # dO = kLa * (O_sat - O) - mu * X / Yxo - D * O # <-- Originalmente aquí
     dO = 0.0  # <-- CORRECCIÓN CLAVE: Replicar modelo MATLAB (O constante)
-    dV = ca.if_else(V < V_max, u, 0.0) # Detener llenado en V_max
+    dV = u  #ca.if_else(V < V_max, u, 0.0) # Detener llenado en V_max
 
     return ca.vertcat(dX, dS, dP, dO, dV)
 
@@ -117,6 +117,8 @@ for i in range(n_fed_batch_intervals):
     opti.subject_to(xk_next >= 0)    # No negatividad para todos los estados
     opti.subject_to(S_ <= S_max)     # Límite máximo de sustrato
 
+    opti.subject_to(V_ <= V_max)
+
     # Actualizar estado para el siguiente intervalo
     xk = xk_next
     all_states_sym.append(xk) # Guardar estado simbólico
@@ -141,6 +143,16 @@ J = -P_final_sym * V_final_sym
 #     penalty_S += exceso**2
 
 # J += 5e2 * penalty_S  # Peso menor para evitar dominancia
+
+# penalty_V = 0
+# margen_tolerancia = 0.5  # Penaliza solo si V > V_max + 0.5
+
+# for k in range(1, len(all_states_sym)):
+#     Vk = all_states_sym[k][4]  # Volumen
+#     exceso = ca.fmax(0, Vk - (V_max + margen_tolerancia))
+#     penalty_V += exceso**2
+
+# J += 1e2 * penalty_V  # Peso moderado a la penalización
 
 
 

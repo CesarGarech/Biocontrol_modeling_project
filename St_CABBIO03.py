@@ -9,7 +9,7 @@ from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
 import openpyxl
 import seaborn as sns
-from casadi import ca
+import casadi as ca
 # from qpsolvers import solve_qp
 
 # -------------------------
@@ -720,29 +720,6 @@ if menu == "Ajuste de Parámetros":
 
     elif not uploaded_file:
         st.warning("⏳ Por favor suba un archivo de datos para comenzar el ajuste")
-
-# -------------------------
-# Página principal (Home)
-# -------------------------
-st.set_page_config(page_title="Modelado de Bioprocesos", layout="wide")
-
-menu = st.sidebar.selectbox("Seleccione una opción", ["Home", "Lote", "Lote Alimentado", "Continuo", "Análisis de sensibilidad", "Ajuste de parámetros", "Control RTO"])
-
-if menu == "Home":
-    st.title("Modelado de Bioprocesos")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.image("imagenes/Batch.eps", caption="### Reactor Batch", use_container_width=True)
-    with col2:
-        st.image("imagenes/fed_batch.eps", caption="### Reactor Fed-Batch", use_container_width=True)
-    with col3:
-        st.image("imagenes/continous.eps", caption="### Reactor Continuo", use_container_width=True)
-
-    st.markdown("""
-    ## Fundamento Teórico
-    El modelado de bioprocesos permite describir matemáticamente la evolución de las variables de interés en un biorreactor...
-    """)
 
 # -------------------------
 # Página Control RTO
