@@ -745,7 +745,7 @@ def radau_coefficients(d):
 # -------------------------
 # Página Control RTO
 # -------------------------
-menu = st.sidebar.radio("Menú", ["Control RTO"])
+# menu = st.sidebar.radio("Menú", ["Control RTO"])
 
 if menu == "Control RTO":
     st.header("🧠 Control RTO - Optimización del perfil de alimentación")
