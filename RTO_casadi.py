@@ -74,7 +74,7 @@ def radau_coefficients(d):
 # ====================================================
 t_batch = 5.0
 t_total = 24.0
-n_fb_intervals = int((t_total - t_batch)**2)  # Increased number of intervals
+n_fb_intervals = int((t_total - t_batch))  # Increased number of intervals
 dt_fb = (t_total - t_batch)/n_fb_intervals
 
 F_min = 0.0

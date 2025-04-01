@@ -2,25 +2,31 @@
 title Dashboard de Bioprocesos
 cd /d "%~dp0"
 
-:: Verificar si existe el entorno virtual
-if not exist ".venv\" (
-    echo Creando entorno virtual...
-    python -m venv .venv
+:: Ruta a conda.bat (ajústala si es necesario)
+CALL "%USERPROFILE%\anaconda3\Scripts\activate.bat"
+
+:: Nombre del entorno
+set ENV_NAME=cabbio_env
+
+:: Verificar si el entorno existe
+CALL conda info --envs | findstr /C:"%ENV_NAME%" >nul
+IF ERRORLEVEL 1 (
+    echo Creando entorno Conda "%ENV_NAME%"...
+    call conda create -y -n %ENV_NAME% python=3.10
 )
 
-:: Activar entorno virtual y actualizar pip
-call ".venv\Scripts\activate.bat"
-python -m pip install --upgrade pip
+:: Activar el entorno
+CALL conda activate %ENV_NAME%
 
-:: Instalar dependencias
-if exist "requirements.txt" (
+:: Instalar dependencias si es necesario
+IF EXIST "requirements.txt" (
     pip install -r requirements.txt
-) else (
+) ELSE (
     echo Instalando Streamlit...
     pip install streamlit
 )
 
-:: Ejecutar aplicación
+:: Ejecutar la aplicación
 streamlit run St_CABBIO03.py
 
 pause
