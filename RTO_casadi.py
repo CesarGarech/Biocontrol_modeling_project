@@ -2,302 +2,361 @@ import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ----------------------------
-# Parámetros del modelo (Alineados con MATLAB original)
-# ----------------------------
-mu_max = 0.6
-Ks = 0.2
-Ko = 0.01
-Yxs = 0.5
-Yxo = 0.1  # No relevante si dO/dt=0
-Yps = 0.3
-kLa = 180.0 # No relevante si dO/dt=0
-O_sat = 0.18 # No relevante si dO/dt=0
-Sf = 500.0      # <-- Alineado con MATLAB
-V_max = 2.0       # <-- Alineado con MATLAB
-
-# Condiciones iniciales (Alineadas con MATLAB original)
-X0, S0, P0, O0, V0 = 1.0, 20.0, 0.0, 0.08, 0.2 # <-- S0 alineado
-
-# Configuración temporal
-t_batch = 5.0 # Asegurar flotante
-t_total = 24.0
-dt_control = 1.0 # Duración del intervalo de control
-n_fed_batch_intervals = int((t_total - t_batch) / dt_control)
-# t_grid_fed_batch = np.arange(n_fed_batch_intervals) * dt_control + t_batch # Tiempo solo para fase fed-batch
-
-# Restricciones de alimentación
-F_min = 0.0
-F_max = 0.3
-S_max = 30.0 # Límite para S
-
-# ----------------------------
-# Construcción del optimizador
-# ----------------------------
-opti = ca.Opti()
-
-# --- Variables de Decisión ---
-F_profile = opti.variable(n_fed_batch_intervals) # Flujos en la fase fed-batch
-opti.set_initial(F_profile, 0.1) # Valor inicial para el optimizador
-
-# --- Modelo del Sistema ---
-# Estado inicial como MX para usarlo en la simulación
-x_initial = ca.MX([X0, S0, P0, O0, V0])
-
-# Definición simbólica para la función ODE
-x_sym = ca.MX.sym('x', 5)
-u_sym = ca.MX.sym('u') # Control (Flujo F)
-
+# ====================================================
+# 1) Definición de la función ODE BIO
+# ====================================================
 def odefun(x, u):
-    X, S, P, O, V = ca.vertsplit(x)
-    # Safeguards (evitar valores negativos/cero que causen problemas)
-    S = ca.fmax(S, 1e-9)
-    O = ca.fmax(O, 1e-9) # Aunque O es constante, mantenemos por robustez simbólica
-    V = ca.fmax(V, 1e-9)
+    """
+    Ecuaciones diferenciales Fed-Batch con O=constante.
+    - Divisiones con fmax(V, epsilon) para evitar 1/0.
+    """
+    # Parámetros
+    mu_max = 0.6
+    Ks      = 0.2
+    Ko      = 0.01
+    Yxs     = 0.5
+    Yxo     = 0.1
+    Yps     = 0.3
+    kLa     = 180.0   # (no relevante si dO/dt=0)
+    O_sat   = 0.18    # (no relevante si dO/dt=0)
+    Sf      = 500.0
+    V_max   = 2.0
 
-    # Tasa de crecimiento (dependiente de S y O fijo)
-    mu = mu_max * S / (Ks + S) * O / (Ko + O)
+    # Extraer variables de estado (evitar desempacado iterativo)
+    X_ = x[0]
+    S_ = x[1]
+    P_ = x[2]
+    O_ = x[3]
+    V_ = x[4]
+
+    # Salvaguarda para V
+    # eps = 1e-8
+    # V_eff = ca.fmax(V_, eps)   # evita división por 0
+
+    # Si V>=V_max => F=0
+    # u_sat = ca.if_else(V_ < V_max, u, 0.0)
+
+    # Tasa de crecimiento
+    mu = mu_max * (S_/(Ks + S_)) * (O_/(Ko + O_))   # O_ se asume >0
     # Tasa de dilución
-    D = u / V
+    D = u / V_
 
-    # Ecuaciones diferenciales
-    dX = mu * X - D * X
-    dS = -mu * X / Yxs + D * (Sf - S)
-    dP = Yps * mu * X - D * P
-    # dO = kLa * (O_sat - O) - mu * X / Yxo - D * O # <-- Originalmente aquí
-    dO = 0.0  # <-- CORRECCIÓN CLAVE: Replicar modelo MATLAB (O constante)
-    dV = u  #ca.if_else(V < V_max, u, 0.0) # Detener llenado en V_max
+    dX = mu*X_ - D*X_
+    dS = -mu*X_/Yxs + D*(Sf - S_)
+    dP = Yps*mu*X_ - D*P_
+    dO = 0.0   # asumiendo oxígeno constante
+    dV = u
 
     return ca.vertcat(dX, dS, dP, dO, dV)
 
-# Crear la función ODE de CasADi
-ode_casadi = {'x': x_sym, 'p': u_sym, 'ode': odefun(x_sym, u_sym)}
+# ====================================================
+# 2) Coeficientes de colocación Radau (d=2)
+# ====================================================
+def radau_coefficients(d):
+    """
+    Retorna C_mat (shape (d+1, d)) y D_vec (shape d+1)
+    para la colocación de Radau IIA con grado d=2.
+    Estos valores son los correctos para Radau IIA order 3.
+    """
+    if d == 2:
+        C_mat = np.array([
+            [-2.0,   2.0],
+            [ 1.5,  -4.5],
+            [ 0.5,   2.5]
+        ])
+        D_vec = np.array([0.0, 0.0, 1.0])
+        return C_mat, D_vec
+    else:
+        raise NotImplementedError("Solo implementado para d=2.")
 
-# --- Integradores ---
-# Integrador para la fase batch (duración t_batch)
-intg_batch = ca.integrator('intg_batch', 'idas', ode_casadi, 0, t_batch)
+# ====================================================
+# 3) Parámetros del proceso y condiciones iniciales
+# ====================================================
+t_batch = 5.0
+t_total = 24.0
+n_fb_intervals = int((t_total - t_batch)**2)  # Increased number of intervals
+dt_fb = (t_total - t_batch)/n_fb_intervals
 
-# Integrador para los intervalos de control fed-batch (duración dt_control)
-intg_control = ca.integrator('intg_control', 'idas', ode_casadi, 0, dt_control)
+F_min = 0.0
+F_max = 0.3
+S_max = 30.0
+V_max = 2.0
 
-# ----------------------------
-# Simulación dentro de la Optimización
-# ----------------------------
+X0, S0, P0, O0, V0 = 1.0, 20.0, 0.0, 0.08, 0.2
 
-# 1. Simular Fase Batch (F=0)
-res_batch = intg_batch(x0=x_initial, p=0.0) # p=0.0 significa F=0
-x_after_batch = res_batch['xf']
+# ====================================================
+# 4) Fase BATCH con F=0 (integración)
+# ====================================================
+x_sym = ca.MX.sym("x",5)
+u_sym = ca.MX.sym("u")
+ode_expr = odefun(x_sym, u_sym)
 
-# Guardar estados para posible análisis o restricciones futuras (opcional)
-all_states_sym = [x_initial, x_after_batch]
+batch_integrator = ca.integrator(
+    "batch_integrator","idas",
+    {"x":x_sym, "p":u_sym, "ode":ode_expr},
+    {"t0":0, "tf":t_batch}
+)
 
-# Restricciones al final del batch (si las hubiera)
-# opti.subject_to(x_after_batch[1] <= S_max * 1.1) # Ejemplo: S no debe ser muy alto al final del batch
+x0_np = np.array([X0, S0, P0, O0, V0])
+res_batch = batch_integrator(x0=x0_np, p=0.0)
+x_after_batch = np.array(res_batch['xf']).flatten()
+print("[INFO] Estado tras fase batch:", x_after_batch)
 
-# Estado actual al inicio de la fase fed-batch
-xk = x_after_batch
+# ====================================================
+# 5) Formulación de la fase Fed-Batch con colocación
+# ====================================================
+opti = ca.Opti()
 
-# 2. Loop de integración y restricciones (Fase Fed-Batch)
-for i in range(n_fed_batch_intervals):
-    Fi = F_profile[i] # Flujo para este intervalo
+d = 2
+C_radau, D_radau = radau_coefficients(d)
+nx = 5
 
-    # Integrar un intervalo de control
-    res_interval = intg_control(x0=xk, p=Fi)
-    xk_next = res_interval['xf'] # Estado al final del intervalo
+# Variables de estado y control
+X_col = []
+F_col = []
 
-    # Extraer estados simbólicos al final del intervalo (para restricciones)
-    X_, S_, P_, O_, V_ = ca.vertsplit(xk_next)
+for k in range(n_fb_intervals):
+    row_states = []
+    for j in range(d+1):
+        if (k==0 and j==0):
+            # Fijar el estado inicial del primer intervalo
+            # con un "parameter" (no es variable)
+            xk0_param = opti.parameter(nx)
+            opti.set_value(xk0_param, x_after_batch)
+            row_states.append(xk0_param)
+        else:
+            # variable
+            xk_j = opti.variable(nx)
+            row_states.append(xk_j)
+            # Restricciones
+            # no-negatividad:
+            opti.subject_to(xk_j >= 0)
+            # S <= S_max
+            opti.subject_to(xk_j[1] <= S_max)
+            # V <= V_max
+            opti.subject_to(xk_j[4] <= V_max)
+    X_col.append(row_states)
 
-    # --- Aplicar Restricciones ---
-    # Límites del flujo de alimentación
-    opti.subject_to(Fi >= F_min)
-    opti.subject_to(Fi <= F_max)
+    # Variable de control en cada intervalo
+    Fk = opti.variable()
+    F_col.append(Fk)
+    opti.subject_to(Fk >= F_min)
+    opti.subject_to(Fk <= F_max)
 
-    # Restricciones del estado al final del intervalo
-    opti.subject_to(xk_next >= 0)    # No negatividad para todos los estados
-    opti.subject_to(S_ <= S_max)     # Límite máximo de sustrato
+# ====================================================
+# 6) Ecuaciones de Colocación
+# ====================================================
+h = dt_fb
+for k in range(n_fb_intervals):
+    for j in range(1,d+1):
+        # xp_j = sum_{m=0..d} C_radau[m, j-1]* X_col[k][m]
+        xp_j = 0
+        for m in range(d+1):
+            xp_j += C_radau[m, j-1]* X_col[k][m]
 
-    opti.subject_to(V_ <= V_max)
+        # f(Xk_j, Fk)
+        fkj = odefun(X_col[k][j], F_col[k])
+        # Restricción => h*f - xp_j = 0
+        coll_eq = h*fkj - xp_j
+        opti.subject_to(coll_eq == 0)
 
-    # Actualizar estado para el siguiente intervalo
-    xk = xk_next
-    all_states_sym.append(xk) # Guardar estado simbólico
+    # Continuidad al final del subintervalo
+    Xk_end = 0
+    for m in range(d+1):
+        Xk_end += D_radau[m]* X_col[k][m]
 
-# Estado final simbólico después de toda la simulación
-x_final_sym = xk
-P_final_sym = x_final_sym[2]
-V_final_sym = x_final_sym[4]
+    if k < n_fb_intervals-1:
+        # Xk_end = X_{k+1}[0]
+        for i_ in range(nx):
+            opti.subject_to(Xk_end[i_] == X_col[k+1][0][i_])
 
-# ----------------------------
-# Función Objetivo
-# ----------------------------
-# Maximizar Producto Total Final (P*V) -> Minimizar -(P*V)
-J = -P_final_sym * V_final_sym
+# Estado final global => X_final
+X_final = X_col[-1][-1] # The state at the end of the last interval
 
-# Penalización suave para violaciones de S_max
-# penalty_S = 0
-# margen_tolerancia = 0.5  # Se penaliza solo si S > S_max + 0.5
-# for k in range(1, len(all_states_sym)):
-#     Sk = all_states_sym[k][1]
-#     exceso = ca.fmax(0, Sk - (S_max + margen_tolerancia))
-#     penalty_S += exceso**2
+P_final = X_final[2]
+V_final = X_final[4]
 
-# J += 5e2 * penalty_S  # Peso menor para evitar dominancia
+# ====================================================
+# 7) Función objetivo => maximizar (P_final*V_final)
+# ====================================================
+opti.minimize(- (P_final*V_final))
 
-# penalty_V = 0
-# margen_tolerancia = 0.5  # Penaliza solo si V > V_max + 0.5
+# ====================================================
+# 8) Guesses iniciales (importante para evitar NaNs)
+# ====================================================
+for k in range(n_fb_intervals):
+    opti.set_initial(F_col[k], 0.1)   # Try a constant initial guess
+    for j in range(d+1):
+        # Si no es el primer "parameter"
+        if not (k==0 and j==0):
+            # Como guess, usemos el estado final de batch (o algo similar)
+            opti.set_initial(X_col[k][j], x_after_batch)
 
-# for k in range(1, len(all_states_sym)):
-#     Vk = all_states_sym[k][4]  # Volumen
-#     exceso = ca.fmax(0, Vk - (V_max + margen_tolerancia))
-#     penalty_V += exceso**2
-
-# J += 1e2 * penalty_V  # Peso moderado a la penalización
-
-
-
-opti.minimize(J)
-
-# ----------------------------
-# Solver y Diagnóstico
-# ----------------------------
-solver_options = {
-    "ipopt.print_level": 0, # 0: sin salida, 5: detallado
-    "ipopt.max_iter": 500, # Reducido de 1000 a 500 como en MATLAB
-    "print_time": False
+# ====================================================
+# 9) Configurar y resolver
+# ====================================================
+p_opts = {}
+s_opts = {
+    "max_iter": 2000,  # Increased max_iter
+    "print_level": 0,
+    "sb": 'yes',   # debug
+    "mu_strategy": "adaptive"
 }
-opti.solver('ipopt', solver_options)
+opti.solver("ipopt", p_opts, s_opts)
 
 try:
     sol = opti.solve()
-    print("✅ Optimización completada.")
+    print("[INFO] ¡Solución encontrada!")
 except RuntimeError as e:
-    print(f"❌ Error durante la optimización: {e}")
-    # Intenta mostrar detalles de infactibilidad si falla
+    print("[ERROR] No se encontró solución:", e)
     try:
+        # Mostrar infeasibilidades
         opti.debug.show_infeasibilities()
-    except Exception as debug_e:
-        print(f"(No se pudieron mostrar detalles de infactibilidad: {debug_e})")
-    raise e # Relanzar el error original
+    except:
+        pass
+    raise
 
-# ----------------------------
-# Extracción y Simulación Final para Gráficas
-# ----------------------------
-F_opt = sol.value(F_profile)
+F_opt = [sol.value(fk) for fk in F_col]
+X_fin_val = sol.value(X_final)
+P_fin_val = X_fin_val[2]
+V_fin_val = X_fin_val[4]
 
-# Simular de nuevo TODO el proceso con F_opt para obtener trayectoria completa
-# (Necesario porque la optimización solo guarda los puntos finales de cada intervalo)
-t_sim_plot = np.linspace(0, t_total, 201) # Más puntos para gráfica suave
-dt_plot = t_sim_plot[1] - t_sim_plot[0]
-intg_plot = ca.integrator('intg_plot', 'idas', ode_casadi, 0, dt_plot)
+print("F_opt:", F_opt)
+print("Estado final:", X_fin_val)
+print("P_final =", P_fin_val)
+print("V_final =", V_fin_val)
+print("Producto total =", P_fin_val*V_fin_val)
 
-x_current_plot = np.array([X0, S0, P0, O0, V0]) # Estado inicial numérico
-trajectory_plot = [x_current_plot]
-F_values_plot = [] # Para graficar F usado en cada paso fino
+# ====================================================
+# 10) Reconstruir y graficar trayectoria
+#     (batch + fed-batch)
+# ====================================================
+# a) Fase batch: con dt pequeño
+N_batch_plot = 50
+t_batch_plot = np.linspace(0, t_batch, N_batch_plot)
+dt_b = t_batch_plot[1] - t_batch_plot[0]
 
-current_F_plot = 0.0
-fed_batch_interval_idx = 0
-for k in range(len(t_sim_plot) - 1):
-    t_now = t_sim_plot[k]
+batch_plot_int = ca.integrator(
+    "batch_plot_int","idas",
+    {"x":x_sym,"p":u_sym,"ode":ode_expr},
+    {"t0":0, "tf":dt_b}
+)
 
-    # Determinar F para el tiempo actual t_now
-    if t_now < t_batch:
-        current_F_plot = 0.0
-    else:
-        # Encontrar el índice del intervalo de control correspondiente
-        # restamos t_batch, dividimos por duración, tomamos parte entera
-        fed_batch_interval_idx = min(int((t_now - t_batch) // dt_control), n_fed_batch_intervals - 1)
-        current_F_plot = F_opt[fed_batch_interval_idx]
+xbatch_traj = [x0_np]
+xk_ = x0_np.copy()
+for _ in range(N_batch_plot-1):
+    res_ = batch_plot_int(x0=xk_, p=0.0)
+    xk_ = np.array(res_["xf"]).flatten()
+    xbatch_traj.append(xk_)
+xbatch_traj = np.array(xbatch_traj)
 
-    F_values_plot.append(current_F_plot) # Guardar F usado
+# b) Fase fed-batch: integrando de 5 a 24 h con dt fino
+t_fb_plot = np.linspace(t_batch, t_total, 400)   # algo denso
+dt_fb_plot = t_fb_plot[1]-t_fb_plot[0]
 
-    # Integrar un paso pequeño dt_plot
-    res_plot = intg_plot(x0=x_current_plot, p=current_F_plot)
-    x_current_plot = res_plot['xf'].full().flatten()
-    trajectory_plot.append(x_current_plot)
+fb_plot_int = ca.integrator(
+    "fb_plot_int","idas",
+    {"x":x_sym,"p":u_sym,"ode":ode_expr},
+    {"t0":0,"tf":dt_fb_plot}
+)
 
-# Convertir resultados a arrays numpy
-trajectory_plot = np.array(trajectory_plot)
-X_plot = trajectory_plot[:, 0]
-S_plot = trajectory_plot[:, 1]
-P_plot = trajectory_plot[:, 2]
-O_plot = trajectory_plot[:, 3]
-V_plot = trajectory_plot[:, 4]
+xfb_traj = []
+xk_ = xbatch_traj[-1].copy()
+for i, t_ in enumerate(t_fb_plot):
+    xfb_traj.append(xk_)
+    if i == len(t_fb_plot)-1:
+        break
+    # Determinar en qué subintervalo k estamos
+    kk_ = int((t_ - t_batch)//dt_fb)
+    kk_ = max(0, kk_)
+    kk_ = min(n_fb_intervals-1, kk_)
+    # Tomar F correspondiente
+    F_now = sol.value(F_col[kk_])
+    # Apagar F si V>=Vmax
+    if xk_[4] >= V_max:
+        F_now = 0.0
+    # Integrar
+    res_ = fb_plot_int(x0=xk_, p=F_now)
+    xk_ = np.array(res_["xf"]).flatten()
 
-# Construir perfil F para gráfica 'stairs'
-F_plot_stairs_vals = np.concatenate(([0.0], F_opt)) # F=0 al inicio, luego F_opt
-t_plot_stairs_time = np.concatenate(([0.0, t_batch], t_batch + np.arange(1, n_fed_batch_intervals + 1) * dt_control))
+xfb_traj = np.array(xfb_traj)
 
-# ----------------------------
-# Resultados Finales Numéricos
-# ----------------------------
-P_final_val = P_plot[-1]
-V_final_val = V_plot[-1]
-producto_total_final = P_final_val * V_final_val
+# Unimos
+t_full = np.concatenate([t_batch_plot, t_fb_plot])
+x_full = np.vstack([xbatch_traj, xfb_traj])
 
-print(f"✅ Producto total final: {producto_total_final:.2f} g")
+X_full = x_full[:,0]
+S_full = x_full[:,1]
+P_full = x_full[:,2]
+O_full = x_full[:,3]
+V_full = x_full[:,4]
 
-# Rendimiento (fórmula estándar: Producto / Substrato Consumido)
-sustrato_alimentado_total = np.sum(F_opt * dt_control * Sf)
-sustrato_inicial_total = S0 * V0
-sustrato_final_remanente = S_plot[-1] * V_plot[-1]
-sustrato_total_consumido = (sustrato_inicial_total + sustrato_alimentado_total) - sustrato_final_remanente
-rendimiento_global_std = producto_total_final / sustrato_total_consumido if sustrato_total_consumido > 1e-9 else 0
-print(f"📉 Rendimiento global (P/S consumido): {rendimiento_global_std:.2f} g/g")
+# Construir F para graficar
+F_batch_plot = np.zeros_like(t_batch_plot)
+F_fb_plot = []
+for i, tt in enumerate(t_fb_plot):
+    kk_ = int((tt - t_batch)//dt_fb)
+    kk_ = max(0, kk_)
+    kk_ = min(n_fb_intervals-1, kk_)
+    valF = sol.value(F_col[kk_])
+    if xfb_traj[i,4]>=V_max:
+        valF=0.0
+    F_fb_plot.append(valF)
+F_fb_plot = np.array(F_fb_plot)
 
+F_plot = np.concatenate([F_batch_plot, F_fb_plot])
 
-# ----------------------------
-# Gráficas tipo MATLAB
-# ----------------------------
-fig, axs = plt.subplots(2, 3, figsize=(14, 8), constrained_layout=True)
-fig.suptitle('Simulación Fed-Batch Optimizada (Python/CasADi)', fontsize=16)
+# ====================================================
+# 11) Gráficas
+# ====================================================
+fig, axs = plt.subplots(2,3, figsize=(14,8))
+axs=axs.ravel()
 
-# Subplot 1: Perfil óptimo de alimentación F_opt
-axs[0, 0].stairs(F_plot_stairs_vals, t_plot_stairs_time, color='r', linewidth=2, baseline=None)
-axs[0, 0].set_title('Perfil óptimo de alimentación')
-axs[0, 0].set_ylabel("F (L/h)")
-axs[0, 0].set_xlim(0, t_total)
-axs[0, 0].set_ylim(bottom=0)
+# F
+axs[0].plot(t_full, F_plot, linewidth=2)
+axs[0].set_title("Flujo de alimentación F(t)")
+axs[0].set_xlabel("Tiempo (h)")
+axs[0].set_ylabel("F (L/h)")
+axs[0].grid(True)
 
-# Subplot 2: Biomasa X
-axs[0, 1].plot(t_sim_plot, X_plot, 'b', linewidth=2)
-axs[0, 1].set_title("Biomasa")
-axs[0, 1].set_ylabel("X (g/L)")
-axs[0, 1].set_xlim(0, t_total)
+# X
+axs[1].plot(t_full, X_full, linewidth=2)
+axs[1].set_title("Biomasa X(t)")
+axs[1].set_xlabel("Tiempo (h)")
+axs[1].set_ylabel("X (g/L)")
+axs[1].grid(True)
 
-# Subplot 3: Sustrato S
-axs[0, 2].plot(t_sim_plot, S_plot, 'k', linewidth=2)
-axs[0, 2].axhline(S_max, color='grey', linestyle='--', label=f'S_max={S_max}')
-axs[0, 2].set_title("Sustrato")
-axs[0, 2].set_ylabel("S (g/L)")
-axs[0, 2].set_xlim(0, t_total)
-axs[0, 2].legend()
+# S
+axs[2].plot(t_full, S_full, linewidth=2)
+axs[2].axhline(S_max, color='r', linestyle='--', label="S_max")
+axs[2].set_title("Sustrato S(t)")
+axs[2].set_xlabel("Tiempo (h)")
+axs[2].set_ylabel("S (g/L)")
+axs[2].legend()
+axs[2].grid(True)
 
-# Subplot 4: Producto P
-axs[1, 0].plot(t_sim_plot, P_plot, 'm', linewidth=2)
-axs[1, 0].set_title("Producto")
-axs[1, 0].set_ylabel("P (g/L)")
-axs[1, 0].set_xlim(0, t_total)
+# P
+axs[3].plot(t_full, P_full, linewidth=2)
+axs[3].set_title("Producto P(t)")
+axs[3].set_xlabel("Tiempo (h)")
+axs[3].set_ylabel("P (g/L)")
+axs[3].grid(True)
 
-# Subplot 5: Oxígeno disuelto O
-axs[1, 1].plot(t_sim_plot, O_plot, 'g', linewidth=2)
-axs[1, 1].set_title("Oxígeno disuelto (Constante)")
-axs[1, 1].set_ylabel("O (g/L)")
-axs[1, 1].set_xlim(0, t_total)
-axs[1, 1].set_ylim(bottom=0, top=O0*1.2 if O0 > 1e-6 else 0.1) # Ajustar ylim para O
+# O
+axs[4].plot(t_full, O_full, linewidth=2)
+axs[4].set_title("Oxígeno disuelto O(t) (constante)")
+axs[4].set_xlabel("Tiempo (h)")
+axs[4].set_ylabel("O (g/L)")
+axs[4].grid(True)
 
-# Subplot 6: Volumen V
-axs[1, 2].plot(t_sim_plot, V_plot, 'c', linewidth=2)
-axs[1, 2].axhline(V_max, color='grey', linestyle='--', label=f'V_max={V_max}')
-axs[1, 2].set_title("Volumen")
-axs[1, 2].set_ylabel("V (L)")
-axs[1, 2].set_xlim(0, t_total)
-axs[1, 2].legend()
+# V
+axs[5].plot(t_full, V_full, linewidth=2)
+axs[5].axhline(V_max, color='r', linestyle='--', label="V_max")
+axs[5].set_title("Volumen V(t)")
+axs[5].set_xlabel("Tiempo (h)")
+axs[5].set_ylabel("V (L)")
+axs[5].legend()
+axs[5].grid(True)
 
-# Etiquetas y grid comunes
-for ax in axs.flat:
-    ax.set_xlabel("Tiempo (h)")
-    ax.grid(True)
-
-# plt.tight_layout() # constrained_layout=True suele ser mejor
+plt.tight_layout()
 plt.show()
