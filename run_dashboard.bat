@@ -2,27 +2,25 @@
 title Dashboard de Bioprocesos
 cd /d "%~dp0"
 
-:: Ruta a conda.bat (ajústala si es necesario)
-CALL "%USERPROFILE%\anaconda3\Scripts\activate.bat"
-
 :: Nombre del entorno
-set ENV_NAME=cabbio_env
+set ENV_DIR=.venv
 
-:: Verificar si el entorno existe
-CALL conda info --envs | findstr /C:"%ENV_NAME%" >nul
-IF ERRORLEVEL 1 (
-    echo Creando entorno Conda "%ENV_NAME%"...
-    call conda create -y -n %ENV_NAME% python=3.10
+:: Verificar si el entorno ya existe
+IF NOT EXIST "%ENV_DIR%\Scripts\activate.bat" (
+    echo Creando entorno virtual en "%ENV_DIR%"...
+    python -m venv %ENV_DIR%
 )
 
 :: Activar el entorno
-CALL conda activate %ENV_NAME%
+CALL "%ENV_DIR%\Scripts\activate.bat"
 
 :: Instalar dependencias si es necesario
 IF EXIST "requirements.txt" (
+    pip install --upgrade pip
     pip install -r requirements.txt
 ) ELSE (
     echo Instalando Streamlit...
+    pip install --upgrade pip
     pip install streamlit
 )
 
