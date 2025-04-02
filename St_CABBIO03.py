@@ -332,6 +332,20 @@ if menu == "Continuo":
     ax.legend()
     ax.grid(True)
     st.pyplot(fig)
+
+def modelo_lote_b(t, y, mumax, Ks, Yxs, Kd, Ypx, Kla, Cs, mo):
+    X, S, P, O2 = y
+    
+    # Calcular mu según modelo seleccionado (asumiendo Monod simple para el análisis)
+    mu = mumax * S / (Ks + S)
+    
+    dXdt = mu * X - Kd * X
+    dSdt = (-mu/Yxs) * X - 0  # ms se asume cero para simplificar
+    dPdt = Ypx * mu * X
+    dOdt = Kla * (Cs - O2) - (mu/Yxs) * X - mo * X
+    
+    return [dXdt, dSdt, dPdt, dOdt]
+
 # -------------------------
 # Página Análisis de Sensibilidad
 # -------------------------
