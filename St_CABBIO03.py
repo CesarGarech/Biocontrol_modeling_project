@@ -41,6 +41,12 @@ if menu == "Home":
         dS/dt = - (1/Yxs) * μ(S, O2, P) * X - ms * X  
         dP/dt = Ypx * μ(S, O2, P) * X  
         dO2/dt = Kla * (Cs - O2) - (1/Yxo) * μ(S, O2, P) * X - mo * X
+                
+        Las variantes de μ (velocidad específica de crecimiento) consideradas en este código son:
+
+        1.  **Monod simple:** μ = μmax * S / (Ks + S)
+        2.  **Monod sigmoidal:** μ = μmax * S^n / (Ks^n + S^n)
+        3.  **Monod con restricciones:** μ = μmax * S / (Ks + S) * O2 / (KO + O2) * KP / (KP + P)
 
         ### 🔹 Modo Lote Alimentado
         - Se agrega alimentación al biorreactor sin retirar producto, y el volumen varía en el tiempo.
