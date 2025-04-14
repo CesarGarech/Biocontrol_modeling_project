@@ -24,11 +24,11 @@ if menu == "Home":
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.image("imagenes/Batch.png", caption="### Reactor Batch", use_container_width=True)
+        st.image("images/Batch.png", caption="### Reactor Batch", use_container_width=True)
     with col2:
-        st.image("imagenes/fed_batch.png", caption="### Reactor Fed-Batch", use_container_width=True)
+        st.image("images/fed_batch.png", caption="### Reactor Fed-Batch", use_container_width=True)
     with col3:
-        st.image("imagenes/continous.png", caption="### Reactor Continuo", use_container_width=True)
+        st.image("images/continous.png", caption="### Reactor Continuo", use_container_width=True)
 
     st.markdown("""
     ## Fundamento Teórico
