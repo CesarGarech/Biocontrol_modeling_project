@@ -77,7 +77,7 @@ test-results.xml
 *.sav
 
 # Optional: ignore figures or exports
-*.png
+# *.png
 *.jpg
 *.jpeg
 *.pdf
