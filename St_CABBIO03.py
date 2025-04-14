@@ -1054,8 +1054,6 @@ if menu == "Control RTO":
 
     with st.sidebar:
         st.subheader("📌 Parámetros del modelo")
-        # --- Parámetros genéricos (para ambos modelos) ---
-        kinetic_model = st.selectbox("Modelo cinético", ["Monod", "Sigmoidal", "Completa", "Fermentación Alcohólica"]) # <--- ADDED
         mu_max = st.number_input("μmax [1/h]", value=0.6, min_value=0.01)
         Ks = st.number_input("Ks [g/L]", value=0.2, min_value=0.01)
         Ko = st.number_input("KO [g/L]", value=0.01, min_value=0.001)
@@ -1065,18 +1063,6 @@ if menu == "Control RTO":
         Yps = st.number_input("Yps [g/g]", value=0.3, min_value=0.1, max_value=1.0)
         Sf_input = st.number_input("Concentración del alimentado Sf [g/L]", value=500.0)
         V_max_input = st.number_input("Volumen máximo del reactor [L]", value=2.0)
-
-        # --- Parámetros específicos para Fermentación Alcohólica ---
-        if kinetic_model == "Fermentación Alcohólica": # <--- ADDED
-            kLa = st.number_input("kLa [1/h]", value=10.0, min_value=0.1)
-            Cs = st.number_input("Cs [g/L]", value=0.008, min_value=0.001)
-            alpha_etoh = st.number_input("α_etoh [gEtoh/gX]", value=0.45, min_value=0.01)
-            qO2_max = st.number_input("qO2_max [gO2/gX h]", value=0.2, min_value=0.01)
-            Ki_etoh = st.number_input("Ki_etoh [g/L]", value=50.0, min_value=0.1)
-            # O2_set_batch = st.number_input("O2_set_batch [g/L]", value=0.002, min_value=0.0001) # <--- O2 setpoint para batch
-
-        if kinetic_model == "Sigmoidal":
-            n_sigmoidal = st.number_input("n (para Monod Sigmoidal)", value=2.0, min_value=1.0)
 
         st.subheader("🎚 Condiciones Iniciales")
         X0 = st.number_input("X0 (Biomasa) [g/L]", value=1.0)
@@ -1088,12 +1074,16 @@ if menu == "Control RTO":
         st.subheader("⏳ Configuración temporal")
         t_batch = st.number_input("Tiempo de lote (t_batch) [h]", value=5.0, min_value=0.0)
         t_total = st.number_input("Tiempo total del proceso [h]", value=24.0, min_value=t_batch + 1.0)
-        n_fb_escalones = st.number_input("Número de Escalones Alimentación", value=5, min_value=1, max_value=20) # <--- ADDED
 
         st.subheader("🔧 Restricciones de operación")
         F_min = st.number_input("Flujo mínimo [L/h]", value=0.0, min_value=0.0)
         F_max = st.number_input("Flujo máximo [L/h]", value=0.3, min_value=F_min)
         S_max = st.number_input("Sustrato máximo permitido [g/L]", value=30.0)
+
+        st.subheader("🔬 Selección del modelo cinético")
+        kinetic_model = st.selectbox("Modelo cinético", ["Monod", "Sigmoidal", "Completa"])
+        if kinetic_model == "Sigmoidal":
+            n_sigmoidal = st.number_input("n (para Monod Sigmoidal)", value=2.0, min_value=1.0)
 
     if st.button("🚀 Ejecutar Optimización RTO"):
         st.info("Optimizando perfil de alimentación...")
@@ -1102,7 +1092,7 @@ if menu == "Control RTO":
             # ====================================================
             # 1) Definición de la función ODE BIO
             # ====================================================
-            def odefun(x, u, is_batch=False): # <--- ADDED is_batch
+            def odefun(x, u):
                 """
                 Ecuaciones diferenciales Fed-Batch con O=constante.
                 - Divisiones con fmax(V, epsilon) para evitar 1/0.
@@ -1118,12 +1108,6 @@ if menu == "Control RTO":
                 Sf_local = Sf_input
                 V_max_local = V_max_input
 
-                # --- Parámetros específicos para Fermentación Alcohólica ---
-                alpha_etoh_local = alpha_etoh if kinetic_model == "Fermentación Alcohólica" else 0.0
-                qO2_max_local = qO2_max if kinetic_model == "Fermentación Alcohólica" else 0.0
-                Ki_etoh_local = Ki_etoh if kinetic_model == "Fermentación Alcohólica" else 0.0
-                # O2_set_batch_local = O2_set_batch if kinetic_model == "Fermentación Alcohólica" else 0.0
-
                 # Extraer variables de estado (evitar desempacado iterativo)
                 X_ = x[0]
                 S_ = x[1]
@@ -1134,16 +1118,10 @@ if menu == "Control RTO":
                 # Tasa de crecimiento
                 if kinetic_model == "Monod":
                     mu = mu_monod(S_, mu_max_local, Ks_local) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
-
                 elif kinetic_model == "Sigmoidal":
                     mu = mu_sigmoidal(S_, mu_max_local, Ks_local, n_sigmoidal) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
-
                 elif kinetic_model == "Completa":
                     mu = mu_completa(S_, O_, P_, mu_max_local, Ks_local, Ko_local, KP_local)
-
-                elif kinetic_model == "Fermentación Alcohólica": # <--- ADDED
-                    mu = mu_max_local * S_ / (Ks_local + S_) * (Ki_etoh_local / (Ki_etoh_local + P_))
-
                 else:
                     raise ValueError("Modelo cinético no seleccionado correctamente.")
 
@@ -1152,22 +1130,8 @@ if menu == "Control RTO":
 
                 dX = mu * X_ - D * X_
                 dS = -mu * X_ / Yxs_local + D * (Sf_local - S_)
-                if kinetic_model == "Fermentación Alcohólica":
-                    dP = alpha_etoh_local * mu * X_ - D * P_ # <--- ADDED (Etanol)
-                else:
-                    dP = Yps_local * mu * X_ - D * P_
-                
-                dO = 0.0  # Initialize dO outside the model checks
-
-                if kinetic_model == "Fermentación Alcohólica":
-                    if is_batch:
-                        # Mantener O2 constante en el valor inicial
-                        dO = 0.0 
-                    else:
-                        # Balance de oxígeno en fed-batch: Consumo por biomasa y dilución
-                        dO = kLa * (Cs - O_) - qO2_max_local * (mu / mu_max_local) * X_ - D * O_
-                
-
+                dP = Yps_local * mu * X_ - D * P_
+                dO = 0.0   # asumiendo oxígeno constante
                 dV = u
 
                 return ca.vertcat(dX, dS, dP, dO, dV)
@@ -1183,7 +1147,7 @@ if menu == "Control RTO":
             # ====================================================
             x_sym = ca.MX.sym("x", 5)
             u_sym = ca.MX.sym("u")
-            ode_expr = odefun(x_sym, u_sym, is_batch=True) # <--- ADDED is_batch=True
+            ode_expr = odefun(x_sym, u_sym)
 
             batch_integrator = ca.integrator(
                 "batch_integrator", "idas",
@@ -1209,10 +1173,6 @@ if menu == "Control RTO":
             X_col = []
             F_col = []
 
-            # Nueva lógica para flujos escalonados
-            t_fb_escalones = np.linspace(t_batch, t_total, n_fb_escalones + 1)
-            dt_fb_escalon = (t_total - t_batch) / n_fb_escalones if n_fb_escalones > 0 else 0.0
-
             for k in range(n_fb_intervals):
                 row_states = []
                 for j in range(d + 1):
@@ -1235,17 +1195,11 @@ if menu == "Control RTO":
                         opti.subject_to(xk_j[4] <= V_max_input)
                 X_col.append(row_states)
 
-                # Variable de control: F para cada escalón de alimentación
-                # En lugar de 1 por intervalo, tenemos F para cada escalón.
-                # Aseguramos que tenemos suficientes y que se usan correctamente.
-                if k < n_fb_escalones:
-                    Fk = opti.variable()
-                    F_col.append(Fk)
-                    opti.subject_to(Fk >= F_min)
-                    opti.subject_to(Fk <= F_max)
-                else:
-                    # Usamos el último valor de F para los intervalos restantes (si hay más intervalos que escalones)
-                    F_col.append(F_col[-1]) # Repite el último valor de F
+                # Variable de control en cada intervalo
+                Fk = opti.variable()
+                F_col.append(Fk)
+                opti.subject_to(Fk >= F_min)
+                opti.subject_to(Fk <= F_max)
 
             # ====================================================
             # 6) Ecuaciones de Colocación
@@ -1259,12 +1213,7 @@ if menu == "Control RTO":
                         xp_j += C_radau[m, j - 1] * X_col[k][m]
 
                     # f(Xk_j, Fk)
-                    # Correctly pass is_batch for fed-batch
-                    # Obtener el flujo correspondiente al escalón
-                    t_inicio_intervalo = t_batch + k * dt_fb
-                    escalon_index = int((t_inicio_intervalo - t_batch) // dt_fb_escalon) if dt_fb_escalon > 0 else 0
-                    escalon_index = max(0, min(escalon_index, n_fb_escalones - 1))  # Asegurar dentro de límites
-                    fkj = odefun(X_col[k][j], F_col[escalon_index], is_batch=False) # <--- FIXED
+                    fkj = odefun(X_col[k][j], F_col[k])
                     # Restricción => h*f - xp_j = 0
                     coll_eq = h * fkj - xp_j
                     opti.subject_to(coll_eq == 0)
@@ -1294,14 +1243,12 @@ if menu == "Control RTO":
             # 8) Guesses iniciales (importante para evitar NaNs)
             # ====================================================
             for k in range(n_fb_intervals):
+                opti.set_initial(F_col[k], 0.1)
                 for j in range(d + 1):
                     # Si no es el primer "parameter"
                     if not (k == 0 and j == 0):
                         # Como guess, usemos el estado final de batch (o algo similar)
                         opti.set_initial(X_col[k][j], x_after_batch)
-
-            for k in range(n_fb_escalones): # <-- Corregido para usar n_fb_escalones
-                opti.set_initial(F_col[k], 0.1)
 
             # ====================================================
             # 9) Configurar y resolver
@@ -1327,7 +1274,7 @@ if menu == "Control RTO":
                     pass
                 st.stop()
 
-            F_opt = [sol.value(fk) for fk in F_col[:n_fb_escalones]]  # Toma solo los flujos de los escalones
+            F_opt = [sol.value(fk) for fk in F_col]
             X_fin_val = sol.value(X_final)
             P_fin_val = X_fin_val[2]
             V_fin_val = X_fin_val[4]
@@ -1347,13 +1294,9 @@ if menu == "Control RTO":
             t_batch_plot = np.linspace(0, t_batch, N_batch_plot)
             dt_b = t_batch_plot[1] - t_batch_plot[0]
 
-            x_sym_plot = ca.MX.sym("x_plot", 5) # <---  NEW SYMBOL FOR INTEGRATION
-            u_sym_plot = ca.MX.sym("u_plot")    # <---  NEW SYMBOL FOR INTEGRATION
-
-            ode_expr_plot = odefun(x_sym_plot, u_sym_plot, is_batch=True) # ODE for integration
             batch_plot_int = ca.integrator(
                 "batch_plot_int", "idas",
-                {"x": x_sym_plot, "p": u_sym_plot, "ode": ode_expr_plot},
+                {"x": x_sym, "p": u_sym, "ode": ode_expr},
                 {"t0": 0, "tf": dt_b}
             )
 
@@ -1368,34 +1311,30 @@ if menu == "Control RTO":
             # b) Fase fed-batch: integrando de t_batch a t_total con dt fino
             t_fb_plot = np.linspace(t_batch, t_total, 400)
             dt_fb_plot = t_fb_plot[1] - t_fb_plot[0]
-            
-            x_sym_fb_plot = ca.MX.sym("x_fb_plot", 5) # <---  NEW SYMBOL FOR INTEGRATION
-            u_sym_fb_plot = ca.MX.sym("u_fb_plot") # <---  NEW SYMBOL FOR INTEGRATION
-
-            ode_expr_fb_plot = odefun(x_sym_fb_plot, u_sym_fb_plot, is_batch=False) # ODE for integration
 
             fb_plot_int = ca.integrator(
                 "fb_plot_int", "idas",
-                {"x": x_sym_fb_plot, "p": u_sym_fb_plot, "ode": ode_expr_fb_plot},
+                {"x": x_sym, "p": u_sym, "ode": ode_expr},
                 {"t0": 0, "tf": dt_fb_plot}
             )
+
             xfb_traj = []
             xk_ = xbatch_traj[-1].copy()
             for i, t_ in enumerate(t_fb_plot):
                 xfb_traj.append(xk_)
                 if i == len(t_fb_plot) - 1:
                     break
-                # Determinar en qué escalón y su intervalo estamos
-                t_in_intervalo = t_ - t_batch
-                escalon_actual = int(t_in_intervalo // dt_fb_escalon) if dt_fb_escalon > 0 else 0
-                escalon_actual = max(0, min(escalon_actual, n_fb_escalones - 1)) # Limitar a índices válidos
-                F_now = sol.value(F_col[escalon_actual]) if n_fb_escalones > 0 else 0.0
+                # Determinar en qué subintervalo k estamos
+                kk_ = int((t_ - t_batch) // dt_fb) if dt_fb > 0 else 0
+                kk_ = max(0, kk_)
+                kk_ = min(n_fb_intervals - 1, kk_)
+                # Tomar F correspondiente
+                F_now = sol.value(F_col[kk_]) if n_fb_intervals > 0 else 0.0
+                # Apagar F si V>=Vmax
                 if xk_[4] >= V_max_input:
                     F_now = 0.0
-
                 # Integrar
-                # Correctly pass is_batch=False for fed-batch
-                res_ = fb_plot_int(x0=xk_, p=F_now, ) # <--- FIXED
+                res_ = fb_plot_int(x0=xk_, p=F_now)
                 xk_ = np.array(res_["xf"]).flatten()
 
             xfb_traj = np.array(xfb_traj)
@@ -1410,17 +1349,20 @@ if menu == "Control RTO":
             O_full = x_full[:, 3]
             V_full = x_full[:, 4]
 
-            # Construir F para graficar (escalones)
-            F_plot = np.zeros_like(t_full)
-            for k in range(n_fb_escalones):
-                t_start_escalon = t_batch + k * dt_fb_escalon
-                t_end_escalon = t_start_escalon + dt_fb_escalon
-                indices_escalon = np.where((t_full >= t_start_escalon) & (t_full < t_end_escalon))[0]
-                F_plot[indices_escalon] = sol.value(F_col[k]) if n_fb_escalones > 0 else 0.0
+            # Construir F para graficar
+            F_batch_plot = np.zeros_like(t_batch_plot)
+            F_fb_plot = []
+            for i, tt in enumerate(t_fb_plot):
+                kk_ = int((tt - t_batch) // dt_fb) if dt_fb > 0 else 0
+                kk_ = max(0, kk_)
+                kk_ = min(n_fb_intervals - 1, kk_)
+                valF = sol.value(F_col[kk_]) if n_fb_intervals > 0 else 0.0
+                if xfb_traj[i, 4] >= V_max_input:
+                    valF = 0.0
+                F_fb_plot.append(valF)
+            F_fb_plot = np.array(F_fb_plot)
 
-            # Restricción V_max
-            indices_vmax = np.where(V_full >= V_max_input)[0]
-            F_plot[indices_vmax] = 0.0
+            F_plot = np.concatenate([F_batch_plot, F_fb_plot])
 
             # ====================================================
             # 11) Gráficas
@@ -1428,8 +1370,8 @@ if menu == "Control RTO":
             fig, axs = plt.subplots(2, 3, figsize=(14, 8), constrained_layout=True)
             axs = axs.ravel()
 
-            # F (escalones)
-            axs[0].step(t_full, F_plot, where='post', linewidth=2)  # Use step plot
+            # F
+            axs[0].plot(t_full, F_plot, linewidth=2)
             axs[0].set_title("Flujo de alimentación F(t)")
             axs[0].set_xlabel("Tiempo (h)")
             axs[0].set_ylabel("F (L/h)")
@@ -1460,7 +1402,7 @@ if menu == "Control RTO":
 
             # O
             axs[4].plot(t_full, O_full, linewidth=2)
-            axs[4].set_title("Oxígeno disuelto O(t)")
+            axs[4].set_title("Oxígeno disuelto O(t) (constante)")
             axs[4].set_xlabel("Tiempo (h)")
             axs[4].set_ylabel("O (g/L)")
             axs[4].grid(True)
