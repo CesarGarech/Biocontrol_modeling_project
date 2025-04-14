@@ -2,9 +2,9 @@
 > Concise one-line description of the project.
 
 ## 📖 Overview
-This repository contains the source code for [Project Name], developed by [Researcher Name(s)] at the Laboratory of Software Development for Process Control and Optimization (LADES) - COPPE/UFRJ, in association with [Institution Name].
+This repository contains the source code for Biocontrol_modeling_project, developed by César Augusto García Echeverry at the Laboratory of Software Development for Process Control and Optimization (LADES) - COPPE/UFRJ.
 
-The purpose of this project is to [briefly describe the goal, e.g., model optimization, control algorithms, machine learning applications, etc.]. This repository serves as a resource for research, development, and collaboration within the field of [specific research area, e.g., process control, predictive modeling, automation]
+The purpose of this project is to assist in teaching classical and advanced modeling and control in the fields of bioprocessing and biotechnology. It presents simple and advanced tools using robust programming methods.. This repository serves as a resource for research, development, and collaboration within the field of bioprocess and biotechnology.
 
 ## 🚀 Features
 - [Feature 1]
