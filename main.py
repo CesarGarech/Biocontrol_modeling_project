@@ -6,7 +6,7 @@ import os
 # 1. Define la estructura del menú jerárquico
 menu_structure = {
     "🏠 Home": None,  # Sin submenú. Usar emojis puede ayudar visualmente.
-    "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo"],
+    "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo", "Fermentacion"],
     "📈 Análisis de Sensibilidad": None,
     "🔧 Ajuste de Parámetros": None,
     "📊 Estimación de Estados": ["EKF"], # Puedes añadir más estimadores aquí
@@ -59,6 +59,9 @@ def main():
     elif selected_page == "Continuo":
         from Body.modeling import continuo
         continuo.continuo_page()
+    elif selected_page == "Fermentacion":
+        from Body.modeling import ferm_alcohol
+        ferm_alcohol.fermentacion_alcoholica_page()    
     elif selected_page == "📈 Análisis de Sensibilidad":
         from Body import analysis
         analysis.analysis_page()
