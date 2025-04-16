@@ -1,4 +1,4 @@
-# Project Title
+# Modeling and control applied to bioprocess
 > Concise one-line description of the project.
 
 ## 📖 Overview
