@@ -67,15 +67,15 @@ def fermentacion_alcoholica_page():
         Cs = st.slider("O2 Saturado (Cs) [mg/L]", 0.01, 15.0, 7.5, 0.01, key="cs")
 
         st.subheader("4. Fases de Operación y Alimentación")
-        t_batch_inicial_fin = st.slider("Fin Fase Lote Inicial [h]", 1.0, 48.0, 10.0, 1.0, key="t_batch_fin")
+        t_batch_inicial_fin = st.slider("Fin Fase Lote Inicial [h]", 1.0, 30.0, 10.0, 1.0, key="t_batch_fin")
         t_alim_inicio = st.slider("Inicio Alimentación [h]", t_batch_inicial_fin, t_batch_inicial_fin + 24.0, t_batch_inicial_fin + 0.1, 0.5, key="t_alim_ini")
-        t_alim_fin = st.slider("Fin Alimentación (Inicio Lote Final) [h]", t_alim_inicio + 1.0, 96.0, t_alim_inicio + 24.0, 1.0, key="t_alim_fin")
-        t_final = st.slider("Tiempo Total de Simulación [h]", t_alim_fin + 1.0, 150.0, t_alim_fin + 12.0, 1.0, key="t_total")
+        t_alim_fin = st.slider("Fin Alimentación (Inicio Lote Final) [h]", t_alim_inicio + 1.0, 40.0, t_alim_inicio + 24.0, 1.0, key="t_alim_fin")
+        t_final = st.slider("Tiempo Total de Simulación [h]", t_alim_fin + 1.0, 100.0, t_alim_fin + 12.0, 1.0, key="t_total")
         # CAMBIO: Valor por defecto de O2_controlado
         O2_controlado = st.slider("Nivel O2 Objetivo/Ref (Fase Lote Inicial) [mg/L]", 0.01, Cs, 0.08, 0.01, key="o2_control") # Valor 0.08
 
         estrategia = st.selectbox("Estrategia Alimentación", ["Constante", "Exponencial", "Lineal", "Escalon"], key="strat")
-        Sin = st.slider("Sustrato en Alimentación (Sin) [g/L]", 50.0, 700.0, 400.0, 10.0, key="sin")
+        Sin = st.slider("Sustrato en Alimentación (Sin) [g/L]", 10.0, 700.0, 400.0, 10.0, key="sin")
         F_base = st.slider("Flujo Base (o Inicial) [L/h]", 0.01, 5.0, 0.1, 0.01, key="fbase")
         if estrategia == "Lineal":
             F_lineal_fin = st.slider("Flujo Final (Lineal) [L/h]", F_base, 10.0, F_base * 2, 0.01, key="ffin_lin")
