@@ -11,6 +11,7 @@ menu_structure = {
     "🔧 Ajuste de Parámetros": None,
     "📊 Estimación de Estados": ["EKF"], # Puedes añadir más estimadores aquí
     "⚙️ Control": ["RTO", "NMPC"]
+    # "⚙️ Control": ["RTO", "RTO Ferm", "NMPC"]
 }
 
 def main():
@@ -74,6 +75,9 @@ def main():
     elif selected_page == "RTO": # Nombre de la sub-opción
         from Body.control import rto
         rto.rto_page()
+    elif selected_page == "RTO Ferm": # Nombre de la sub-opción
+        from Body.control import rto_ferm
+        rto_ferm.rto_fermentacion_page()
     elif selected_page == "NMPC": # Nombre de la sub-opción
         from Body.control import nmpc
         nmpc.nmpc_page()
