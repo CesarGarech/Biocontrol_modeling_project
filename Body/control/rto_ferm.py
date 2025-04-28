@@ -1,700 +1,484 @@
-# drto_anaerobic_page_simplified_optim.py
 import streamlit as st
 import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
-import pandas as pd
-import traceback # Para imprimir errores detallados
 
-# =============================================================================
-# 1. MODELO Y CINÉTICA (Sin cambios en las definiciones base)
-# =============================================================================
-
-def mu_fermentacion(S, P, O2,
-                    mumax_aerob, Ks_aerob, KO_aerob, # Params mu1 (aerobio)
-                    mumax_anaerob, Ks_anaerob, KiS_anaerob, # Params mu2 (anaerobio) - Sustrato
-                    KP_anaerob, n_p,                   # Params mu2 (anaerobio) - Producto
-                    KO_inhib_anaerob):                 # Params mu2 (anaerobio) - O2 (Inhibición)
-    """Calcula la tasa de crecimiento específica (mu)."""
-    # ... (código idéntico al anterior) ...
-    S = np.maximum(1e-9, S)
-    P = np.maximum(0.0, P)
-    O2 = np.maximum(0.0, O2)
-
-    # mu1 (Aeróbica)
-    term_S_aerob = S / (Ks_aerob + S) if (Ks_aerob + S) > 1e-9 else 0.0
-    term_O2_aerob = O2 / (KO_aerob + O2) if (KO_aerob + O2) > 1e-9 else 0.0
-    mu1 = mumax_aerob * term_S_aerob * term_O2_aerob
-
-    # mu2 (Anaeróbica)
-    denominador_S_anaerob = Ks_anaerob + S + (S**2 / KiS_anaerob) if KiS_anaerob > 1e-9 else Ks_anaerob + S
-    term_S_anaerob = S / denominador_S_anaerob if denominador_S_anaerob > 1e-9 else 0.0
-    base_P = 1.0 - (P / KP_anaerob)
-    term_P_anaerob = np.power(np.maximum(0.0, base_P), n_p) if KP_anaerob > 1e-9 else 0.0
-    term_P_anaerob = np.maximum(0.0, term_P_anaerob)
-    term_O2_inhib_anaerob = KO_inhib_anaerob / (KO_inhib_anaerob + O2) if (KO_inhib_anaerob + O2) > 1e-9 else 1.0
-    mu2 = mumax_anaerob * term_S_anaerob * term_P_anaerob * term_O2_inhib_anaerob
-
-    mu_total = mu1 + mu2
-    return np.maximum(0.0, mu_total)
-
-
-def modelo_ferm_scipy(t, y, current_params, current_kla):
-    """Modelo ODE para SciPy (simulación inicial batch - O2 dinámico)."""
-    # ... (código idéntico al anterior) ...
-    X, S, P, O2, V = y
-    X = max(1e-9, X); S = max(0, S); P = max(0, P); O2 = max(0, O2); V = max(1e-6, V)
-    F = 0.0 # Fase batch
-
-    mu = mu_fermentacion(S, P, O2,
-                         current_params["mumax_aerob"], current_params["Ks_aerob"], current_params["KO_aerob"],
-                         current_params["mumax_anaerob"], current_params["Ks_anaerob"], current_params["KiS_anaerob"],
-                         current_params["KP_anaerob"], current_params["n_p"], current_params["KO_inhib_anaerob"])
-    mu = max(0, mu)
-
-    qP = current_params["alpha_lp"] * mu + current_params["beta_lp"]
-    rate_P = qP * X
-    consumo_S_X = (mu / current_params["Yxs"]) * X if current_params["Yxs"] > 1e-9 else 0
-    consumo_S_P = (rate_P / current_params["Yps"]) * X if current_params["Yps"] > 1e-9 else 0 # Corrección: Yps es gP/gS, debería ser rate_P / Yps
-    consumo_S_P = (rate_P / current_params["Yps"]) if current_params["Yps"] > 1e-9 else 0
-    consumo_S_maint = current_params["ms"] * X
-    rate_S = consumo_S_X + consumo_S_P + consumo_S_maint
-    consumo_O2_X = (mu / current_params["Yxo"]) * X if current_params["Yxo"] > 1e-9 else 0
-    consumo_O2_maint = current_params["mo"] * X
-    OUR_g = consumo_O2_X + consumo_O2_maint # [gO2/L/h]
-    OUR_mg = OUR_g * 1000.0 # [mgO2/L/h]
-
-    dXdt = (mu - current_params["Kd"]) * X - (F / V) * X
-    dSdt = -rate_S + (F / V) * (current_params["Sin"] - S)
-    dPdt = rate_P - (F / V) * P
-    dVdt = F
-    OTR = current_kla * (current_params["Cs"] - O2) # [mg O2 / L / h]
-    dOdt = OTR - OUR_mg - (F / V) * O2      # [mg/L/h]
-
-    return [dXdt, dSdt, dPdt, dOdt, dVdt]
-
-def odefun_ferm_casadi_builder(params_dict, kla_value, constant_O2_value=None):
-    """
-    Construye la función ODE simbólica de CasADi.
-    Si constant_O2_value no es None, fija dOdt=0 y usa ese valor para O2 en los cálculos.
-    """
-    nx = 5 # X, S, P, O2, V
-    nu = 1 # F
-
-    x_sym = ca.MX.sym('x', nx)
-    u_sym = ca.MX.sym('u', nu)
-    p_sym = {}
-    for key, val in params_dict.items():
-         p_sym[key] = val
-    p_sym['Kla_optim_phase'] = kla_value
-
-    # --- Lógica de la ODE usando CasADi ---
-    X_ = x_sym[0]; S_ = x_sym[1]; P_ = x_sym[2]
-    V_ = x_sym[4]
-    F_ = u_sym[0]
-
-    # --- Manejo de O2 ---
-    if constant_O2_value is not None:
-        O2_ = constant_O2_value # Usar valor constante
-        dOdt = 0.0              # Fijar derivada a cero
-    else:
-        O2_ = x_sym[3]          # Usar estado dinámico O2
-
-    V_safe = ca.fmax(V_, 1e-6)
-    S_safe = ca.fmax(1e-9, S_); P_safe = ca.fmax(0.0, P_); O2_safe = ca.fmax(0.0, O2_)
-
-    # --- Cálculos de mu (idénticos a la versión anterior) ---
-    # mu1 (aeróbico)
-    term_S_aerob = S_safe / (p_sym["Ks_aerob"] + S_safe)
-    term_O2_aerob = O2_safe / (p_sym["KO_aerob"] + O2_safe)
-    mu1 = p_sym["mumax_aerob"] * term_S_aerob * term_O2_aerob
-    # mu2 (anaeróbico)
-    den_S_anaerob = p_sym["Ks_anaerob"] + S_safe + (S_safe**2 / p_sym["KiS_anaerob"])
-    term_S_anaerob = S_safe / den_S_anaerob
-    base_P = 1.0 - (P_safe / p_sym["KP_anaerob"])
-    term_P_anaerob = ca.power(ca.fmax(0.0, base_P), p_sym["n_p"])
-    term_O2_inhib_anaerob = p_sym["KO_inhib_anaerob"] / (p_sym["KO_inhib_anaerob"] + O2_safe)
-    mu2 = p_sym["mumax_anaerob"] * term_S_anaerob * term_P_anaerob * term_O2_inhib_anaerob
-    mu = ca.fmax(0, mu1 + mu2)
-
-    # --- Tasas (idénticas a la versión anterior) ---
-    qP = p_sym["alpha_lp"] * mu + p_sym["beta_lp"]
-    rate_P = qP * X_
-    Yxs_safe = ca.fmax(p_sym["Yxs"], 1e-9); Yps_safe = ca.fmax(p_sym["Yps"], 1e-9); Yxo_safe = ca.fmax(p_sym["Yxo"], 1e-9)
-    consumo_S_X = (mu / Yxs_safe) * X_
-    consumo_S_P = (rate_P / Yps_safe)
-    consumo_S_maint = p_sym["ms"] * X_
-    rate_S = consumo_S_X + consumo_S_P + consumo_S_maint
-
-    # --- Ecuaciones Diferenciales ---
-    dXdt = (mu - p_sym["Kd"]) * X_ - (F_ / V_safe) * X_
-    dSdt = -rate_S + (F_ / V_safe) * (p_sym["Sin"] - S_)
-    dPdt = rate_P - (F_ / V_safe) * P_
-    dVdt = F_
-
-    # --- dOdt (solo si no es constante) ---
-    if constant_O2_value is None:
-        consumo_O2_X = (mu / Yxo_safe) * X_
-        consumo_O2_maint = p_sym["mo"] * X_
-        OUR_g = consumo_O2_X + consumo_O2_maint # [gO2/L/h]
-        OUR_mg = OUR_g * 1000.0 # [mgO2/L/h]
-        OTR = p_sym['Kla_optim_phase'] * (p_sym["Cs"] - O2_)
-        dOdt = OTR - OUR_mg - (F_ / V_safe) * O2_
-
-    dxdt = ca.vertcat(dXdt, dSdt, dPdt, dOdt, dVdt)
-
-    # Crear función CasADi
-    ode_casadi_func = ca.Function('ode_casadi', [x_sym, u_sym], [dxdt],
-                                 ['x_in', 'u_in'], ['dxdt'])
-    return ode_casadi_func
-
-# =============================================================================
-# 2. COEFICIENTES DE COLOCACIÓN (Sin cambios)
-# =============================================================================
-def get_hardcoded_radau_coeffs(d):
-    # ... (código idéntico al anterior) ...
-    if d == 2:
-        C_mat = np.array([[-2.0, 2.0], [1.5, -4.5], [0.5, 2.5]])
-        D_vec = np.array([0.0, 0.0, 1.0])
-        return C_mat, D_vec
-    else:
-        raise NotImplementedError("Coeficientes hardcodeados solo para d=2.")
-
-# =============================================================================
-# 3. FUNCIONES DE PROCESO (Simulación, Optimización, Re-simulación)
-#    (Modificaciones en run_optimization y resimulate)
-# =============================================================================
-
-def run_initial_simulation(y0, t_span, params, kla_aerobic, t_eval_hint):
-    """Ejecuta la simulación de la fase inicial batch aeróbica (O2 dinámico)."""
-    # ... (código idéntico al anterior, usa modelo_ferm_scipy) ...
-    st.info("1. Ejecutando simulación de fase inicial (aeróbica)...")
-    sol_initial = None
-    x_final = None
-    status = "Failure"
-    message = ""
-
-    t_eval = np.linspace(t_span[0], t_span[1], int((t_span[1]-t_span[0]) * t_eval_hint) + 1)
-
-    try:
-        sol_initial = solve_ivp(modelo_ferm_scipy, t_span, y0,
-                                method='BDF',
-                                t_eval=t_eval,
-                                args=(params, kla_aerobic),
-                                atol=1e-8, rtol=1e-7)
-
-        if sol_initial.success:
-            x_final = sol_initial.y[:, -1]
-            # --- IMPORTANTE: Asegurar que O2 no sea negativo ---
-            x_final[3] = max(0.0, x_final[3])
-            status = "Success"
-            st.success("Simulación inicial completada.")
-            st.write(f"Estado al inicio de la fase anaeróbica (t={t_span[1]:.2f} h):")
-            st.code(f"X = {x_final[0]:.4f} g/L\nS = {x_final[1]:.4f} g/L\nP = {x_final[2]:.4f} g/L\nO2 = {x_final[3]:.4f} mg/L\nV = {x_final[4]:.4f} L")
-        else:
-            message = f"La simulación inicial falló: {sol_initial.message}"
-            st.error(message)
-
-    except Exception as e:
-        message = f"Error durante la simulación inicial: {e}\n{traceback.format_exc()}"
-        st.error(message)
-
-    return sol_initial, x_final, status, message
-
-
-def run_optimization(x_start, t_start, t_end, params, kla_anaerobic, N, d, constraints, solver_options):
-    """
-    Configura y resuelve el problema de optimización dinámica.
-    *** USA O2 CONSTANTE durante la optimización ***
-    """
-    st.info(f"2. Configurando y resolviendo problema de optimización (t={t_start:.2f}h a t={t_end:.2f}h)...")
-    st.warning("   -> Usando simplificación: O2 constante durante la optimización.")
-
-    opti = ca.Opti()
-    nx = 5 # X, S, P, O2, V
-    nu = 1 # F
-    sol = None
-    results = None
-    status = "Setup Failure"
-    debug_info = {}
-
-    try:
-        T_optim = t_end - t_start
-        if T_optim <= 0: raise ValueError("T_optim <= 0")
-        dt_interval = T_optim / N
-        h = dt_interval
-        if d != 2: raise ValueError("d != 2")
-        C_mat, D_vec = get_hardcoded_radau_coeffs(d)
-
-        # --- Usar valor de O2 constante de la simulación inicial ---
-        O2_const_optim = x_start[3]
-        st.info(f"   -> Fijando O2 = {O2_const_optim:.4f} mg/L para la optimización.")
-        ode_casadi_func = odefun_ferm_casadi_builder(params, kla_anaerobic,
-                                                   constant_O2_value=O2_const_optim)
-
-        # Variables de decisión y restricciones (más parecido al código funcional)
-        X_col = []
-        U_col = [] # Cambiado de F_col a U_col por convención
-        x0_param = opti.parameter(nx)
-        opti.set_value(x0_param, x_start)
-
-        for k in range(N):
-            states_k = []
-            for j in range(d + 1):
-                if k == 0 and j == 0:
-                    states_k.append(x0_param)
-                else:
-                    xk_j = opti.variable(nx)
-                    states_k.append(xk_j)
-                    # Restricciones MÍNIMAS (como en el código funcional)
-                    opti.subject_to(xk_j >= 0) # No negatividad general
-                    # IMPORTANTE: No añadir xk_j[3] >= 0 si O2 es constante y positivo
-                    if O2_const_optim < 0: # Chequeo por si acaso
-                        st.error("O2 inicial para optimización es negativo!")
-                        opti.subject_to(xk_j[3] >= 0) # Añadirla si O2 puede ser negativo
-                    opti.subject_to(xk_j[1] <= constraints["S_max"]) # S <= S_max
-                    opti.subject_to(xk_j[4] <= constraints["V_max"]) # V <= V_max
-            X_col.append(states_k)
-
-            Uk = opti.variable(nu)
-            U_col.append(Uk)
-            opti.subject_to(Uk >= constraints["F_min"])
-            opti.subject_to(Uk <= constraints["F_max"])
-
-        # Ecuaciones de Colocación y Continuidad (sin cambios)
-        X_final = None
-        for k in range(N):
-            for j in range(1, d + 1):
-                xp_kj = sum(C_mat[r, j-1] * X_col[k][r] for r in range(d + 1))
-                f_kj = ode_casadi_func(X_col[k][j], U_col[k])
-                opti.subject_to(h * f_kj == xp_kj)
-            Xk_end = sum(D_vec[r] * X_col[k][r] for r in range(d + 1))
-            if k < N - 1:
-                # opti.subject_to(Xk_end == X_col[k+1][0]) # Forma concisa
-                for i_ in range(nx): # Forma del código funcional
-                    opti.subject_to(Xk_end[i_] == X_col[k + 1][0][i_])
-            else:
-                X_final = Xk_end
-        if X_final is None: raise RuntimeError("X_final no determinado.")
-
-        # Función Objetivo (sin cambios)
-        P_final = X_final[2]
-        V_final = X_final[4]
-        opti.minimize(-(P_final * V_final))
-
-        # Guesses iniciales (como en el código funcional)
-        F_guess = 0.1 # Valor fijo del código funcional
-        for k in range(N):
-            opti.set_initial(U_col[k], F_guess)
-            for j in range(d + 1):
-                 if not (k == 0 and j == 0):
-                     opti.set_initial(X_col[k][j], x_start) # Usar estado inicial como guess
-
-        # Configurar Solver (como en el código funcional - MÁS SIMPLE)
-        p_opts = {} # Sin "expand": True por defecto
-        s_opts_simple = {
-            "max_iter": 2000,       # Del código funcional
-            "print_level": 0,
-            "sb": 'yes',
-            "mu_strategy": "adaptive" # Del código funcional
-            # Quitar tol y constr_viol_tol explícitos, usar defaults de IPOPT
-        }
-        opti.solver("ipopt", p_opts, s_opts_simple) # Usar s_opts_simple
-        status = "Solver Setup OK"
-
-        # Resolver
-        st.info("   -> Llamando a IPOPT (con O2 cte y config simple)...")
-        sol = opti.solve()
-        st.success("¡Optimización completada!")
-        status = "Success"
-
-        # Extraer resultados (sin cambios)
-        F_opt_profile = np.array([sol.value(Uk) for Uk in U_col]).flatten()
-        X_final_opt = sol.value(X_final)
-        P_final_opt_val = X_final_opt[2]
-        V_final_opt_val = X_final_opt[4]
-        obj_val = P_final_opt_val * V_final_opt_val
-        results = {'F_opt_profile': F_opt_profile, 'X_final_opt': X_final_opt,
-                   'obj_val': obj_val, 'dt_interval': dt_interval}
-
-    # Manejo de Errores (sin cambios respecto a la versión reestructurada)
-    except RuntimeError as e:
-        status = f"Solver Failure: {e}"
-        st.error(status)
-        if "Infeasible_Problem_Detected" in str(e):
-            status = "Infeasible_Problem_Detected"
-            st.warning("IPOPT detectó un problema infactible.")
-            try:
-                st.warning("Intentando mostrar infactibilidades:")
-                debug_info['infeasibilities'] = opti.debug.show_infeasibilities(1e-5)
-                st.warning("Intentando mostrar valores de variables:")
-                debug_info['variables'] = opti.debug.value(opti.value_variables())
-            except Exception as debug_e: st.error(f"Debug info failed: {debug_e}")
-        else: # Otro runtime error
-             debug_info['traceback'] = traceback.format_exc()
-    except Exception as e:
-        status = f"Optimization Error: {e}"
-        debug_info['traceback'] = traceback.format_exc()
-        st.error(status)
-
-    return sol, status, results, debug_info
-
-
-def resimulate_with_optimal_control(x_start, t_eval, F_opt_profile, dt_interval, t_anaerobic_start, params, kla_anaerobic):
-    """
-    Re-simula la trayectoria usando el control óptimo.
-    *** USA O2 DINÁMICO para la re-simulación ***
-    """
-    st.info("4. Re-simulando trayectoria completa con perfil óptimo (O2 Dinámico)...")
-    x_optim_traj = [x_start]
-    xk_curr = x_start.copy()
-    status = "Success"
-    message = ""
-    sim_integrator = None
-
-    try:
-        if len(t_eval) <= 1:
-             st.warning("No hay puntos de tiempo suficientes para la re-simulación.")
-             return np.array([x_start]), status, message
-
-        dt_sim = t_eval[1] - t_eval[0]
-
-        # --- Usar la ODE COMPLETA (O2 dinámico) para re-simulación ---
-        ode_casadi_func_dynamic = odefun_ferm_casadi_builder(params, kla_anaerobic,
-                                                            constant_O2_value=None)
-        sim_integrator = ca.integrator('sim_integrator', 'idas',
-                                     {'x': ode_casadi_func_dynamic.mx_in('x_in'),
-                                      'p': ode_casadi_func_dynamic.mx_in('u_in'),
-                                      'ode': ode_casadi_func_dynamic.mx_out('dxdt')},
-                                     {'t0': 0, 'tf': dt_sim, 'reltol':1e-7, 'abstol':1e-8})
-
-        N_intervals = len(F_opt_profile)
-
-        for i, t_curr in enumerate(t_eval[:-1]):
-            current_optim_time = t_curr - t_anaerobic_start
-            k_interval = np.floor(current_optim_time / dt_interval).astype(int)
-            k_interval = min(max(k_interval, 0), N_intervals - 1)
-            F_current = F_opt_profile[k_interval]
-
-             # --- APAGAR F si V >= Vmax (heurística del código funcional) ---
-             # Esto puede ser útil si la optimización no respetó perfectamente Vmax
-             # debido a la simplificación de O2 o las tolerancias.
-            if xk_curr[4] >= params.get("V_max_input", constraints.get("V_max", float('inf'))): # Usar V_max real
-                 if F_current > 0:
-                     # st.write(f"Debug: V ({xk_curr[4]:.3f}) >= Vmax, forzando F=0 en t={t_curr:.2f}") # Opcional: para ver si se activa
-                     F_current = 0.0
-
-            # Simular un paso
-            try:
-                res_step = sim_integrator(x0=xk_curr, p=F_current)
-                xk_curr = np.array(res_step['xf']).flatten()
-                xk_curr = np.maximum(xk_curr, 0)
-                xk_curr[0] = max(xk_curr[0], 1e-9); xk_curr[4] = max(xk_curr[4], 1e-6)
-                x_optim_traj.append(xk_curr)
-            except Exception as sim_step_err:
-                 message += f"\nError en paso re-sim t={t_curr:.2f} F={F_current:.4f}: {sim_step_err}."
-                 st.warning(message)
-                 x_optim_traj.append(x_optim_traj[-1]) # Rellenar
-                 # status = "Resimulation Step Failed"; break # Opcional: detener
-
-    except Exception as e:
-        status = "Resimulation Failed"
-        message = f"Error durante la re-simulación: {e}\n{traceback.format_exc()}"
-        st.error(message)
-        return None, status, message
-
-    return np.array(x_optim_traj), status, message
-
-
-# =============================================================================
-# 4. FUNCIONES AUXILIARES (Ploteo, Métricas) - Sin cambios
-# =============================================================================
-def plot_results(t_initial, y_initial, t_optim_phase, x_optim_traj,
-                 F_opt_profile, dt_interval, t_anaerobic_start, constraints):
-    # ... (código idéntico al anterior) ...
-    st.subheader("📈 Resultados Gráficos")
-
-    if x_optim_traj is None or len(x_optim_traj) == 0:
-        st.warning("No hay trayectoria optimizada para graficar.")
-        return None
-
-    # Combinar trayectorias
-    t_full_traj = np.concatenate([t_initial, t_optim_phase])
-    y_full_traj = np.hstack([y_initial, x_optim_traj.T]) # Transponer optim traj
-
-    # Construir perfil de flujo para plot escalonado
-    t_f_steps = [t_anaerobic_start]
-    F_optim_plot_steps = []
-    N_intervals = len(F_opt_profile)
-    t_final = t_optim_phase[-1]
-    for k in range(N_intervals):
-        t_start_k = t_anaerobic_start + k * dt_interval
-        t_end_k = t_start_k + dt_interval
-        if not np.isclose(t_f_steps[-1], t_start_k):
-             t_f_steps.append(t_start_k)
-             F_optim_plot_steps.append(F_opt_profile[k-1] if k>0 else F_opt_profile[0])
-        t_f_steps.append(t_start_k)
-        F_optim_plot_steps.append(F_opt_profile[k])
-        t_f_steps.append(t_end_k)
-        F_optim_plot_steps.append(F_opt_profile[k])
-    if not np.isclose(t_f_steps[-1], t_final):
-        t_f_steps.append(t_final)
-        F_optim_plot_steps.append(F_opt_profile[-1])
-
-    t_f_steps = np.array(t_f_steps)
-    F_optim_plot_steps = np.array(F_optim_plot_steps)
-
-    # Combinar con flujo cero inicial
-    F_inicial_plot = np.zeros_like(t_initial)
-    idx_insert = np.searchsorted(t_f_steps, t_initial[-1])
-    t_full_F_plot = np.concatenate([t_initial, t_f_steps[idx_insert:]])
-    F_full_F_plot = np.concatenate([F_inicial_plot, F_optim_plot_steps[idx_insert:]])
-    first_optim_idx = np.searchsorted(t_full_F_plot, t_anaerobic_start)
-    if first_optim_idx > 0: F_full_F_plot[first_optim_idx:] = F_optim_plot_steps
-
-    # Crear Figura
-    fig, axs = plt.subplots(3, 2, figsize=(14, 12), constrained_layout=True)
-    axs = axs.ravel()
-    t_final_plot = t_full_traj[-1]
-
-    # 0: Flujo
-    axs[0].plot(t_f_steps, F_optim_plot_steps, label='F óptimo (step)', color='r', linewidth=2) # Plot directo de escalones
-    axs[0].plot([0,t_anaerobic_start], [0,0], color='r', linewidth=2) # Fase inicial F=0
-    axs[0].axhline(constraints["F_max"], color='gray', linestyle='--', label=f'F_max ({constraints["F_max"]:.2f})')
-    axs[0].axhline(constraints["F_min"], color='gray', linestyle=':', label=f'F_min ({constraints["F_min"]:.2f})')
-    axs[0].axvline(t_anaerobic_start, color='k', linestyle='--', label='Inicio Optim.')
-    axs[0].set_title(r"Perfil Óptimo de Alimentación $F(t)$")
-    axs[0].set_xlabel("Tiempo [h]")
-    axs[0].set_ylabel("Flujo [L/h]")
-    axs[0].legend()
-    axs[0].grid(True)
-    axs[0].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[0].set_ylim(bottom=min(constraints["F_min"]*1.1, -0.01), top=constraints["F_max"]*1.1 + 0.01)
-
-    # Plots 1-5 (Volumen, X, S, P, O2) idénticos
-    # 1: Volumen
-    axs[1].plot(t_full_traj, y_full_traj[4, :], label='Volumen', color='b', linewidth=2)
-    axs[1].axhline(constraints["V_max"], color='r', linestyle='--', label=f'V_max ({constraints["V_max"]:.1f})')
-    axs[1].axvline(t_anaerobic_start, color='k', linestyle='--')
-    axs[1].set_title(r"Volumen $V(t)$")
-    axs[1].set_xlabel("Tiempo [h]")
-    axs[1].set_ylabel("Volumen [L]")
-    axs[1].legend()
-    axs[1].grid(True)
-    axs[1].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[1].set_ylim(bottom=0)
-
-    # 2: Biomasa X
-    axs[2].plot(t_full_traj, y_full_traj[0, :], label='Biomasa', color='g', linewidth=2)
-    axs[2].axvline(t_anaerobic_start, color='k', linestyle='--')
-    axs[2].set_title(r"Biomasa $X(t)$")
-    axs[2].set_xlabel("Tiempo [h]")
-    axs[2].set_ylabel("X [g/L]")
-    axs[2].grid(True)
-    axs[2].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[2].set_ylim(bottom=0)
-
-    # 3: Sustrato S
-    axs[3].plot(t_full_traj, y_full_traj[1, :], label='Sustrato', color='m', linewidth=2)
-    axs[3].axhline(constraints["S_max"], color='r', linestyle='--', label=f'S_max ({constraints["S_max"]:.1f})')
-    axs[3].axvline(t_anaerobic_start, color='k', linestyle='--')
-    axs[3].set_title(r"Sustrato $S(t)$")
-    axs[3].set_xlabel("Tiempo [h]")
-    axs[3].set_ylabel("S [g/L]")
-    axs[3].legend()
-    axs[3].grid(True)
-    axs[3].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[3].set_ylim(bottom=0)
-
-    # 4: Producto P
-    axs[4].plot(t_full_traj, y_full_traj[2, :], label='Etanol', color='k', linewidth=2)
-    axs[4].axvline(t_anaerobic_start, color='k', linestyle='--')
-    axs[4].set_title(r"Producto (Etanol) $P(t)$")
-    axs[4].set_xlabel("Tiempo [h]")
-    axs[4].set_ylabel("P [g/L]")
-    axs[4].grid(True)
-    axs[4].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[4].set_ylim(bottom=0)
-
-    # 5: Oxígeno O2
-    axs[5].plot(t_full_traj, y_full_traj[3, :], label='Oxígeno', color='c', linewidth=2)
-    axs[5].axvline(t_anaerobic_start, color='k', linestyle='--')
-    axs[5].set_title(r"Oxígeno Disuelto $O_2(t)$")
-    axs[5].set_xlabel("Tiempo [h]")
-    axs[5].set_ylabel("$O_2$ [mg/L]")
-    axs[5].grid(True)
-    axs[5].set_xlim(left=0, right=t_final_plot*1.02)
-    axs[5].set_ylim(bottom=0)
-
-    return fig
-
-def display_final_metrics(y_full_traj, t_full_traj, x_start_optim, t_anaerobic_start):
-    # ... (código idéntico al anterior) ...
-    st.subheader("📊 Métricas Finales del Proceso Optimizado")
-    col1, col2, col3 = st.columns(3)
-    if y_full_traj is None or y_full_traj.shape[1] == 0:
-        st.warning("No hay datos de trayectoria para calcular métricas.")
-        return
-    xf_val = y_full_traj[0, -1]; sf_val = y_full_traj[1, -1]; pf_val = y_full_traj[2, -1]
-    vf_val = y_full_traj[4, -1]; tf_val = t_full_traj[-1]
-    T_optim = tf_val - t_anaerobic_start
-    prod_tot_final = pf_val * vf_val
-    prod_vol_global = prod_tot_final / vf_val / tf_val if vf_val > 1e-6 and tf_val > 0 else 0
-    pv_start_optim = x_start_optim[2] * x_start_optim[4]
-    prod_vol_optim = (prod_tot_final - pv_start_optim) / vf_val / T_optim if vf_val > 1e-6 and T_optim > 0 else 0
-    col1.metric("Producto Total (P*V) [g]", f"{prod_tot_final:.3f}")
-    col2.metric("Concentración Final P [g/L]", f"{pf_val:.3f}")
-    col3.metric("Volumen Final V [L]", f"{vf_val:.3f}")
-    col1.metric("Prod. Vol. Global [g/L/h]", f"{prod_vol_global:.4f}")
-    col2.metric("Concentración Final X [g/L]", f"{xf_val:.3f}")
-    col3.metric("Concentración Final S [g/L]", f"{sf_val:.3f}")
-
-
-# =============================================================================
-# 5. APLICACIÓN STREAMLIT (Función Principal)
-# =============================================================================
-
-def drto_anaerobic_page():
-    st.header("🧠 dRTO - Optimización Fase Anaeróbica (O2 Cte en Optim)")
-    st.markdown(r"""
-    Versión que simplifica la optimización asumiendo $O_2$ constante durante esa fase,
-    basado en el valor al final de la simulación inicial aeróbica.
-    La re-simulación final usa $O_2$ dinámico.
+# --- Definiciones Cinéticas (Igual que antes) ---
+def mu_aerobic(S, O, mu_max_aer, Ks, Ko):
+    mu = mu_max_aer * (S / (Ks + S + S**2/1000)) * (O / (Ko + O)) # Added S inhibition term example
+    return ca.fmax(mu, 0.0)
+
+def mu_anaerobic_inhib(S, P, mu_max_an, Ks, Pmax, Kpi):
+    K_SI = 200.0 # Ejemplo
+    inhibition_S = (Ks + S + S**2 / K_SI)
+    inhibition_P = (1 - P / Pmax)**1.0 if Pmax > 0 else 1.0
+    mu = mu_max_an * (S / inhibition_S) * ca.fmax(0.0, inhibition_P)
+    return ca.fmax(mu, 0.0)
+
+# --- Página de Streamlit ---
+def rto_fermentation_page (): # Renombrado para claridad
+    st.header("🧠 Control RTO - Fermentación Alcohólica (3 Fases con Penalización S)")
+    st.markdown("""
+    Optimización del perfil de alimentación para maximizar la **productividad volumétrica final ($P_{final} V_{final}$)**,
+    con penalización por alta concentración de sustrato ($S > S_{max}$) durante la alimentación.
+    Fases:
+    1. Fase Aerobia Batch
+    2. Fase Anaerobia Fed-Batch (Control Opt.)
+    3. Fase Anaerobia Batch (Post-Feed)
     """)
 
-    # --- Sidebar: Entradas del Usuario (idéntico) ---
     with st.sidebar:
-        # ... (copiar/pegar toda la sección de la sidebar de la versión anterior) ...
-        st.subheader("1. Parámetros Cinéticos y Estequiométricos")
-        st.markdown("**Parámetros Anaeróbicos (mu2):**")
-        mumax_anaerob_m = st.slider("μmax_anaerob [1/h]", 0.05, 0.8, 0.15, 0.05, key="mumax_anaerob_m_rto")
-        Ks_anaerob_m = st.slider("Ks_anaerob [g/L]", 0.1, 20.0, 1.0, 0.1, key="ks_anaerob_m_rto")
-        KiS_anaerob_m = st.slider("KiS_anaerob [g/L]", 50.0, 500.0, 150.0, 10.0, key="kis_anaerob_m_rto")
-        KP_anaerob_m = st.slider("KP_anaerob (Inhib. Etanol) [g/L]", 20.0, 150.0, 80.0, 5.0, key="kp_anaerob_m_rto")
-        n_p_m = st.slider("Exponente Inhib. Etanol (n_p)", 0.5, 3.0, 1.0, 0.1, key="np_m_rto")
-        KO_inhib_anaerob_m = st.slider("KO_inhib_anaerob (Inhib. O2) [mg/L]", 0.01, 5.0, 0.1, 0.01, key="ko_inhib_m_rto")
-        st.markdown("**Parámetros Aeróbicos (mu1):**")
-        mumax_aerob_m = st.slider("μmax_aerob [1/h]", 0.1, 1.0, 0.4, 0.05, key="mumax_aerob_m_rto")
-        Ks_aerob_m = st.slider("Ks_aerob [g/L]", 0.01, 10.0, 0.5, 0.05, key="ks_aerob_m_rto")
-        KO_aerob_m = st.slider("KO_aerob (afinidad O2) [mg/L]", 0.01, 5.0, 0.2, 0.01, key="ko_aerob_m_rto")
-        st.markdown("**Otros Parámetros:**")
-        Yxs = st.slider("Yxs [g/g]", 0.05, 0.6, 0.1, 0.01, key="yxs_rto")
-        Yps = st.slider("Yps [g/g]", 0.1, 0.51, 0.45, 0.01, key="yps_rto")
-        Yxo = st.slider("Yxo [gX/gO2]", 0.1, 2.0, 0.8, 0.1, key="yxo_rto")
-        alpha_lp = st.slider("α [g P / g X]", 0.0, 5.0, 2.2, 0.1, key="alpha_rto")
-        beta_lp = st.slider("β [g P / g X / h]", 0.0, 0.5, 0.05, 0.01, key="beta_rto")
-        ms = st.slider("ms [g S / g X / h]", 0.0, 0.2, 0.02, 0.01, key="ms_rto")
-        mo = st.slider("mo [gO2/gX/h]", 0.0, 0.1, 0.01, 0.005, key="mo_rto")
-        Kd = st.slider("Kd [1/h]", 0.0, 0.1, 0.01, 0.005, key="kd_rto")
+        st.subheader("📌 Parámetros Cinéticos")
+        # (Parámetros cinéticos sin cambios respecto a la versión anterior)
+        mu_max_aer = st.number_input("μmax (Aerobio) [1/h]", value=0.4, min_value=0.01, key="mu_max_aer")
+        Yxs_aer = st.number_input("Yxs (Aerobio) [g/g]", value=0.5, min_value=0.1, max_value=1.0, key="yxs_aer")
+        Yps_aer = st.number_input("Yps (Aerobio - Etanol?) [g/g]", value=0.05, min_value=0.0, max_value=1.0, key="yps_aer", help="Producción de etanol bajo aerobiosis suele ser baja (Crabtree)")
+        mu_max_an = st.number_input("μmax (Anaerobio) [1/h]", value=0.3, min_value=0.01, key="mu_max_an")
+        Yxs_an = st.number_input("Yxs (Anaerobio) [g/g]", value=0.1, min_value=0.01, max_value=1.0, key="yxs_an")
+        Yps_an = st.number_input("Yps (Anaerobio - Etanol) [g/g]", value=0.45, min_value=0.1, max_value=0.5, key="yps_an", help="Rendimiento teórico máx ~0.51")
+        Ks = st.number_input("Ks [g/L]", value=0.5, min_value=0.01, key="ks")
+        Ko = st.number_input("KO (afinidad O2) [g/L]", value=0.002, min_value=0.0001, format="%.4f", key="ko")
+        P_max_inhib = st.number_input("Pmax (Inhibición Etanol) [g/L]", value=90.0, min_value=10.0, key="pmax")
 
-        st.subheader("2. Transferencia de Oxígeno")
-        Kla_aerobic = st.slider("kLa (Fase Aeróbica Inicial) [1/h]", 10.0, 400.0, 100.0, 10.0, key="kla_aerobic_rto")
-        Kla_anaerobic = st.slider("kLa (Fase Anaeróbica Optimizada) [1/h]", 0.0, 50.0, 1.0, 0.1, key="kla_anaerobic_rto")
-        Cs = st.slider("O2 Saturado (Cs) [mg/L]", 0.01, 15.0, 7.5, 0.01, key="cs_rto")
+        st.subheader("💧 Alimentación y Reactor")
+        Sf_input = st.number_input("Concentración del alimentado Sf [g/L]", value=250.0, key="sf")
+        V_max_input = st.number_input("Volumen máximo del reactor [L]", value=0.5, key="vmax")
 
-        st.subheader("3. Configuración Temporal y Fases")
-        t_anaerobic_start = st.slider("Inicio Fase Anaeróbica [h]", 1.0, 30.0, 10.0, 1.0, key="t_anaerobic_start_rto")
-        t_final = st.slider("Tiempo Total [h]", t_anaerobic_start + 5.0, 100.0, t_anaerobic_start + 24.0, 1.0, key="t_final_rto")
+        st.subheader("🎚 Condiciones Iniciales (t=0)")
+        X0 = st.number_input("X0 (Biomasa) [g/L]", value=1.16, key="x0")
+        S0 = st.number_input("S0 (Sustrato) [g/L]", value=10.17, key="s0")
+        P0 = st.number_input("P0 (Etanol) [g/L]", value=0.0, key="p0")
+        O0 = st.number_input("O0 (Oxígeno disuelto) [g/L]", value=0.007, min_value=0.0, max_value=0.01, format="%.4f", key="o0", help="Saturación aire ~0.008 g/L. Mantener constante en Fase 1.")
+        V0 = st.number_input("V0 (Volumen inicial) [L]", value=0.25, key="v0")
 
-        st.subheader("4. Configuración de la Optimización (Fase Anaeróbica)")
-        N_intervals = st.number_input("Número de Intervalos (N)", min_value=5, max_value=100, value=20, step=1, key="N_intervals_rto")
-        d_colloc = 2 # Hardcoded
+        st.subheader("⏳ Configuración Temporal")
+        t_aerobic_batch = st.number_input("Tiempo Fase Aerobia Batch [h]", value=3.0, min_value=1.0, key="t_aerobic")
+        t_anaerobic_feed_end = st.number_input("Tiempo Fin Alimentación Anaerobia [h]", value=8.0, min_value=t_aerobic_batch + 1.0, key="t_feed_end")
+        t_total = st.number_input("Tiempo total del proceso [h]", value=10.0, min_value=t_anaerobic_feed_end + 0.1, key="t_total") # Permitir fase 3 corta
+        n_fb_intervals = st.number_input("Número de Intervalos de Control (Fase 2)", value=12, min_value=1, key="n_intervals", help=f"Duración Fase 2: {t_anaerobic_feed_end - t_aerobic_batch:.1f} h")
 
-        st.subheader("5. Alimentación y Restricciones Operativas")
-        Sin = st.slider("Sin [g/L]", 10.0, 700.0, 400.0, 10.0, key="sin_rto")
-        V_max = st.number_input("V_max [L]", min_value=0.1, value=10.0, step=0.1, format="%.1f", key="vmax_rto")
-        S_max = st.number_input("S_max [g/L]", min_value=1.0, value=50.0, step=1.0, format="%.1f", key="smax_rto")
-        F_min = st.number_input("F_min [L/h]", min_value=0.0, value=0.0, step=0.001, format="%.4f", key="fmin_rto")
-        F_max = st.number_input("F_max [L/h]", min_value=F_min, value=0.5, step=0.01, format="%.4f", key="fmax_rto")
-
-        st.subheader("6. Condiciones Iniciales (t=0)")
-        V0 = st.number_input("V0 [L]", 0.1, 100.0, 5.0, key="v0_rto")
-        X0 = st.number_input("X0 [g/L]", 0.05, 10.0, 0.1, key="x0_rto")
-        S0 = st.number_input("S0 [g/L]", 10.0, 200.0, 100.0, key="s0_rto")
-        P0 = st.number_input("P0 [g/L]", 0.0, 50.0, 0.0, key="p0_rto")
-        O0 = st.number_input("O2 Inicial [mg/L]", min_value=0.0, max_value=Cs, value=Cs*0.5, step=0.01, key="o0_rto")
-
-        st.subheader("7. Opciones del Solver (Simplificado)")
-        max_iter_solver = st.number_input("Max Iteraciones IPOPT", min_value=100, max_value=10000, value=2000, step=100, key="max_iter_rto_simp")
-        # Quitamos tol y constr_viol_tol explícitos para usar defaults
-        # tol_solver = st.number_input("Tolerancia IPOPT (tol)", min_value=1e-9, max_value=1e-2, value=1e-6, step=1e-6, format="%.1e", key="tol_rto_simp")
-        # constr_viol_tol_solver = st.number_input("Tolerancia Violación Restr. (constr_viol_tol)", min_value=1e-9, max_value=1e-2, value=1e-6, step=1e-6, format="%.1e", key="constr_viol_tol_rto_simp")
+        st.subheader("🔧 Restricciones y Penalización")
+        F_min = st.number_input("Flujo mínimo [L/h]", value=0.01, min_value=0.0, key="fmin")
+        F_max = st.number_input("Flujo máximo [L/h]", value=0.26, min_value=F_min, key="fmax")
+        S_max_constraint = st.number_input("Sustrato máximo (Restricción Dura) [g/L]", value=50.0, key="smax_const")
+        P_max_constraint = st.number_input("Producto máximo (Restricción Dura) [g/L]", value=P_max_inhib - 1.0 , key="pmax_const", help="Debe ser menor que Pmax de inhibición")
+        # Nuevo: Peso para la penalización de Smax
+        w_penalty_smax = st.number_input("Peso Penalización S > Smax", value=10.0, min_value=0.0, key="w_smax", format="%.2f",
+                                         help="Penaliza S por encima de Smax (restricción dura) en Fase 2. 0 para desactivar.")
 
 
-    # --- Empaquetar Entradas (idéntico) ---
-    params = { # ... (copiar/pegar params de la versión anterior) ...
-        "mumax_aerob": mumax_aerob_m, "Ks_aerob": Ks_aerob_m, "KO_aerob": KO_aerob_m,
-        "mumax_anaerob": mumax_anaerob_m, "Ks_anaerob": Ks_anaerob_m, "KiS_anaerob": KiS_anaerob_m,
-        "KP_anaerob": KP_anaerob_m, "n_p": n_p_m, "KO_inhib_anaerob": KO_inhib_anaerob_m,
-        "Yxs": Yxs, "Yps": Yps, "Yxo": Yxo, "alpha_lp": alpha_lp, "beta_lp": beta_lp,
-        "ms": ms, "mo": mo, "Kd": Kd, "Cs": Cs, "Sin": Sin,
-        "V_max_input": V_max # Añadir V_max aquí para que esté disponible en re-simulación si es necesario
-    }
-    constraints = {"V_max": V_max, "S_max": S_max, "F_min": F_min, "F_max": F_max}
-    solver_options_simple = { # Usar nombre diferente para claridad
-        "max_iter": max_iter_solver, "print_level": 0, "sb": "yes", "mu_strategy": "adaptive"
-    }
-    y0_inicio = [X0, S0, P0, O0, V0]
-    t_span_inicial = [0, t_anaerobic_start]
+    if st.button("🚀 Ejecutar Optimización RTO (con Penalización S)"):
+        st.info("Optimizando perfil de alimentación para fermentación...")
 
-    # --- Botón de Ejecución y Flujo Principal (idéntico a la versión reestructurada) ---
-    if st.button("🚀 Ejecutar Simulación y Optimización (O2 Cte en Optim)"):
+        # (Cálculos iniciales de tiempo y dt_fb igual que antes)
+        T_feed_duration = t_anaerobic_feed_end - t_aerobic_batch
+        if T_feed_duration <= 0:
+            st.error("El tiempo de fin de alimentación debe ser mayor que el tiempo de fase aerobia.")
+            st.stop()
+        if n_fb_intervals <= 0:
+             st.error("El número de intervalos de control debe ser positivo.")
+             st.stop()
+        dt_fb = T_feed_duration / n_fb_intervals
 
-        # 1. Simulación Inicial (O2 dinámico)
-        sol_inicial, x_start_optim, sim_status, sim_msg = run_initial_simulation(
-            y0_inicio, t_span_inicial, params, Kla_aerobic, t_eval_hint=10
-        )
-        if sim_status != "Success": st.stop()
+        T_post_feed_duration = t_total - t_anaerobic_feed_end
+        if T_post_feed_duration < -1e-6: # Permitir duración cero, pero no negativa
+             st.error("El tiempo total debe ser mayor o igual al tiempo de fin de alimentación.")
+             st.stop()
 
-        # 2. Optimización (O2 constante, config simple)
-        optim_sol, optim_status, optim_results, debug_info = run_optimization(
-            x_start=x_start_optim, t_start=t_anaerobic_start, t_end=t_final,
-            params=params, kla_anaerobic=Kla_anaerobic, N=N_intervals, d=d_colloc,
-            constraints=constraints, solver_options=solver_options_simple # Usar config simple
-        )
-        if optim_status != "Success":
-            # ... (manejo de error de optimización como antes) ...
-            st.error(f"Optimización falló: {optim_status}")
-            if debug_info: st.warning("Información de depuración disponible (ver código/logs)")
+        nx = 5 # X, S, P, O, V
+        x_sym = ca.MX.sym("x", nx)
+        u_sym = ca.MX.sym("u")
+        X_, S_, P_, O_, V_ = x_sym[0], x_sym[1], x_sym[2], x_sym[3], x_sym[4]
+        F_ = u_sym
+
+        # ====================================================
+        # 1) Definición de las funciones ODE (Sin cambios)
+        # ====================================================
+        mu_aer = mu_aerobic(S_, O_, mu_max_aer, Ks, Ko)
+        YXS_AER = Yxs_aer
+        YPS_AER = Yps_aer
+        qS_aer = mu_aer / YXS_AER if YXS_AER > 1e-9 else 0
+        qP_aer = YPS_AER * mu_aer
+        dX_aer = mu_aer * X_
+        dS_aer = -qS_aer * X_
+        dP_aer = qP_aer * X_
+        dO_aer = ca.MX(0.0)
+        dV_aer = ca.MX(0.0)
+        ode_expr_aerobic = ca.vertcat(dX_aer, dS_aer, dP_aer, dO_aer, dV_aer)
+        odefun_aerobic = ca.Function('odefun_aerobic', [x_sym, u_sym], [ode_expr_aerobic], ['x', 'u'], ['dxdt'])
+
+        mu_an = mu_anaerobic_inhib(S_, P_, mu_max_an, Ks, P_max_inhib, 0)
+        YXS_AN = Yxs_an
+        YPS_AN = Yps_an
+        qS_an_simple = mu_an / YXS_AN if YXS_AN > 1e-9 else 0
+        qP_an = YPS_AN * mu_an
+        D = F_ / ca.fmax(V_, 1e-6) # Evitar división por cero si V es variable Opti
+        dX_an = mu_an * X_ - D * X_
+        dS_an = -qS_an_simple * X_ + D * (Sf_input - S_)
+        dP_an = qP_an * X_ - D * P_
+        dO_an = ca.MX(0.0)
+        dV_an = F_
+        ode_expr_anaerobic = ca.vertcat(dX_an, dS_an, dP_an, dO_an, dV_an)
+        odefun_anaerobic = ca.Function('odefun_anaerobic', [x_sym, u_sym], [ode_expr_anaerobic], ['x', 'u'], ['dxdt'])
+
+        # ====================================================
+        # 2) Simulación Fase 1: Aerobia Batch (Sin cambios)
+        # ====================================================
+        st.info(f"[FASE 1] Simulando fase aerobia batch hasta t={t_aerobic_batch} h...")
+        try:
+            batch_integrator_aerobic = ca.integrator(
+                "batch_integrator_aerobic", "idas",
+                {"x": x_sym, "p": u_sym, "ode": ode_expr_aerobic},
+                {"t0": 0, "tf": t_aerobic_batch, "reltol": 1e-7, "abstol": 1e-9}
+            )
+            x0_np = np.array([X0, S0, P0, O0, V0])
+            res_batch_aerobic = batch_integrator_aerobic(x0=x0_np, p=0.0)
+            x_end_aerobic = np.array(res_batch_aerobic['xf']).flatten()
+            st.success(f"[FASE 1] Estado final: X={x_end_aerobic[0]:.2f}, S={x_end_aerobic[1]:.2f}, P={x_end_aerobic[2]:.2f}, O={x_end_aerobic[3]:.4f}, V={x_end_aerobic[4]:.2f}")
+            if any(np.isnan(x_end_aerobic)) or any(x_end_aerobic < -1e-6):
+                 st.error(f"Estado inválido después de Fase 1: {x_end_aerobic}.")
+                 st.stop()
+            x_end_aerobic = np.maximum(x_end_aerobic, 0.0)
+        except Exception as e:
+            st.error(f"Error durante la simulación de la Fase 1: {e}")
             st.stop()
 
-        # 3. Extraer Resultados y Mostrar F
-        st.metric("Obj Val (Optim)", f"{optim_results['obj_val']:.3f} g")
-        st.write("Perfil Óptimo F(t):")
-        # ... (mostrar dataframe F_opt como antes) ...
-        t_intervals_start = np.linspace(t_anaerobic_start, t_final - optim_results['dt_interval'], N_intervals)
-        df_f_opt = pd.DataFrame({'T_inicio [h]': t_intervals_start, 'F_opt [L/h]': optim_results['F_opt_profile']})
-        st.dataframe(df_f_opt.style.format({'T_inicio [h]': "{:.2f}", 'F_opt [L/h]': "{:.4f}"}))
+        # ====================================================
+        # 3) Formulación Optimización Fase 2: Anaerobia Fed-Batch
+        # ====================================================
+        st.info(f"[FASE 2] Formulando problema RTO (t={t_aerobic_batch}h a t={t_anaerobic_feed_end}h)...")
+        opti = ca.Opti()
+        d = 2
+        C_radau = np.array([[-2.0, 2.0], [1.5, -4.5], [0.5, 2.5]])
+        D_radau = np.array([0.0, 0.0, 1.0])
+
+        X_col_phase2 = []
+        F_col_phase2 = []
+        x_start_phase2_param = opti.parameter(nx)
+        opti.set_value(x_start_phase2_param, x_end_aerobic)
+
+        for k in range(n_fb_intervals):
+            row_states = []
+            for j in range(d + 1):
+                if k == 0 and j == 0:
+                    row_states.append(x_start_phase2_param)
+                else:
+                    xk_j = opti.variable(nx)
+                    row_states.append(xk_j)
+                    opti.subject_to(xk_j >= -1e-9)
+                    opti.subject_to(xk_j[1] <= S_max_constraint) # Restricción dura S
+                    opti.subject_to(xk_j[2] <= P_max_constraint) # Restricción dura P
+                    opti.subject_to(xk_j[4] <= V_max_input)      # Restricción dura V
+            X_col_phase2.append(row_states)
+
+            Fk = opti.variable()
+            F_col_phase2.append(Fk)
+            opti.subject_to(Fk >= F_min)
+            opti.subject_to(Fk <= F_max)
+
+        # Ecuaciones Colocación y Continuidad + Cálculo Penalización Smax
+        h = dt_fb
+        penalty_smax_total = ca.MX(0.0) # Inicializar penalización acumulada
+
+        for k in range(n_fb_intervals):
+            # Ecuaciones en puntos interiores j=1..d
+            for j in range(1, d + 1):
+                xp_kj = 0
+                for m in range(d + 1):
+                    xp_kj += C_radau[m, j - 1] * X_col_phase2[k][m]
+                fkj = odefun_anaerobic(X_col_phase2[k][j], F_col_phase2[k])
+                opti.subject_to((h * fkj - xp_kj) == 0)
+
+                # --- Añadir Penalización Smax en puntos de colocación interiores ---
+                # Opcional: podrías penalizar solo al final del intervalo (ver abajo)
+                # s_k_j = X_col_phase2[k][j][1] # Sustrato en el punto k,j
+                # violation_j = ca.fmax(0, s_k_j - S_max_constraint)
+                # Aquí necesitarías pesos de cuadratura para integrar correctamente
+                # penalty_smax_total += w_penalty_smax * violation_j**2 * (h / d) # Aproximación simple
+
+            # Continuidad y Estado al final del intervalo k
+            Xk_end = 0
+            for m in range(d + 1):
+                Xk_end += D_radau[m] * X_col_phase2[k][m]
+
+            if k < n_fb_intervals - 1:
+                opti.subject_to(Xk_end == X_col_phase2[k + 1][0])
+
+            # --- Añadir Penalización Smax al final de cada intervalo k ---
+            # Esta es una forma más simple de implementar la penalización
+            if w_penalty_smax > 1e-9: # Solo si el peso es significativo
+                s_k_end = Xk_end[1] # Sustrato al final del intervalo k
+                violation_k = ca.fmax(0, s_k_end - S_max_constraint)
+                # Penalización cuadrática, ponderada por duración del intervalo h
+                penalty_smax_total += violation_k**2
+
+        # Multiplicar la suma de penalizaciones por el peso y la duración (aproxima integral)
+        # Si penalizas en cada punto interior, ajusta esto. Si penalizas al final como arriba:
+        if w_penalty_smax > 1e-9:
+             penalty_smax_total = w_penalty_smax * penalty_smax_total * h
 
 
-        # 4. Re-simulación (O2 dinámico)
-        t_optim_phase_eval = np.linspace(t_anaerobic_start, t_final, int((t_final - t_anaerobic_start) * 20) + 1)
-        x_optim_traj, resim_status, resim_msg = resimulate_with_optimal_control(
-            x_start=x_start_optim, t_eval=t_optim_phase_eval,
-            F_opt_profile=optim_results['F_opt_profile'], dt_interval=optim_results['dt_interval'],
-            t_anaerobic_start=t_anaerobic_start, params=params, kla_anaerobic=Kla_anaerobic
-        )
-        if resim_status != "Success": st.error(f"Re-simulación falló: {resim_msg}")
+        # Estado al final de la Fase 2 (Fed-Batch)
+        X_end_feed = Xk_end # Último Xk_end calculado
 
-        # 5. Graficar Resultados
-        fig = plot_results(
-            t_initial=sol_inicial.t, y_initial=sol_inicial.y,
-            t_optim_phase=t_optim_phase_eval[:len(x_optim_traj)], x_optim_traj=x_optim_traj,
-            F_opt_profile=optim_results['F_opt_profile'], dt_interval=optim_results['dt_interval'],
-            t_anaerobic_start=t_anaerobic_start, constraints=constraints
-        )
-        if fig: st.pyplot(fig)
+        # ====================================================
+        # 4) Simulación Fase 3 (dentro de Opti) - (Sin cambios)
+        # ====================================================
+        st.info("[FASE 3 - Integración en Opti] Definiendo simulación post-alimentación...")
+        if T_post_feed_duration > 1e-6:
+             phase3_integrator = ca.integrator(
+                 "phase3_integrator", "idas",
+                 {"x": x_sym, "p": u_sym, "ode": ode_expr_anaerobic},
+                 {"t0": 0, "tf": T_post_feed_duration, "reltol": 1e-7, "abstol": 1e-9}
+             )
+             res_phase3_sym = phase3_integrator(x0=X_end_feed, p=0.0)
+             X_final_total = res_phase3_sym['xf']
+        else:
+             X_final_total = X_end_feed
 
-        # 6. Mostrar Métricas Finales
-        if resim_status == "Success" and x_optim_traj is not None and x_optim_traj.shape[0] > 0:
-             t_full_traj = np.concatenate([sol_inicial.t, t_optim_phase_eval])
-             y_full_traj = np.hstack([sol_inicial.y, x_optim_traj.T])
-             display_final_metrics(y_full_traj, t_full_traj, x_start_optim, t_anaerobic_start)
-        else: st.warning("No se muestran métricas finales.")
+        # ====================================================
+        # 5) Función Objetivo (Modificada) y Resolución
+        # ====================================================
+        P_final_total = X_final_total[2]
+        V_final_total = X_final_total[4]
+        objective_PV = -(P_final_total * V_final_total) # Maximizar PV final
+
+        # Objetivo Total = Maximizar PV + Penalización Smax
+        objective_total = objective_PV + penalty_smax_total
+        opti.minimize(objective_total)
+
+        # Guesses iniciales (Sin cambios)
+        st.info("Estableciendo guesses iniciales...")
+        F_guess = (F_max + F_min) / 2.0 * 0.5
+        for k in range(n_fb_intervals):
+            opti.set_initial(F_col_phase2[k], F_guess)
+        x_guess = x_end_aerobic.copy()
+        x_guess[4] = min(V_max_input, x_guess[4] + F_guess * T_feed_duration / 2)
+        for k in range(n_fb_intervals):
+            start_j = 1 if k == 0 else 0
+            for j in range(start_j, d + 1):
+                 opti.set_initial(X_col_phase2[k][j], x_guess)
+
+        # Configurar Solver (Sin cambios)
+        p_opts = {"expand": True}
+        s_opts = {
+            "max_iter": 3000,
+            "print_level": 5,
+            "sb": 'yes',
+            "tol": 1e-6,
+            "constr_viol_tol": 1e-6
+        }
+        opti.solver("ipopt", p_opts, s_opts)
+
+        try:
+            st.info("🚀 Resolviendo el problema de optimización (con penalización S)...")
+            sol = opti.solve()
+            st.success("[OPTIMIZACIÓN] ¡Solución encontrada!")
+
+            # Extraer resultados (Sin cambios)
+            F_opt_phase2 = np.array([sol.value(fk) for fk in F_col_phase2])
+            X_end_feed_opt = sol.value(X_end_feed)
+            X_final_total_opt = sol.value(X_final_total)
+            P_final_opt = X_final_total_opt[2]
+            V_final_opt = X_final_total_opt[4]
+            Smax_penalty_value = sol.value(penalty_smax_total) # Valor de la penalización
+
+            st.metric("Producto Total Final (P*V)", f"{P_final_opt * V_final_opt:.3f} g")
+            st.metric("Concentración Final Etanol", f"{P_final_opt:.3f} g/L")
+            st.metric("Volumen Final", f"{V_final_opt:.3f} L")
+            st.metric("Valor Penalización Smax", f"{Smax_penalty_value:.4f}", delta=None, delta_color="off")
+
+
+            st.write("Perfil óptimo de flujo (Fase 2):")
+            st.line_chart(F_opt_phase2)
+
+        except RuntimeError as e:
+            # (Manejo de errores sin cambios)
+            st.error(f"[ERROR] El solver no pudo encontrar una solución: {e}")
+            try:
+                st.warning("Mostrando posibles puntos de infactibilidad (debug info):")
+                st.write(f"Valor objetivo: {opti.debug.value(objective_total)}")
+                st.write(f"Valor PV: {opti.debug.value(objective_PV)}")
+                st.write(f"Valor Penaliz Smax: {opti.debug.value(penalty_smax_total)}")
+                st.write("Valores de restricciones (g(x)):")
+                st.text(opti.debug.value(opti.g)) # Mostrar valores de restricciones
+            except Exception as debug_e:
+                 st.error(f"Error al obtener información de debug: {debug_e}")
+            st.stop()
+        except Exception as e:
+             st.error(f"Ocurrió un error inesperado durante la optimización: {e}")
+             st.stop()
+
+
+        # ====================================================
+        # 6) Reconstrucción de la Trayectoria Completa (Sin cambios en la lógica, solo en gráficos)
+        # ====================================================
+        st.info("Reconstruyendo trayectoria completa con perfil óptimo...")
+        # (Simulación fina Fase 1, 2, 3 igual que antes)
+        # --- a) Simulación fina Fase 1 ---
+        N_plot_phase1 = 50
+        t_plot_phase1 = np.linspace(0, t_aerobic_batch, N_plot_phase1)
+        dt_plot_p1 = t_plot_phase1[1] - t_plot_phase1[0] if N_plot_phase1 > 1 else t_aerobic_batch
+        integrator_p1_plot = ca.integrator("int_p1", "idas", {"x":x_sym, "p":u_sym, "ode":ode_expr_aerobic}, {"t0":0, "tf":dt_plot_p1})
+        x_traj_p1 = [x0_np]
+        xk_ = x0_np.copy()
+        for _ in range(N_plot_phase1 - 1):
+            res_ = integrator_p1_plot(x0=xk_, p=0.0); xk_ = np.array(res_["xf"]).flatten()
+            x_traj_p1.append(xk_)
+        x_traj_p1 = np.array(x_traj_p1)
+
+        # --- b) Simulación fina Fase 2 ---
+        N_plot_phase2 = n_fb_intervals * 10
+        t_plot_phase2 = np.linspace(t_aerobic_batch, t_anaerobic_feed_end, N_plot_phase2)
+        dt_plot_p2 = t_plot_phase2[1] - t_plot_phase2[0] if N_plot_phase2 > 1 else T_feed_duration
+        integrator_p2_plot = ca.integrator("int_p2", "idas", {"x":x_sym, "p":u_sym, "ode":ode_expr_anaerobic}, {"t0":0, "tf":dt_plot_p2})
+        x_traj_p2 = []
+        xk_ = x_traj_p1[-1].copy()
+        F_plot_phase2 = []
+        for i, t_now in enumerate(t_plot_phase2):
+            x_traj_p2.append(xk_)
+            if i == len(t_plot_phase2) - 1: break
+            k_interval = int((t_now - t_aerobic_batch) / dt_fb) if dt_fb > 1e-9 else 0
+            k_interval = max(0, min(k_interval, n_fb_intervals - 1))
+            F_now = F_opt_phase2[k_interval]
+            if xk_[4] >= V_max_input - 1e-6: F_now = 0.0
+            F_plot_phase2.append(F_now)
+            res_ = integrator_p2_plot(x0=xk_, p=F_now); xk_ = np.array(res_["xf"]).flatten()
+            xk_ = np.maximum(xk_, 0.0)
+        x_traj_p2 = np.array(x_traj_p2)
+        if F_plot_phase2: F_plot_phase2.append(F_plot_phase2[-1])
+        else: F_plot_phase2.append(0.0) # Handle case N_plot_phase2=1
+        F_plot_phase2 = np.array(F_plot_phase2)
+
+        # --- c) Simulación fina Fase 3 ---
+        if T_post_feed_duration > 1e-6:
+            N_plot_phase3 = 50
+            t_plot_phase3 = np.linspace(t_anaerobic_feed_end, t_total, N_plot_phase3)
+            dt_plot_p3 = t_plot_phase3[1] - t_plot_phase3[0] if N_plot_phase3 > 1 else T_post_feed_duration
+            integrator_p3_plot = ca.integrator("int_p3", "idas", {"x":x_sym, "p":u_sym, "ode":ode_expr_anaerobic}, {"t0":0, "tf":dt_plot_p3})
+            x_traj_p3 = []
+            xk_ = x_traj_p2[-1].copy()
+            for _ in range(N_plot_phase3):
+                 x_traj_p3.append(xk_)
+                 res_ = integrator_p3_plot(x0=xk_, p=0.0); xk_ = np.array(res_["xf"]).flatten()
+                 xk_ = np.maximum(xk_, 0.0)
+            x_traj_p3 = np.array(x_traj_p3)
+        else:
+            t_plot_phase3 = np.array([t_anaerobic_feed_end])
+            x_traj_p3 = np.array([x_traj_p2[-1]])
+
+        # --- d) Unir Trayectorias y Flujo ---
+        t_full = np.concatenate([t_plot_phase1[:-1], t_plot_phase2[:-1], t_plot_phase3])
+        x_full = np.vstack([x_traj_p1[:-1, :], x_traj_p2[:-1, :], x_traj_p3])
+        F_plot_phase1 = np.zeros(len(t_plot_phase1) -1)
+        F_plot_phase2_aligned = F_plot_phase2[:-1] # Align F with time points
+        F_plot_phase3 = np.zeros(len(t_plot_phase3))
+        F_full = np.concatenate([F_plot_phase1, F_plot_phase2_aligned, F_plot_phase3])
+        X_full, S_full, P_full, O_full, V_full = [x_full[:, i] for i in range(nx)]
+
+        # ====================================================
+        # 7) Gráficas (Con Marcado de Fases)
+        # ====================================================
+        st.info("📊 Generando gráficas del proceso optimizado con fases marcadas...")
+        fig, axs = plt.subplots(2, 3, figsize=(16, 10), constrained_layout=True, sharex=True) # Share x-axis
+        axs = axs.ravel()
+
+        # Función para sombrear fases
+        def add_phase_shading(ax, t1, t2, t3):
+            ax.axvspan(0, t1, facecolor='#A6C3D8', alpha=0.3, label='_nolegend_') # Azul claro
+            ax.axvspan(t1, t2, facecolor='#A8D8A6', alpha=0.3, label='_nolegend_') # Verde claro
+            if t3 > t2 + 1e-6 : # Solo sombrear fase 3 si existe
+                 ax.axvspan(t2, t3, facecolor='#D8A6A6', alpha=0.3, label='_nolegend_') # Rojo claro
+
+        # Aplicar sombreado a todos los ejes
+        for ax in axs:
+             add_phase_shading(ax, t_aerobic_batch, t_anaerobic_feed_end, t_total)
+
+        # Flujo F(t)
+        axs[0].plot(t_full, F_full, linewidth=2, drawstyle='steps-post', color='black')
+        axs[0].set_title("Flujo de Alimentación $F(t)$")
+        axs[0].set_ylabel("$F$ (L/h)")
+        axs[0].grid(True, axis='y', linestyle=':')
+        axs[0].set_ylim(bottom=-0.001)
+
+        # Biomasa X(t)
+        axs[1].plot(t_full, X_full, linewidth=2, color='green')
+        axs[1].set_title("Biomasa $X(t)$")
+        axs[1].set_ylabel("$X$ (g/L)")
+        axs[1].grid(True, axis='y', linestyle=':')
+
+        # Sustrato S(t)
+        axs[2].plot(t_full, S_full, linewidth=2, color='blue')
+        axs[2].axhline(S_max_constraint, color='red', linestyle='--', lw=1, label=f"$S_{{max}}$ (lim)")
+        axs[2].set_title("Sustrato $S(t)$")
+        axs[2].set_ylabel("$S$ (g/L)")
+        axs[2].grid(True, axis='y', linestyle=':')
+        #axs[2].legend(loc='upper right')
+
+        # Producto P(t) - Etanol
+        axs[3].plot(t_full, P_full, linewidth=2, color='purple')
+        axs[3].axhline(P_max_constraint, color='red', linestyle='--', lw=1, label=f"$P_{{max}}$ (lim)")
+        axs[3].set_title("Producto (Etanol) $P(t)$")
+        axs[3].set_ylabel("$P$ (g/L)")
+        axs[3].grid(True, axis='y', linestyle=':')
+        #axs[3].legend(loc='lower right')
+
+        # Oxígeno O(t)
+        axs[4].plot(t_full, O_full, linewidth=2, color='cyan')
+        axs[4].set_title("Oxígeno Disuelto $O(t)$")
+        axs[4].set_ylabel("$O_2$ (g/L)")
+        axs[4].grid(True, axis='y', linestyle=':')
+        if O0 < 0.01: axs[4].set_ylim(-0.0005, O0 * 1.5)
+
+        # Volumen V(t)
+        axs[5].plot(t_full, V_full, linewidth=2, color='orange')
+        axs[5].axhline(V_max_input, color='red', linestyle='--', lw=1, label=f"$V_{{max}}$ (lim)")
+        axs[5].set_title("Volumen $V(t)$")
+        axs[5].set_ylabel("$V$ (L)")
+        axs[5].grid(True, axis='y', linestyle=':')
+        #axs[5].legend(loc='lower right')
+
+        # Añadir xlabel común y leyenda de fases
+        for ax in axs:
+             ax.set_xlabel("Tiempo (h)")
+             ax.margins(x=0.01) # Pequeño margen
+
+        # Crear leyenda para las fases manualmente fuera de los ejes
+        from matplotlib.patches import Patch
+        legend_elements = [Patch(facecolor='#A6C3D8', alpha=0.5, label='Fase 1: Aerobia Batch'),
+                           Patch(facecolor='#A8D8A6', alpha=0.5, label='Fase 2: Anaerobia Fed-Batch'),
+                           Patch(facecolor='#D8A6A6', alpha=0.5, label='Fase 3: Anaerobia Batch (Post)')]
+        # Añadir leyendas de restricciones si existen
+        h2, l2 = axs[2].get_legend_handles_labels()
+        h3, l3 = axs[3].get_legend_handles_labels()
+        h5, l5 = axs[5].get_legend_handles_labels()
+        fig.legend(handles=legend_elements + h2 + h3 + h5, labels=['Fase 1', 'Fase 2', 'Fase 3'] + l2 + l3 + l5,
+                   loc='outside lower center', ncol=3, title="Fases y Límites")
+
+        plt.tight_layout(rect=[0, 0.05, 1, 1]) # Ajustar layout para dejar espacio a la leyenda inferior
+
+        st.pyplot(fig)
+
+        # (Métricas finales sin cambios)
+        st.subheader("📈 Métricas Finales del Proceso Optimizado")
+        col1, col2, col3 = st.columns(3)
+        P_fin_sim = P_full[-1]
+        V_fin_sim = V_full[-1]
+        col1.metric("Producto Total Acumulado", f"{P_fin_sim * V_fin_sim:.3f} g")
+        S_total_fed = 0
+        t_interval_starts = np.linspace(t_aerobic_batch, t_anaerobic_feed_end - dt_fb, n_fb_intervals)
+        for k in range(n_fb_intervals): S_total_fed += F_opt_phase2[k] * dt_fb * Sf_input
+        S_consumed = (S0 * V0 + S_total_fed - S_full[-1] * V_full[-1])
+        Global_Yield_P_S = (P_fin_sim * V_fin_sim - P0*V0) / S_consumed if S_consumed > 1e-6 else 0
+        col2.metric("Rendimiento Global (P/S)", f"{Global_Yield_P_S:.3f} g/g")
+        Productivity = (P_fin_sim * V_fin_sim) / t_total if t_total > 0 else 0
+        col3.metric("Productividad Vol. Media", f"{Productivity:.3f} g/h")
+        col1.metric("Concentración Final Etanol", f"{P_fin_sim:.3f} g/L")
+        col2.metric("Volumen Final", f"{V_fin_sim:.3f} L")
+        col3.metric("Tiempo Total", f"{t_total:.1f} h")
 
 
 # --- Ejecución ---
 if __name__ == '__main__':
-    st.set_page_config(layout="wide", page_title="dRTO Anaeróbico (O2 Cte Optim)")
-    drto_anaerobic_page()
+    st.set_page_config(layout="wide")
+    rto_fermentation_page () # Llamar a la nueva función
