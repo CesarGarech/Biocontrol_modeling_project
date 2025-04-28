@@ -77,7 +77,7 @@ def main():
         rto.rto_page()
     elif selected_page == "RTO Ferm": # Nombre de la sub-opción
         from Body.control import rto_ferm
-        rto_ferm.rto_fermentacion_page()
+        rto_ferm.drto_anaerobic_page()
     elif selected_page == "NMPC": # Nombre de la sub-opción
         from Body.control import nmpc
         nmpc.nmpc_page()
