@@ -86,11 +86,11 @@ exports/
 outputs/
 
 # Optional: ignore data folders
-data/
-datasets/
-input/
-output/
-results/
+# data/
+# datasets/
+# input/
+# output/
+# results/
 
 # Optional: ignore notebooks (if only for local experiments)
 *.ipynb
