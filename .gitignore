@@ -68,8 +68,8 @@ test-results.xml
 # Optional: ignore output files
 *.csv
 *.tsv
-*.xlsx
-*.xls
+# *.xlsx
+# *.xls
 *.h5
 *.npy
 *.pkl

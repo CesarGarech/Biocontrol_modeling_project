@@ -8,7 +8,7 @@ menu_structure = {
     "🏠 Home": None,  # Sin submenú. Usar emojis puede ayudar visualmente.
     "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo", "Fermentacion"],
     "📈 Análisis de Sensibilidad": None,
-    "🔧 Ajuste de Parámetros": None,
+    "🔧 Ajuste de Parámetros": ["Ajuste de Parámetros Lote", "Ajuste de Parámetros Lote alim", "Ajuste de Parámetros Fermentación"],
     "📊 Estimación de Estados": ["EKF"], # Puedes añadir más estimadores aquí
     # "⚙️ Control": ["RTO", "NMPC"]
     "⚙️ Control": ["RTO", "RTO Ferm", "NMPC"]
@@ -66,9 +66,15 @@ def main():
     elif selected_page == "📈 Análisis de Sensibilidad":
         from Body import analysis
         analysis.analysis_page()
-    elif selected_page == "🔧 Ajuste de Parámetros":
-        from Body import ajuste_parametros
-        ajuste_parametros.ajuste_parametros_page()
+    elif selected_page == "Ajuste de Parámetros Lote":
+        from Body.estimacion_parametros import ajuste_parametros_lote
+        ajuste_parametros_lote.ajuste_parametros_page()
+    elif selected_page == "Ajuste de Parámetros Lote alim":
+        from Body.estimacion_parametros import ajuste_parametros_lote_alim
+        ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
+    elif selected_page == "Ajuste de Parámetros Fermentación":
+        from Body.estimacion_parametros import ajuste_parametros_ferm
+        ajuste_parametros_ferm.ajuste_parametros_ferm_page()
     elif selected_page == "EKF": # Nombre de la sub-opción
         from Body.estimation import ekf
         ekf.ekf_page()
