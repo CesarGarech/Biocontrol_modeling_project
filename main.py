@@ -30,8 +30,8 @@ menu_structure = {
     "📊 Estimación de Estados": ["EKF"],
     # --- NUEVA ESTRUCTURA PARA CONTROL ---
     "⚙️ Control": {
-        "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
-        # "Regulatorio": ["Temperatura", "pH", "Oxigeno", "Alimentación On-Off"],
+        # "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
+        "Regulatorio": ["Temperatura", "pH", "Oxigeno", "Alimentación On-Off"],
         "Avanzado": ["RTO", "RTO Ferm", "NMPC"]
     }
 }
