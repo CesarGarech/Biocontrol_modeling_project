@@ -7,4 +7,5 @@ scipy
 scikit-learn
 seaborn
 casadi
+control
 # casadi ipopt
