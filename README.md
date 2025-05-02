@@ -18,7 +18,7 @@ The purpose of this project is to assist in teaching classical and advanced mode
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
 
 ## 📦 Installation
-To install and use this project, follow these steps:
+To install and use this project, follow these steps or just run 'run_dashboard.bat':
 
 ### Prerequisites
 Ensure you have Python installed. Then install the required dependencies:
