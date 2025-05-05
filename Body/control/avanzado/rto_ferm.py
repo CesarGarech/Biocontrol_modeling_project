@@ -129,7 +129,7 @@ def rto_fermentation_page():
         n_intervals_val = st.number_input("Intervalos Finitos (N)", value=12, min_value=1, max_value=100, step=1, key="n_intervals_rto_coll", # <-- VALOR POR DEFECTO 12
                                          help=f"Número de intervalos donde F es constante. Duración Fase 2: {feed_duration:.1f} h")
         params_tiempo['n_intervals'] = n_intervals_val
-        degree_val = st.number_input("Grado Colocación (d)", value=2, min_value=1, max_value=5, step=1, key="degree_coll",
+        degree_val = st.number_input("Grado Colocación (d)", value=5, min_value=1, max_value=5, step=1, key="degree_coll",
                                      help="Grado del polinomio usado en cada intervalo. d=2 o d=3 suele ser un buen compromiso.")
         params_tiempo['degree'] = degree_val
         collocation_scheme = st.selectbox("Esquema Colocación", ["radau", "legendre"], index=0, key="scheme_coll",
