@@ -1,31 +1,39 @@
 import streamlit as st
 
 def home_page():
-    st.title("Modelado y Control de Bioprocesos")
+    st.title("Bioprocess Modeling and Control")
 
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("images/Batch.png", use_container_width=True)
-        st.caption("**Figura 1:** Reactor Batch (Discontinuo)")
+        st.caption("**Figure 1:** Batch Reactor")
     with col2:
         st.image("images/fed_batch.png", use_container_width=True)
-        st.caption("**Figura 2:** Reactor Fed-Batch (Lote Alimentado)")
+        st.caption("**Figure 2:** Fed-Batch Reactor")
     with col3:
         st.image("images/continous.png", use_container_width=True)
-        st.caption("**Figura 3:** Reactor Continuo (Quimiostato)")
+        st.caption("**Figure 3:** Continuous Reactor")
 
-    st.header("Fundamento Teórico General") # Título ajustado
+    st.header("General Theoretical Basis") # Adjusted title
     st.markdown("""
+        Bioprocess modeling allows to describe mathematically the evolution of the variables of interest 
+        (biomass concentration, substrate, product, dissolved oxygen, etc.) in a bioreactor. 
+        The general material balances for the three main modes of operation are presented below,
+        assuming a perfect mixing of the three main modes of operation. 
+
         El modelado de bioprocesos permite describir matemáticamente la evolución de las variables de interés 
         (concentración de biomasa, sustrato, producto, oxígeno disuelto, etc.) en un biorreactor. 
         A continuación se presentan los balances de materia generales para los tres modos de operación 
         principales, asumiendo un mezclado perfecto.
         """)
 
-    st.markdown("---") # Separador visual
+    st.markdown("---") # Visual separator
 
-    st.subheader("🔹 Modo Lote (Batch)")
+    st.subheader("🔹 Batch Mode")
     st.markdown("""
+        In this mode, there is no input or output of matter once the process has started. The volume $V$ is constant.
+        The material balances are:
+
         En este modo, no hay entrada ni salida de materia una vez iniciado el proceso. El volumen $V$ es constante. 
         Los balances de materia son:
         """)
@@ -36,29 +44,29 @@ def home_page():
     \frac{dS}{dt} = - \frac{1}{Y_{XS}} \cdot \mu(S, O_2, P) \cdot X - m_s \cdot X
     """)
     st.latex(r"""
-    \frac{dP}{dt} = q_P \cdot X \quad \text{(Usando tasa específica } q_P) 
-    """) # Cambiado para usar qP general
+    \frac{dP}{dt} = q_P \cdot X \quad \text{(Using specific rate } q_P) 
+    """) # Changed to use general qP
     st.latex(r"""
-    \frac{dO_2}{dt} = k_L a \cdot (C_{O_2}^* - O_2) - OUR \quad \text{(Usando OUR: Oxygen Uptake Rate)}
-    """) # Cambiado para usar OUR general
+    \frac{dO_2}{dt} = k_L a \cdot (C_{O_2}^* - O_2) - OUR \quad \text{(Using OUR: Oxygen Uptake Rate)}
+    """) # Changed to use general OUR
     
     st.markdown(r"""
         **Donde:**
-        * $X$: Concentración de biomasa ($g/L$)
-        * $S$: Concentración de sustrato limitante ($g/L$)
-        * $P$: Concentración de producto ($g/L$)
-        * $O_2$: Concentración de oxígeno disuelto ($mg/L$)
-        * $\mu(S, O_2, P)$: Velocidad específica de crecimiento ($h^{-1}$)
-        * $q_P$: Tasa específica de formación de producto ($g \cdot g^{-1} \cdot h^{-1}$)
-        * $OUR$: Tasa de consumo de oxígeno ($mg \cdot L^{-1} \cdot h^{-1}$), usualmente $OUR = (\frac{\mu}{Y_{XO}} + m_o) \cdot X \cdot 1000$
-        * $k_d$: Tasa específica de muerte o decaimiento celular ($h^{-1}$)
-        * $Y_{XS}$: Coeficiente de rendimiento biomasa/sustrato ($g \cdot g^{-1}$)
-        * $Y_{XO}$: Coeficiente de rendimiento biomasa/oxígeno ($g_X \cdot g_{O2}^{-1}$)
-        * $m_s$: Coeficiente de mantenimiento para sustrato ($g_S \cdot g_X^{-1} \cdot h^{-1}$)
-        * $m_o$: Coeficiente de mantenimiento para oxígeno ($g_{O2} \cdot g_X^{-1} \cdot h^{-1}$)
-        * $k_L a$: Coeficiente volumétrico de transferencia de oxígeno ($h^{-1}$)
-        * $C_{O_2}^*$: Concentración de saturación de oxígeno disuelto ($mg/L$)
-        * $t$: Tiempo ($h$)
+        * $X$: Biomass concentration ($g/L$)
+        * $S$: Limiting substrate concentration ($g/L$)
+        * $P$: Product concentration ($g/L$)
+        * $O_2$: Dissolved oxygen concentration ($mg/L$)
+        * $\mu(S, O_2, P)$: Specific growth rate ($h^{-1}$)
+        * $q_P$: Specific product formation rate ($g \cdot g^{-1} \cdot h^{-1}$)
+        * $OUR$: Oxygen uptake rate ($mg \cdot L^{-1} \cdot h^{-1}$), usually $OUR = (\frac{\mu}{Y_{XO}} + m_o) \cdot X \cdot 1000$
+        * $k_d$: Specific cell death or decay rate ($h^{-1}$)
+        * $Y_{XS}$: Biomass/substrate yield coefficient ($g \cdot g^{-1}$)
+        * $Y_{XO}$: Biomass/oxygen yield coefficient ($g_X \cdot g_{O2}^{-1}$)
+        * $m_s$: Maintenance coefficient for substrate ($g_S \cdot g_X^{-1} \cdot h^{-1}$)
+        * $m_o$: Maintenance coefficient for oxygen ($g_{O2} \cdot g_X^{-1} \cdot h^{-1}$)
+        * $k_L a$: Volumetric oxygen transfer coefficient ($h^{-1}$)
+        * $C_{O_2}^*$: Dissolved oxygen saturation concentration ($mg/L$)
+        * $t$: Time ($h$)
 
         **Modelos Comunes de $\mu$ (Velocidad Específica de Crecimiento):**
         Las variantes comunes de $\mu$ consideradas son:
