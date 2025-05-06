@@ -1,6 +1,7 @@
 import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 # ====================================================
 # 1) Definición de la función ODE BIO
@@ -227,6 +228,27 @@ print("P_final =", P_fin_val)
 print("V_final =", V_fin_val)
 print("Producto total =", P_fin_val*V_fin_val)
 
+# --- INICIO: GUARDAR PERFIL ---
+print("\n[INFO] Guardando perfil óptimo de F_S para NMPC...")
+# Necesitamos los tiempos donde cambia F (inicio de cada intervalo RTO)
+t_rto_intervals = np.linspace(t_batch, t_total, n_fb_intervals + 1)
+# Guardamos F_opt y los tiempos donde cambia (t_profile es el inicio de cada intervalo donde F_opt[k] aplica)
+rto_original_output = {'t_profile': t_rto_intervals[:-1], 'F_S_profile': np.array(F_opt)}
+
+# --- INICIO: Modificaciones para guardar en carpeta "Output" ---
+output_dir = "Output"
+file_name = "rto_original_feed_profile.npz"
+# Construir la ruta completa al archivo
+full_path = os.path.join(output_dir, file_name)
+
+# Crear la carpeta "Output" si no existe
+# exist_ok=True evita un error si la carpeta ya existe
+os.makedirs(output_dir, exist_ok=True)
+
+# Guardar el archivo usando la ruta completa
+np.savez(full_path, **rto_original_output)
+# Actualizar el mensaje de confirmación para mostrar la ruta correcta
+print(f"[INFO] Perfil óptimo de F_S (original RTO) guardado en '{full_path}'")
 # ====================================================
 # 10) Reconstruir y graficar trayectoria
 #     (batch + fed-batch)

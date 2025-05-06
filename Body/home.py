@@ -1,3 +1,4 @@
+# home_page.py
 import streamlit as st
 
 def home_page():
@@ -14,339 +15,246 @@ def home_page():
         st.image("images/continous.png", use_container_width=True)
         st.caption("**Figure 3:** Continuous Reactor")
 
-    st.header("General Theoretical Basis") # Adjusted title
     st.markdown("""
-        Bioprocess modeling allows to describe mathematically the evolution of the variables of interest 
-        (biomass concentration, substrate, product, dissolved oxygen, etc.) in a bioreactor. 
-        The general material balances for the three main modes of operation are presented below,
-        assuming a perfect mixing of the three main modes of operation. 
-
-        El modelado de bioprocesos permite describir matemáticamente la evolución de las variables de interés 
-        (concentración de biomasa, sustrato, producto, oxígeno disuelto, etc.) en un biorreactor. 
-        A continuación se presentan los balances de materia generales para los tres modos de operación 
-        principales, asumiendo un mezclado perfecto.
+        Welcome to the interactive simulator for bioprocess modeling and control. 
+        This tool allows you to explore different reactor operation modes, 
+        microbial growth kinetics and advanced control strategies.
         """)
 
     st.markdown("---") # Visual separator
 
+    # ========= NEW SECTION: IMPLEMENTED KINETIC MODELS =========
+    st.header("🔬 Implemented kinetic models")
+    st.markdown("""
+        The heart of bioprocess modeling lies in mathematically describing the rates at which key biological 
+        reactions occur: cell growth, substrate consumption and product formation. The kinetic models implemented 
+        in this simulator are detailed below, with a particular focus on alcoholic fermentation as a case study.
+        """)
+
+    st.subheader("Specific Growth Rate ($\mu$)")
+    st.markdown(r"""
+        The specific growth rate ($\mu$, unit $h^{-1}$) describes how fast the biomass increases per unit of 
+        existing biomass. It depends on factors such as substrate ($S$), product ($P$) and dissolved oxygen ($O_2$)
+        concentration. The implemented models are:
+        """)
+
+    with st.expander("1. Simple Monod"):
+        st.markdown("The most basic model, assumes that growth is limited by a single substrate. ($S$).")
+        st.latex(r"""
+        \mu = \mu_{max} \frac{S}{K_S + S}
+        """)
+        st.markdown(r"""
+            * $\mu_{max}$: Maximum specific growth rate ($h^{-1}$).
+            * $K_S$: Substrate affinity constant (concentration of $S$ at which $\mu = \mu_{max}/2$, units $g/L$).
+            """)
+
+    with st.expander("2. Sigmoidal Monod (Hill)"):
+        st.markdown("It introduces a threshold or cooperative response to the substrate, useful for modeling induction phenomena or more complex kinetics.")
+        st.latex(r"""
+        \mu = \mu_{max} \frac{S^n}{K_S^n + S^n}
+        """)
+        st.markdown(r"""
+            * $n$: Hill coefficient (dimensionless), fits sigmoidal shape. $n > 1$ indicates cooperativity.
+            """)
+
+    with st.expander("3. Monod with Constraints (S, O2, P)"):
+        st.markdown("Models growth simultaneously limited by substrate and oxygen, and inhibited by product.")
+        st.latex(r"""
+        \mu = \mu_{max} \left(\frac{S}{K_S + S}\right) \left(\frac{O_2}{K_O + O_2}\right) \left(\frac{K_P}{K_P + P}\right)
+        """)
+        st.markdown(r"""
+            * $K_O$: Oxygen affinity constant ($g/L$).
+            * $K_P$: Inhibition constant per product ($g/L$). *Note: This form is a simple non-competitive inhibition.*
+            """)
+
+    with st.expander("4. Fermentation (Mixed Aerobic/Anaerobic)"):
+        st.markdown(r"""
+            It models the coexistence of metabolic pathways. The total rate is the sum of an aerobic and an anaerobic/fermentative component, modulated by $S$, $P$ and $O_2$.
+            $\mu_{total} = \mu_{aerobic} + \mu_{anaerobic}$
+            """)
+        st.markdown("**Aerobic component:**")
+        st.latex(r"""
+        \mu_{aerobic} = \mu_{max, aerob} \left( \frac{S}{K_{S, aerob} + S} \right) \left( \frac{O_2}{K_{O, aerob} + O_2} \right)
+        """)
+        st.markdown("**Anaerobic/Fermentative Component:**")
+        # We use the version implemented in the latest code
+        st.latex(r"""
+        \mu_{anaerobic} = \mu_{max, anaerob} \left( \frac{S}{K_{S, anaerob} + S + S^2/K_{iS, anaerob}} \right) \left( 1 - \frac{P}{K_{P, anaerob}} \right)^{n_p} \left( \frac{K_{O, inhib}}{K_{O, inhib} + O_2} \right)
+        """)
+        # Alternative form with KP^n (less used in the final code, but common):
+        # st.latex(r"""
+        # \mu_{anaerobic} = \mu_{max, anaerob} \left( \frac{S}{K_{S, anaerob} + S + S^2/K_{iS, anaerob}} \right) \left( \frac{K_{P, anaerob}^{n_p}}{K_{P, anaerob}^{n_p} + P^{n_p}} \right) \left( \frac{K_{O, inhib}}{K_{O, inhib} + O_2} \right)
+        # """)
+        st.markdown(r"""
+            **Specific Parameters:**
+            * $\mu_{max, aerob}, \mu_{max, anaerob}$: Maximum growth rates ($h^{-1}$).
+            * $K_{S, aerob}, K_{S, anaerob}$: Substrate affinity constants ($g/L$).
+            * $K_{O, aerob}$: $O_2$ affinity constant for $\mu_{aerobic}$ ($g/L$).
+            * $K_{iS, anaerob}$: Inhibition constant per substrate for $\mu_{anaerobic}$ ($g/L$).
+            * $K_{P, anaerob}$: Inhibition constant per product (ethanol) for $\mu_{anaerobic}$ ($g/L$). Represents the critical concentration of $P$ that stops anaerobic growth..
+            * $n_p$: Inhibition exponent per product (dimensionless).
+            * $K_{O, inhib}$: Inhibition constant per $O_2$ for $\mu_{anaerobic}$ (Pasteur effect on growth, $g/L$).
+            """)
+
+    with st.expander("5. Switched Fermentation"):
+        st.markdown(r"""
+            Simulates a discrete metabolic change. Uses **only** $\mu_{aerobic}$ (equation seen above) during Phase 1 (aerobic) and **only** $\mu_{anaerobic}$ (equation seen above) during Phases 2 and 3 (anaerobics). It requires defining parameters for both components, but only one is active in each phase.
+            """)
+
+    st.subheader("Specific Product Formation Rate ($q_P$)")
+    st.markdown(r"""
+        The specific product formation rate ($q_P$, unit $g_P \cdot g_X^{-1} \cdot h^{-1}$), specifically for ethanol in this context, is modeled using the Luedeking-Piret equation modified to include direct inhibition by oxygen. This reflects that ethanol production is predominantly anaerobic.
+        """)
+    st.latex(r"""
+    q_P = (\alpha \cdot \mu + \beta) \left( \frac{K_{O,P}}{K_{O,P} + O_2} \right)
+    """)
+    st.markdown(r"""
+        * $\mu$: It is the specific growth rate calculated by the selected kinetic model. ($\mu_{total}$ if Mixed/Switched).
+        * $\alpha$: Growth-associated product formation coefficient ($g_P \cdot g_X^{-1}$).
+        * $\beta$: Non-growth-associated product formation coefficient ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
+        * $K_{O,P}$: Oxygen inhibition constant on ethanol *production* ($g/L$). A low value indicates strong suppression of $P$ production by $O_2$.
+        """)
+
+    st.markdown("---") # Visual separator
+
+    # ========= MOVED SECTION: BALANCE SHEETS =========
+    st.header("📊 Theoretical Basis: Material Balances") # Adjusted title
+    st.markdown("""
+        Bioprocess modeling allows to describe mathematically the evolution of the variables of interest 
+        (biomass concentration, substrate, product, dissolved oxygen, etc.) in a bioreactor.
+        The general material balances for the three main modes of operation are presented below, assuming 
+        a perfect mixing of the three main modes of operation. The following are the general matter balances 
+        for the three main modes of operation, assuming perfect mixing. The rates $mu$ and $q_P$ correspond 
+        to the kinetic models described above.
+        """)
+
     st.subheader("🔹 Batch Mode")
     st.markdown("""
-        In this mode, there is no input or output of matter once the process has started. The volume $V$ is constant.
-        The material balances are:
-
-        En este modo, no hay entrada ni salida de materia una vez iniciado el proceso. El volumen $V$ es constante. 
-        Los balances de materia son:
+        There is no input or output of matter once the process has started ($F=0$). The volume $V$ is constant.
         """)
-    st.latex(r"""
-    \frac{dX}{dt} = \mu(S, O_2, P) \cdot X - k_d \cdot X 
-    """)
-    st.latex(r"""
-    \frac{dS}{dt} = - \frac{1}{Y_{XS}} \cdot \mu(S, O_2, P) \cdot X - m_s \cdot X
-    """)
-    st.latex(r"""
-    \frac{dP}{dt} = q_P \cdot X \quad \text{(Using specific rate } q_P) 
-    """) # Changed to use general qP
-    st.latex(r"""
-    \frac{dO_2}{dt} = k_L a \cdot (C_{O_2}^* - O_2) - OUR \quad \text{(Using OUR: Oxygen Uptake Rate)}
-    """) # Changed to use general OUR
-    
+    st.latex(r"""\frac{dX}{dt} = \mu \cdot X - k_d \cdot X""")
+    st.latex(r"""\frac{dS}{dt} = - \frac{\mu}{Y_{XS}} \cdot X - m_s \cdot X - \frac{q_P}{Y_{PS}} \cdot X""")
+    st.latex(r"""\frac{dP}{dt} = q_P \cdot X""")
+    st.latex(r"""\frac{dO_2}{dt} = k_{L}a_1 \cdot (C_{S}^* - O_2) - \left( \frac{\mu}{Y_{XO}} + m_o \right) \cdot X""")
+    st.markdown(r"""*Note: $OUR = (\frac{\mu}{Y_{XO}} + m_o) X$. The $k_L a$ may vary depending on the phase.*""")
+
+
+    st.subheader("🔹 Fed-Batch Mode")
     st.markdown(r"""
-        **Donde:**
-        * $X$: Biomass concentration ($g/L$)
-        * $S$: Limiting substrate concentration ($g/L$)
-        * $P$: Product concentration ($g/L$)
-        * $O_2$: Dissolved oxygen concentration ($mg/L$)
-        * $\mu(S, O_2, P)$: Specific growth rate ($h^{-1}$)
-        * $q_P$: Specific product formation rate ($g \cdot g^{-1} \cdot h^{-1}$)
-        * $OUR$: Oxygen uptake rate ($mg \cdot L^{-1} \cdot h^{-1}$), usually $OUR = (\frac{\mu}{Y_{XO}} + m_o) \cdot X \cdot 1000$
-        * $k_d$: Specific cell death or decay rate ($h^{-1}$)
-        * $Y_{XS}$: Biomass/substrate yield coefficient ($g \cdot g^{-1}$)
-        * $Y_{XO}$: Biomass/oxygen yield coefficient ($g_X \cdot g_{O2}^{-1}$)
-        * $m_s$: Maintenance coefficient for substrate ($g_S \cdot g_X^{-1} \cdot h^{-1}$)
-        * $m_o$: Maintenance coefficient for oxygen ($g_{O2} \cdot g_X^{-1} \cdot h^{-1}$)
-        * $k_L a$: Volumetric oxygen transfer coefficient ($h^{-1}$)
-        * $C_{O_2}^*$: Dissolved oxygen saturation concentration ($mg/L$)
-        * $t$: Time ($h$)
+        Feed ($F$) with concentration $S_{in}$ is added. The volume $V$ varies: $\frac{dV}{dt} = F$.
+        """)
+    st.latex(r"""\frac{dX}{dt} = \mu \cdot X - k_d \cdot X - \frac{F}{V} \cdot X""")
+    st.latex(r"""\frac{dS}{dt} = - \frac{\mu}{Y_{XS}} \cdot X - m_s \cdot X - \frac{q_P}{Y_{PS}} \cdot X + \frac{F}{V} (S_{in} - S)""")
+    st.latex(r"""\frac{dP}{dt} = q_P \cdot X - \frac{F}{V} \cdot P""")
+    st.latex(r"""\frac{dO_2}{dt} = k_{L}a \cdot (C_{S}^* - O_2) - \left( \frac{\mu}{Y_{XO}} + m_o \right) \cdot X - \frac{F}{V} \cdot O_2""")
 
-        **Modelos Comunes de $\mu$ (Velocidad Específica de Crecimiento):**
-        Las variantes comunes de $\mu$ consideradas son:
-        1.  **Monod simple:** $\mu = \mu_{max} \frac{S}{K_S + S}$
-        2.  **Monod sigmoidal (Hill):** $\mu = \mu_{max} \frac{S^n}{K_S^n + S^n}$
-        3.  **Monod con inhibición por sustrato:** $\mu = \mu_{max} \frac{S}{K_S + S + S^2/K_I}$
-        4.  **Monod con inhibición por producto:** $\mu = \mu_{max} \frac{S}{K_S + S} \left(1 - \frac{P}{P_{crit}}\right)^m$
-        5.  **Monod con limitación por oxígeno:** $\mu = \mu_{max} \frac{S}{K_S + S} \frac{O_2}{K_O + O_2}$
-        6.  **Monod con múltiples interacciones:** $\mu = \mu_{max} \frac{S}{K_S + S} \frac{O_2}{K_O + O_2} \frac{K_P}{K_P + P}$ 
-            *(Nota: La forma exacta depende del sistema)*
 
-        * $\mu_{max}$: Máxima velocidad específica de crecimiento ($h^{-1}$)
-        * $K_S, K_O, K_P, K_I, P_{crit}$: Constantes de afinidad o inhibición (unidades de concentración)
-        * $n, m$: Exponentes (adimensionales)
-        
-        **Modelos Comunes de $q_P$ (Formación de Producto):**
-        1.  **Asociado al crecimiento:** $q_P = Y_{PX} \cdot \mu$
-        2.  **No asociado al crecimiento:** $q_P = \beta$ (constante)
-        3.  **Mixto (Luedeking-Piret):** $q_P = \alpha \cdot \mu + \beta$
-        
-        * $Y_{PX}$: Coeficiente de rendimiento producto/biomasa ($g \cdot g^{-1}$)
-        * $\alpha$: Constante asociada al crecimiento ($g_P \cdot g_X^{-1}$)
-        * $\beta$: Constante no asociada al crecimiento ($g_P \cdot g_X^{-1} \cdot h^{-1}$)
+    st.subheader("🔹 Continuous Mode (Chemostat)")
+    st.markdown(r"""
+        Inflow and outflow $F$ at the same rate. Volume $V$ constant. Dilution rate $D = F/V$.
+        """)
+    st.latex(r"""\frac{dX}{dt} = \mu \cdot X - k_d \cdot X - D \cdot X""")
+    st.latex(r"""\frac{dS}{dt} = - \frac{\mu}{Y_{XS}} \cdot X - m_s \cdot X - \frac{q_P}{Y_{PS}} \cdot X + D (S_{in} - S)""")
+    st.latex(r"""\frac{dP}{dt} = q_P \cdot X - D \cdot P""")
+    st.latex(r"""\frac{dO_2}{dt} = k_{L}a \cdot (C_{S}^* - O_2) - \left( \frac{\mu}{Y_{XO}} + m_o \right) \cdot X - D \cdot O_2""")
+
+    st.markdown(r"""
+        **General Parameters in Balance Sheets:**
+        * $X, S, P, O_2, V, F, S_{in}$: Variables already defined.
+        * $\mu, q_P$: Specific rates (defined by kinetic models).
+        * $k_d$: Specific rate of cell decay ($h^{-1}$).
+        * $Y_{XS}$: Biomass/substrate yield ($g_X / g_S$).
+        * $Y_{PS}$: Product/substrate yield ($g_P / g_S$), used to calculate $S$ consumption for $P$.
+        * $Y_{XO}$: Biomass/oxygen yield ($g_X / g_{O2}$).
+        * $m_s$: Substrate-based maintenance ($g_S \cdot g_X^{-1} \cdot h^{-1}$).
+        * $m_o$: Oxygen-based maintenance ($g_{O2} \cdot g_X^{-1} \cdot h^{-1}$).
+        * $k_L a$: Oxygen transfer coefficient ($h^{-1}$, can be $k_{L}a_1$ or $k_{L}a_2$).
+        * $C_{S}^*$: $O_2$ saturation concentration ($g/L$).
+        * $D$: Dilution rate ($h^{-1}$).
+        * $t$: Time ($h$).
         """)
 
-    st.markdown("---")
+    st.markdown("---") # Separator before advanced techniques
 
-    st.subheader("🔹 Modo Lote Alimentado (Fed-Batch)")
-    st.markdown(r"""
-        Se agrega alimentación ($F$) con concentración de sustrato $S_{in}$ al biorreactor. No se retira líquido, por lo que el volumen $V$ varía en el tiempo. El balance de volumen es $\frac{dV}{dt} = F$. 
-        Los balances de materia incorporan términos de dilución y adición:
-        """)
-    st.latex(r"""
-    \frac{dX}{dt} = \mu \cdot X - k_d \cdot X - \frac{F}{V} \cdot X
-    """)
-    st.latex(r"""
-    \frac{dS}{dt} = - (\frac{\mu}{Y_{XS}} + m_s) \cdot X + \frac{F}{V} (S_{in} - S) \quad \text{(Asumiendo } q_P \text{ no consume } S \text{ directamente, o } Y_{PS} \text{ está implícito en } q_P \text{)}
-    """) # Se puede refinar si qP usa Yps
-    st.latex(r"""
-    \frac{dP}{dt} = q_P \cdot X - \frac{F}{V} \cdot P
-    """)
-    st.latex(r"""
-    \frac{dO_2}{dt} = k_L a \cdot (C_{O_2}^* - O_2) - OUR - \frac{F}{V} \cdot O_2
-    """)
-    st.markdown(r"""
-        **Nuevas Variables:**
-        * $V$: Volumen del cultivo en el reactor ($L$)
-        * $F$: Flujo de alimentación ($L \cdot h^{-1}$)
-        * $S_{in}$: Concentración de sustrato en la alimentación ($g/L$)
-        """)
+    # ========= MOVED SECTION: ADVANCED TECHNIQUES =========
+    st.header("⚙️ Advanced Analysis and Control Techniques")
 
-    st.markdown("---")
-
-    st.subheader("🔹 Modo Continuo (Quimiostato)")
+    # (The Sensitivity, Adjustment, EKF, RTO, NMPC subsections are not modified.)
+    st.subheader("🔹 Sensitivity analysis")
     st.markdown(r"""
-        Hay entrada de alimentación ($F$, $S_{in}$) y salida de caldo de cultivo a la misma tasa $F$. El volumen $V$ se mantiene constante. Se define la tasa de dilución $D = F/V$.
-        Los balances son:
-        """)
-    st.latex(r"""
-    \frac{dX}{dt} = \mu \cdot X - k_d \cdot X - D \cdot X
-    """)
-    st.latex(r"""
-    \frac{dS}{dt} = - (\frac{\mu}{Y_{XS}} + m_s) \cdot X + D (S_{in} - S)
-    """)
-    st.latex(r"""
-    \frac{dP}{dt} = q_P \cdot X - D \cdot P
-    """)
-    st.latex(r"""
-    \frac{dO_2}{dt} = k_L a \cdot (C_{O_2}^* - O_2) - OUR - D \cdot O_2
-    """)
-    st.markdown(r"""
-        **Nueva Variable:**
-        * $D$: Tasa de dilución ($h^{-1}$), definida como $D = F/V$.
-        """)
-    
-    st.markdown("---") # Separador antes de la nueva sección
-
-    # >>> INICIO NUEVA SECCIÓN: FERMENTACIÓN ALCOHÓLICA <<<
-    st.subheader("✳️ Ejemplo Específico: Fermentación Alcohólica (Levadura)")
-    st.markdown(r"""
-        Un ejemplo clásico en bioprocesos es la producción de etanol ($P$) utilizando levaduras (ej. *Saccharomyces cerevisiae*, $X$) que consumen azúcares (ej. glucosa, $S$). Este proceso a menudo se opera en fases para optimizar tanto el crecimiento celular inicial como la producción de etanol posterior:
-        1.  **Fase Lote Inicial (Aeróbica):** Se opera en modo lote con aireación para promover un rápido crecimiento de la biomasa. El nivel de oxígeno disuelto ($O_2$) se mantiene bajo pero presente para favorecer la respiración.
-        2.  **Fase de Alimentación (Fed-Batch, Anaeróbica/Microaeróbica):** Se alimenta sustrato concentrado ($S_{in}$) para mantener una alta densidad celular y evitar la represión catabólica (efecto Crabtree), mientras se limita o elimina el suministro de oxígeno para inducir la vía fermentativa (producción de etanol).
-        3.  **Fase Lote Final (Anaeróbica):** Se detiene la alimentación y se permite que la levadura consuma el sustrato restante en condiciones anaeróbicas.
-
-        Para modelar este comportamiento complejo, se requieren cinéticas que capturen los efectos del sustrato, el producto (etanol, que es inhibidor) y el oxígeno.
-        """)
-
-    st.markdown("**Cinética Mixta Aerobia/Anaerobia (Modelo 'Fermentación' de `ferm_alcohol.py`)**")
-    st.markdown(r"""
-        Este modelo asume que la tasa de crecimiento total ($\mu_{total}$) es la suma de una componente aeróbica ($\mu_{aerobia}$) y una componente anaeróbica/fermentativa ($\mu_{anaerobia}$):
-        """)
-    st.latex(r"\mu_{total} = \mu_{aerobia} + \mu_{anaerobia}")
-    st.markdown("Componente Aeróbica (favorecida por $O_2$, limitada por $S$):")
-    st.latex(r"""
-    \mu_{aerobia} = \mu_{max, aerob} \left( \frac{S}{K_{S, aerob} + S} \right) \left( \frac{O_2}{K_{O, aerob} + O_2} \right)
-    """)
-    st.markdown("Componente Anaerobia/Fermentativa (inhibida por $S$, $P$ y $O_2$):")
-    st.latex(r"""
-    \mu_{anaerobia} = \mu_{max, anaerob} \left( \frac{S}{K_{S, anaerob} + S + S^2/K_{iS, anaerob}} \right) \left( 1 - \frac{P}{K_{P, anaerob}} \right)^{n_p} \left( \frac{K_{O, inhib}}{K_{O, inhib} + O_2} \right)
-    """)
-    st.markdown(r"""
-        **Parámetros Específicos de esta Cinética:**
-        * $\mu_{max, aerob}, \mu_{max, anaerob}$: Máx. $\mu$ para vía aerobia y anaerobia ($h^{-1}$)
-        * $K_{S, aerob}, K_{S, anaerob}$: Constantes de afinidad por sustrato ($g/L$)
-        * $K_{O, aerob}$: Constante de afinidad por oxígeno para crecimiento aerobio ($mg/L$)
-        * $K_{iS, anaerob}$: Constante de inhibición por sustrato para vía anaerobia ($g/L$)
-        * $K_{P, anaerob}$: Constante de inhibición por producto (etanol) ($g/L$) - concentración crítica a la que cesa el crecimiento/producción anaerobia.
-        * $n_p$: Exponente de inhibición por producto (adimensional)
-        * $K_{O, inhib}$: Constante de inhibición por oxígeno para la vía anaerobia ($mg/L$) - indica la sensibilidad de la fermentación a la presencia de $O_2$.
-        """)
-
-    st.markdown("**Formación de Producto (Etanol) - Modelo Luedeking-Piret**")
-    st.markdown(r"""
-        La tasa específica de producción de etanol ($q_P$) se modela frecuentemente con la ecuación de Luedeking-Piret, que incluye términos asociados y no asociados al crecimiento:
-        """)
-    st.latex(r"q_P = \alpha \cdot \mu_{total} + \beta")
-    st.markdown(r"""
-        **Parámetros:**
-        * $q_P$: Tasa específica de producción de etanol ($g_P \cdot g_X^{-1} \cdot h^{-1}$)
-        * $\alpha$: Coeficiente asociado al crecimiento ($g_P \cdot g_X^{-1}$)
-        * $\beta$: Coeficiente no asociado al crecimiento ($g_P \cdot g_X^{-1} \cdot h^{-1}$)
-
-        Este modelo permite que el etanol se produzca tanto cuando las células crecen activamente ($\alpha \mu > 0$) como cuando el crecimiento es bajo o nulo pero las células están metabólicamente activas ($\beta > 0$).
-        """)
-    # >>> FIN NUEVA SECCIÓN <<<
-
-    st.markdown("---") # Separador después de la nueva sección
-
-    st.header("Técnicas Avanzadas de Análisis y Control")
-    
-    st.subheader("🔹 Análisis de Sensibilidad")
-    st.markdown(r"""
-        Evalúa cómo la incertidumbre o variaciones en los parámetros del modelo ($\theta$, como $\mu_{max}, K_S, Y_{XS}$, etc.) afectan las salidas del modelo (las variables de estado $X, S, P, O_2$). 
-        Permite identificar los parámetros más influyentes, crucial para la optimización y el diseño experimental. 
-        Una métrica común es el coeficiente de sensibilidad normalizado:
+        Evaluates how uncertainty or variations in the model parameters ($theta$, such as $$mu_{max}, K_S, Y_{XS}$, etc.) 
+        affect the model outputs (the state variables $X, S, P, O_2$). It allows identifying the most influential parameters, 
+        crucial for optimization and experimental design. A common metric is the normalized sensitivity coefficient:
         $S_{ij} = \frac{\partial y_i / y_i}{\partial \theta_j / \theta_j} = \frac{\partial \ln y_i}{\partial \ln \theta_j}$
-        donde $y_i$ es una salida y $\theta_j$ es un parámetro.
+        where $y_i$ is an output $\theta_j$ is a parameter.
         """)
-
-    # ... (Resto de las secciones de Ajuste de Parámetros, EKF, RTO, NMPC sin cambios) ...
-    
     st.markdown("---")
-
-    st.subheader("🔹 Ajuste de Parámetros (Estimación)")
+    st.subheader("🔹 Parameter Adjustment (Estimation)")
     st.markdown(r"""
-        Proceso de encontrar los valores de los parámetros del modelo ($\theta$) que mejor describen un conjunto de datos experimentales ($y_{exp}$). Se minimiza una función objetivo $J(\theta)$ que mide la discrepancia entre las predicciones del modelo ($y_{model}$) y los datos.
-        El problema de optimización es:
+        The process of finding the values of the model parameters ($\theta$) that best describe a set of experimental data ($y_{exp}$). 
+        An objective function $J(\theta)$ that measures the discrepancy between the model predictions ($y_{model}$) and the data is minimized.
+        The optimization problem is:
         """)
     st.latex(r"""
-    \hat{\theta} = \arg \min_{\theta} J(\theta) 
+    \hat{\theta} = \arg \min_{\theta} J(\theta)
     """)
     st.markdown(r"""
-        Una función objetivo común es la suma de errores cuadráticos ponderados:
+        A common objective function is the sum of weighted squared errors:
         $J(\theta) = \sum_{k=1}^{N} \sum_{i=1}^{M} w_{ik} (y_{i,exp}(t_k) - y_{i,model}(t_k, \theta))^2$
-        donde $N$ es el número de puntos de muestreo, $M$ el número de variables medidas, y $w_{ik}$ son pesos.
-        Se usan algoritmos de optimización (Levenberg-Marquardt, SQP, genéticos, etc.).
+        where $N$ is the number of sampling point, $M$ the number of measured variables, and $w_{ik}$ are weights.
+        Optimization algorithms (Levenberg-Marquardt, SQP, genetics, etc.) are used.
         """)
-
     st.markdown("---")
-
-    st.subheader("🔹 Filtro de Kalman Extendido (EKF)")
+    st.subheader("🔹 Extended Kalman Filter (EKF)")
     st.markdown(r"""
-        Algoritmo recursivo para estimar el estado de sistemas dinámicos no lineales en presencia de ruido. Utiliza un modelo del sistema y mediciones ruidosas para obtener una estimación óptima (en el sentido de mínima varianza) del estado. Esencial cuando no todas las variables de estado (e.g., biomasa) se pueden medir directamente online.
-
-        **Modelo del sistema (discreto):**
+        Recursive algorithm for estimating the state of nonlinear dynamic systems in the presence of noise. Uses a model of the system and 
+        noisy measurements to obtain an optimal (in the sense of minimum variance) estimate of the state. Essential when not all state variables 
+        (e.g., biomass) can be measured directly online.
+        **System model (discrete):**
         """)
-    st.latex(r"x_{k+1} = f(x_k, u_k) + w_k \quad \text{(Ecuación de proceso)}")
-    st.latex(r"z_k = h(x_k) + v_k \quad \text{(Ecuación de medida)}")
+    st.latex(r"x_{k+1} = f(x_k, u_k) + w_k \quad \text{(Process equation)}")
+    st.latex(r"z_k = h(x_k) + v_k \quad \text{(Measurement equation)}")
     st.markdown(r"""
-        **Donde:**
-        * $x_k$: Estado del sistema en el instante $k$
-        * $u_k$: Entrada de control en el instante $k$
-        * $z_k$: Medición en el instante $k$
-        * $w_k$: Ruido del proceso (Gaussiano, media cero, covarianza $Q$)
-        * $v_k$: Ruido de medición (Gaussiano, media cero, covarianza $R$)
-        * $f$: Función de transición de estado (no lineal)
-        * $h$: Función de medición (no lineal)
-
-        **Etapas del EKF:**
-
-        1.  **Predicción:**
-            * Estado predicho: $\hat{x}_{k+1|k} = f(\hat{x}_{k|k}, u_k)$
-            * Covarianza del error predicha: $P_{k+1|k} = F_k P_{k|k} F_k^T + Q$
-
-        2.  **Actualización (Corrección):**
-            * Ganancia de Kalman: $K_{k+1} = P_{k+1|k} H_{k+1}^T (H_{k+1} P_{k+1|k} H_{k+1}^T + R)^{-1}$
-            * Estado actualizado: $\hat{x}_{k+1|k+1} = \hat{x}_{k+1|k} + K_{k+1} (z_{k+1} - h(\hat{x}_{k+1|k}))$
-            * Covarianza del error actualizada: $P_{k+1|k+1} = (I - K_{k+1} H_{k+1}) P_{k+1|k}$
-
-        **Donde:**
-        * $F_k = \frac{\partial f}{\partial x} \Big|_{\hat{x}_{k|k}, u_k}$ es el Jacobiano de $f$ respecto a $x$.
-        * $H_{k+1} = \frac{\partial h}{\partial x} \Big|_{\hat{x}_{k+1|k}}$ es el Jacobiano de $h$ respecto a $x$.
+        * $x_k, u_k, z_k$: State, input and measurement in $k$.
+        * $w_k, v_k$: Process noise ($Q$) and measurement ($R$).
+        * $f, h$: Nonlinear functions.
+        **EKF Stages:**
+        1.  **Prediction:** $\hat{x}_{k+1|k} = f(\hat{x}_{k|k}, u_k)$, $P_{k+1|k} = F_k P_{k|k} F_k^T + Q$.
+        2.  **Update:** $K_{k+1} = P_{k+1|k} H_{k+1}^T (H_{k+1} P_{k+1|k} H_{k+1}^T + R)^{-1}$, $\hat{x}_{k+1|k+1} = \hat{x}_{k+1|k} + K_{k+1} (z_{k+1} - h(\hat{x}_{k+1|k}))$, $P_{k+1|k+1} = (I - K_{k+1} H_{k+1}) P_{k+1|k}$.
+        * $F_k, H_{k+1}$: Jacobians of $f$ and $h$.
         """)
-
     st.markdown("---")
-
-    st.subheader("🔹 Control RTO (Real-Time Optimization)")
+    st.subheader("🔹 RTO Control (Real-Time Optimization)")
     st.markdown(r"""
-        Estrategia de control de alto nivel que optimiza una función objetivo económica (ej. maximizar beneficio, minimizar coste) ajustando los setpoints de los controladores reguladores o directamente las variables manipuladas, basándose en un modelo del proceso y mediciones actuales. Opera en una escala de tiempo más lenta que el control regulatorio.
-
-        **Problema de Optimización:**
+        A strategy that optimizes an economic objective function by adjusting setpoints or manipulated variables, based on a (often stationary) model 
+        and measurements. It operates on a slow time scale.
+        **Problem:** $\max_{u_{opt}} \Phi(x_{ss}, u_{opt}, p)$ subject to $f(x_{ss}, u_{opt}, p) = 0$, $g(x_{ss}, u_{opt}, p) \le 0$, $u_{min} \le u_{opt} \le u_{max}$.
         """)
-    st.latex(r"""
-    \max_{u_{opt}} \quad \Phi(x_{ss}, u_{opt}, p)
-    """)
-    st.markdown(r"""
-        **Sujeto a:**
-        """)
-    st.latex(r"""
-    f(x_{ss}, u_{opt}, p) = 0 \quad \text{(Modelo en estado estacionario)}
-    """)
-    st.latex(r"""
-    g(x_{ss}, u_{opt}, p) \le 0 \quad \text{(Restricciones de operación)}
-    """)
-    st.latex(r"""
-    u_{min} \le u_{opt} \le u_{max} \quad \text{(Límites en variables manipuladas)}
-    """)
-    st.markdown(r"""
-        **Donde:**
-        * $\Phi$: Función objetivo económica.
-        * $x_{ss}$: Estado estacionario del proceso.
-        * $u_{opt}$: Variables manipuladas óptimas (setpoints).
-        * $p$: Parámetros del modelo (pueden ser actualizados).
-        * $f$: Ecuaciones del modelo en estado estacionario.
-        * $g$: Restricciones (calidad, seguridad, operativas).
-
-        Se resuelve periódicamente (ej. cada pocas horas) para encontrar los $u_{opt}$ óptimos.
-        """)
-
     st.markdown("---")
-
-    st.subheader("🔹 Control NMPC (Nonlinear Model Predictive Control)")
+    st.subheader("🔹 NMPC Control (Nonlinear Model Predictive Control)")
     st.markdown(r"""
-        Técnica de control avanzado que utiliza un modelo dinámico no lineal del proceso para predecir su comportamiento futuro sobre un horizonte de predicción ($N_p$) y calcular una secuencia óptima de acciones de control futuras ($\Delta U$) sobre un horizonte de control ($N_c \le N_p$). Minimiza una función objetivo que penaliza desviaciones del setpoint y el esfuerzo de control, sujeto a restricciones.
-
-        **Problema de Optimización (resuelto en cada instante $k$):**
-        """)
-    st.latex(r"""
-    \min_{\Delta U_k} J = \sum_{j=1}^{N_p} ||\hat{y}_{k+j|k} - y_{sp, k+j}||^2_Q + \sum_{j=0}^{N_c-1} ||\Delta u_{k+j|k}||^2_R 
-    """)
-    st.markdown(r"""
-        **Sujeto a:**
-        """)
-    st.latex(r"""
-    \hat{x}_{k+j+1|k} = f(\hat{x}_{k+j|k}, u_{k+j|k}) \quad \text{(Modelo de predicción)}
-    """)
-    st.latex(r"""
-    \hat{y}_{k+j|k} = h(\hat{x}_{k+j|k}) \quad \text{(Salidas predichas)}
-    """)
-    st.latex(r"""
-    u_{min} \le u_{k+j|k} \le u_{max} \quad \text{(Restricciones de entrada)}
-    """)
-    st.latex(r"""
-    \Delta u_{min} \le \Delta u_{k+j|k} \le \Delta u_{max} \quad \text{(Restricciones de cambio de entrada)}
-    """)
-    st.latex(r"""
-    y_{min} \le \hat{y}_{k+j|k} \le y_{max} \quad \text{(Restricciones de salida)}
-    """)
-    st.markdown(r"""
-        **Donde:**
-        * $\Delta U_k = [\Delta u_{k|k}, ..., \Delta u_{k+N_c-1|k}]^T$: Secuencia de cambios de control a optimizar.
-        * $u_{k+j|k} = u_{k+j-1|k} + \Delta u_{k+j|k}$: Control aplicado.
-        * $\hat{x}_{k+j|k}, \hat{y}_{k+j|k}$: Estado y salida predichos en el instante $k+j$ basados en información hasta $k$.
-        * $y_{sp, k+j}$: Setpoint (trayectoria futura si es necesario).
-        * $Q, R$: Matrices de ponderación.
-
-        Solo se aplica el primer cambio de control calculado ($\Delta u_{k|k}$), se mide el estado actual, y se repite la optimización en el siguiente instante (principio de horizonte deslizante).
+        Use a nonlinear dynamic model to predict the future ($N_p$) and compute optimal control actions ($$Delta U$ on $N_c$) by minimizing an objective 
+        function $J$ subject to constraints. Apply only the first action and repeat.
+        **Problem:** $\min_{\Delta U_k} J = \sum_{j=1}^{N_p} ||\hat{y}_{k+j|k} - y_{sp, k+j}||^2_Q + \sum_{j=0}^{N_c-1} ||\Delta u_{k+j|k}||^2_R$ subject to the dynamic model and constraints in $u, \Delta u, y$.
         """)
 
-
-# Para poder ejecutar esta página individualmente si es necesario
+# To be able to run this page individually if necessary
 if __name__ == "__main__":
     import os
-    if not os.path.exists("images"):
-        os.makedirs("images")
-        dummy_files = ["images/Batch.png", "images/fed_batch.png", "images/continous.png"]
-        for f_path in dummy_files:
-            if not os.path.exists(f_path):
-                with open(f_path, 'w') as fp:
-                    pass 
-                    
+    # (Code to create dummy images without changes)
+    if not os.path.exists("images"): os.makedirs("images")
+    dummy_files = ["images/Batch.png", "images/fed_batch.png", "images/continous.png"]
+    for f_path in dummy_files:
+        if not os.path.exists(f_path):
+            try:
+                with open(f_path, 'w') as fp: pass
+                print(f"Dummy file created: {f_path}")
+            except Exception as e:
+                print(f"Unable to create dummy file {f_path}: {e}")
+                try:
+                    from PIL import Image
+                    img = Image.new('RGB', (60, 30), color = 'red'); img.save(f_path)
+                    print(f"Placeholder image created: {f_path}")
+                except ImportError: print("PIL not found, unable to create image.")
+                except Exception as e_img: print(f"Error creating image {f_path}: {e_img}")
     home_page()
