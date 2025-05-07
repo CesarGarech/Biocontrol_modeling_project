@@ -102,13 +102,12 @@ def home_page():
         La tasa específica de formación de producto ($q_P$, unidad $g_P \cdot g_X^{-1} \cdot h^{-1}$), específicamente para el etanol en este contexto, se modela usando la ecuación de Luedeking-Piret modificada para incluir inhibición directa por oxígeno. Esto refleja que la producción de etanol es predominantemente anaeróbica.
         """)
     st.latex(r"""
-    q_P = (\alpha \cdot \mu + \beta) \left( \frac{K_{O,P}}{K_{O,P} + O_2} \right)
+    q_P = (\alpha \cdot \mu_{anaerob} + \beta) 
     """)
     st.markdown(r"""
-        * $\mu$: Es la tasa específica de crecimiento calculada por el modelo cinético seleccionado ($\mu_{total}$ si es Mixta/Conmutada).
+        * $\mu_{anaerob}$: Es la tasa específica de crecimiento calculada por el modelo cinético seleccionado ($\mu_{anaerob}$ si es Mixta/Conmutada).
         * $\alpha$: Coeficiente de formación de producto asociado al crecimiento ($g_P \cdot g_X^{-1}$).
         * $\beta$: Coeficiente de formación de producto no asociado al crecimiento ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
-        * $K_{O,P}$: Constante de inhibición por oxígeno sobre la *producción* de etanol ($g/L$). Un valor bajo indica fuerte supresión de la producción de $P$ por $O_2$.
         """)
 
     st.markdown("---") # Separador visual

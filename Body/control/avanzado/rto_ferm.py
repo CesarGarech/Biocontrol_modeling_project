@@ -29,8 +29,10 @@ def mu_completa_ca(S, O2, P, mumax, Ks, KO, KP_gen):
 
 def mu_fermentacion_ca(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob, Ks_anaerob, KiS_anaerob, KP_anaerob, n_p, KO_inhib_anaerob, considerar_O2=None):
     safe_S = ca.fmax(0.0, S); safe_P = ca.fmax(0.0, P); safe_O2 = ca.fmax(1e-9, O2) # Usar 1e-9 para evitar división por cero si O2=0
+    # --- Crecimiento Aerobio ---
     mu_aer = mumax_aerob * (safe_S / ca.fmax(Ks_aerob + safe_S, 1e-9)) * (safe_O2 / ca.fmax(KO_aerob + safe_O2, 1e-9))
     mu_aer = ca.fmax(0.0, mu_aer)
+    # --- Crecimiento Anaerobio ---
     large_kis = 1e9
     den_S_an = Ks_anaerob + safe_S + ca.if_else(KiS_anaerob < large_kis, safe_S**2 / ca.fmax(KiS_anaerob, 1e-9), 0.0)
     safe_den_S_an = ca.fmax(den_S_an, 1e-9); term_S_an = safe_S / safe_den_S_an
@@ -41,10 +43,15 @@ def mu_fermentacion_ca(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob,
     term_O2_inhib_an = safe_KO_inhib_an / ca.fmax(safe_KO_inhib_an + safe_O2, 1e-9)
     mu_anaer = mumax_anaerob * term_S_an * term_P_an * term_O2_inhib_an
     mu_anaer = ca.fmax(0.0, mu_anaer)
-    if isinstance(considerar_O2, (ca.MX, ca.SX)): mu = ca.if_else(considerar_O2 > 0.5, mu_aer, mu_anaer)
-    elif considerar_O2 is None: mu = mu_aer + mu_anaer
-    elif considerar_O2: mu = mu_aer
-    else: mu = mu_anaer
+    # --- Combinación de tasas ---
+    if isinstance(considerar_O2, (ca.MX, ca.SX)): # Para optimización conmutada
+        mu = ca.if_else(considerar_O2 > 0.5, mu_aer, mu_anaer)
+    elif considerar_O2 is None: # Modelo mixto (suma)
+        mu = mu_aer + mu_anaer
+    elif considerar_O2: # Solo aerobio
+        mu = mu_aer
+    else: # Solo anaerobio
+        mu = mu_anaer
     return ca.fmax(mu, 0.0)
 
 # ====================================================
@@ -55,6 +62,7 @@ def rto_fermentation_page():
     st.markdown("""
     Optimización del perfil de alimentación ($F(t)$) para maximizar $P_{final} V_{final}$.
     **Método:** Colocación Ortogonal (Radau, d=2). Slacks O2+S. N=12.
+    **Corrección:** Balances qP/dSdt modificados.
     """)
 
     with st.sidebar:
@@ -93,7 +101,7 @@ def rto_fermentation_page():
             params_cineticos['KO_inhib_anaerob'] = st.slider("KO_inhib (Inhib. O2 en μ Anaerobio) [g/L]", 1e-6, 0.01, 0.0005, 1e-6, format="%.6f", key="ko_inhib_anaero_c")
             params_cineticos.update({k: 1e9 for k in ['Ks', 'KO', 'KP_gen', 'n_sig','mumax']})
         elif tipo_mu == "Fermentación":
-            st.info("Modelo Mixto: μ = μ_aerobio + μ_anaerobio.")
+            st.info("Modelo mixto: mu = mu_aerobio + mu_anaerobio.")
             with st.expander("Parámetros mu (Aerobio)", expanded=True):
                 ko_aerob_val = st.slider("KO_aerob (afinidad O2) [g/L]", 0.0001, 0.05, 0.0002, 0.0001, format="%.4f", key="ko_aerob_m")
                 params_cineticos['mumax_aerob'] = st.slider("μmax_aerob [1/h]", 0.1, 1.0, 0.4, 0.05, key="mumax_aerob_m")
@@ -115,36 +123,32 @@ def rto_fermentation_page():
         st.subheader("3. Transferencia de Oxígeno")
         params_transfer = {}; params_transfer['Kla1'] = st.slider("kLa Fase 1 [1/h]", 10.0, 800.0, 100.0, 10.0, key="kla1"); params_transfer['Kla2'] = st.slider("kLa Fase 2/3 [1/h]", 0.0, 50.0, 15.0, 0.1, key="kla2"); Cs_mgL = st.slider("Cs [mg/L]", 1.0, 15.0, 7.5, 0.1, key="cs_mgL"); params_transfer['Cs'] = Cs_mgL / 1000.0
         st.subheader("4. Alimentación y Reactor")
-        params_reactor = {}; params_reactor['Sin'] = st.number_input("Sin [g/L]", 10.0, 700.0, 400.0, 10.0, key="sin_conc"); params_reactor['Vmax'] = st.number_input("Vmax [L]", value=10.0, min_value=0.1, step=0.5, key="vmax_reactor")
+        params_reactor = {}; params_reactor['Sin'] = st.number_input("Sin [g/L]", 10.0, 700.0, 250.0, 10.0, key="sin_conc"); params_reactor['Vmax'] = st.number_input("Vmax [L]", value=0.5, min_value=0.1, step=0.5, key="vmax_reactor")
         st.subheader("5. Configuración Temporal y Colocación")
         params_tiempo = {}
-        t_aerobic_batch_val = st.number_input("Fin Fase 1 [h]", value=10.0, min_value=0.1, step=0.5, key="t_aerobic_end")
+        t_aerobic_batch_val = st.number_input("Fin Fase 1 [h]", value=4.0, min_value=0.1, step=0.5, key="t_aerobic_end")
         params_tiempo['t_aerobic_batch'] = t_aerobic_batch_val
-        t_feed_end_val = st.number_input("Fin Fase 2 [h]", value=34.0, min_value=params_tiempo['t_aerobic_batch'] + 0.1, step=0.5, key="t_feed_end_rto")
+        t_feed_end_val = st.number_input("Fin Fase 2 [h]", value=9.0, min_value=params_tiempo['t_aerobic_batch'] + 0.1, step=0.5, key="t_feed_end_rto")
         params_tiempo['t_feed_end'] = t_feed_end_val
-        t_total_val = st.number_input("Tiempo total [h]", value=39.0, min_value=params_tiempo['t_feed_end'], step=0.5, key="t_total_rto")
+        t_total_val = st.number_input("Tiempo total [h]", value=16.0, min_value=params_tiempo['t_feed_end'], step=0.5, key="t_total_rto")
         params_tiempo['t_total'] = t_total_val
         feed_duration = params_tiempo['t_feed_end'] - params_tiempo['t_aerobic_batch']
-        # *** CAMBIO: Valor por defecto de n_intervals vuelto a 12 ***
-        n_intervals_val = st.number_input("Intervalos Finitos (N)", value=12, min_value=1, max_value=100, step=1, key="n_intervals_rto_coll", # <-- VALOR POR DEFECTO 12
-                                         help=f"Número de intervalos donde F es constante. Duración Fase 2: {feed_duration:.1f} h")
+        n_intervals_val = st.number_input("Intervalos Finitos (N)", value=12, min_value=1, max_value=100, step=1, key="n_intervals_rto_coll", help=f"Número de intervalos donde F es constante. Duración Fase 2: {feed_duration:.1f} h")
         params_tiempo['n_intervals'] = n_intervals_val
-        degree_val = st.number_input("Grado Colocación (d)", value=5, min_value=1, max_value=5, step=1, key="degree_coll",
-                                     help="Grado del polinomio usado en cada intervalo. d=2 o d=3 suele ser un buen compromiso.")
+        degree_val = st.number_input("Grado Colocación (d)", value=4, min_value=1, max_value=5, step=1, key="degree_coll", help="Grado del polinomio usado en cada intervalo. d=2 o d=3 suele ser un buen compromiso.")
         params_tiempo['degree'] = degree_val
-        collocation_scheme = st.selectbox("Esquema Colocación", ["radau", "legendre"], index=0, key="scheme_coll",
-                                          help="'radau' es generalmente bueno para DAEs stiff.")
+        collocation_scheme = st.selectbox("Esquema Colocación", ["radau", "legendre"], index=0, key="scheme_coll", help="'radau' es generalmente bueno para DAEs stiff.")
         params_tiempo['scheme'] = collocation_scheme
         st.subheader("6. Condiciones Iniciales (t=0)")
-        cond_iniciales = {}; cond_iniciales['X0'] = st.number_input("X0 [g/L]", 0.01, 10.0, 0.1, step=0.01, key="x0_init"); cond_iniciales['S0'] = st.number_input("S0 [g/L]", 1.0, 200.0, 100.0, step=1.0, key="s0_init"); cond_iniciales['P0'] = st.number_input("P0 [g/L]", 0.0, 50.0, 0.0, step=0.1, key="p0_init"); o0_default_mgL = min(params_transfer['Cs'] * 1000 * 0.95, 7.0); O0_mgL = st.number_input("O0 [mg/L]", min_value=0.0, max_value=Cs_mgL, value=o0_default_mgL, step=0.01, key="o0_mgL", help=f"Máximo: {Cs_mgL:.2f} mg/L"); cond_iniciales['O0'] = O0_mgL / 1000.0; cond_iniciales['V0'] = st.number_input("V0 [L]", value=5.0, min_value=0.05, step=0.1, key="v0_init")
+        cond_iniciales = {}; cond_iniciales['X0'] = st.number_input("X0 [g/L]", 0.01, 10.0, 1.20, step=0.01, key="x0_init"); cond_iniciales['S0'] = st.number_input("S0 [g/L]", 1.0, 200.0, 10.17, step=1.0, key="s0_init"); cond_iniciales['P0'] = st.number_input("P0 [g/L]", 0.0, 50.0, 0.0, step=0.1, key="p0_init"); o0_default_mgL = min(params_transfer['Cs'] * 1000 * 0.95, 0.08); O0_mgL = st.number_input("O0 [mg/L]", min_value=0.0, max_value=Cs_mgL, value=o0_default_mgL, step=0.01, key="o0_mgL", help=f"Máximo: {Cs_mgL:.2f} mg/L"); cond_iniciales['O0'] = O0_mgL / 1000.0; cond_iniciales['V0'] = st.number_input("V0 [L]", value=0.25, min_value=0.05, step=0.1, key="v0_init")
         st.subheader("7. Restricciones y Penalización RTO")
-        params_rto = {}; fmin_val = st.number_input("Fmin [L/h]", value=0.0, min_value=0.0, format="%.4f", key="fmin_rto"); params_rto['Fmin'] = fmin_val; params_rto['Fmax'] = st.number_input("Fmax [L/h]", value=0.2, min_value=params_rto['Fmin'], step=0.01, key="fmax_rto");
-        params_rto['Smax_constraint'] = st.number_input("Smax [g/L]", value=150.0, min_value=0.1, step=1.0, key="smax_const_rto", help="Límite superior para S durante la alimentación.")
+        params_rto = {}; fmin_val = st.number_input("Fmin [L/h]", value=0.01, min_value=0.0, format="%.4f", key="fmin_rto"); params_rto['Fmin'] = fmin_val; params_rto['Fmax'] = st.number_input("Fmax [L/h]", value=0.26, min_value=params_rto['Fmin'], step=0.01, key="fmax_rto");
+        params_rto['Smax_constraint'] = st.number_input("Smax [g/L]", value=30.0, min_value=0.1, step=1.0, key="smax_const_rto", help="Límite superior para S durante la alimentación.")
         default_pmax_rto = 100.0; kp_to_use = None
         if tipo_mu in ["Fermentación", "Fermentación Conmutada"]: kp_to_use = params_cineticos.get('KP_anaerob', None)
         elif tipo_mu == "Monod con restricciones": kp_to_use = params_cineticos.get('KP_gen', None)
         if kp_to_use is not None and isinstance(kp_to_use, (int, float)) and kp_to_use > 1e-6 and kp_to_use < 1e8: default_pmax_rto = max(10.0, kp_to_use * 0.95)
-        params_rto['Pmax_constraint'] = st.number_input("Pmax [g/L]", value=default_pmax_rto, min_value=1.0, step=1.0, key="pmax_const_rto", help=f"Límite P. Sugerido: ~95% KP ({kp_to_use:.1f} g/L si aplica)."); w_Smax_penalty_val = st.number_input("Peso Penalización Smax", value=100.0, min_value=0.0, key="w_smax_rto", help="Poner a 0 para desactivar."); params_rto['w_Smax_penalty'] = w_Smax_penalty_val
+        params_rto['Pmax_constraint'] = st.number_input("Pmax [g/L]", value=default_pmax_rto, min_value=1.0, step=1.0, key="pmax_const_rto", help=f"Límite P. Sugerido: ~95% KP ({kp_to_use:.1f} g/L si aplica)."); w_Smax_penalty_val = st.number_input("Peso Penalización Smax", value=1000.0, min_value=0.0, key="w_smax_rto", help="Poner a 0 para desactivar."); params_rto['w_Smax_penalty'] = w_Smax_penalty_val
         params_rto['w_O2_slack'] = st.number_input("Peso Slack O2", value=1e6, min_value=0.0, format="%.2e", key="w_o2_slack", help="Peso alto para penalizar violación O2>=0.")
         params_rto['w_S_slack'] = st.number_input("Peso Slack S", value=1e6, min_value=0.0, format="%.2e", key="w_s_slack", help="Peso alto para penalizar violación S>=0.")
 
@@ -155,18 +159,116 @@ def rto_fermentation_page():
     X_scale = max(1.0, cond_iniciales['X0'] * 10, 50.0); S_scale = max(1.0, cond_iniciales['S0'], params_reactor['Sin'], params_rto['Smax_constraint']); P_scale = max(1.0, params_rto.get('Pmax_constraint', 100.0)); O2_scale = max(1e-5, params_transfer['Cs']); V_scale = max(0.1, params_reactor['Vmax'], cond_iniciales['V0']); F_scale = max(1e-3, params_rto['Fmax']) if params_rto['Fmax'] > 0 else 0.1; x_scales = ca.vertcat(X_scale, S_scale, P_scale, O2_scale, V_scale); u_scale = F_scale
 
     # --- Función DAE/ODE ESCALADO (para usar con Colocación) ---
-    # (Sin cambios)
     def create_ode_function_scaled(params, scales):
-        nx = 5; x_scaled_sym = ca.MX.sym("x_scaled", nx); u_scaled_sym = ca.MX.sym("u_scaled"); Kla_sym = ca.MX.sym("Kla_phase"); considerar_O2_sym = ca.MX.sym("considerar_O2_flag"); p_ode_sym = ca.vertcat(Kla_sym, considerar_O2_sym)
-        x_sc = scales['x']; u_sc = scales['u']; x_orig_sym = x_scaled_sym * x_sc; u_orig_sym = u_scaled_sym * u_sc; X, S, P, O2, V = x_orig_sym[0], x_orig_sym[1], x_orig_sym[2], x_orig_sym[3], x_orig_sym[4]; F = u_orig_sym; safe_X = ca.fmax(1e-9, X); safe_S = ca.fmax(0.0, S); safe_P = ca.fmax(0.0, P); safe_O2 = ca.fmax(0.0, O2); safe_V = ca.fmax(1e-6, V); D = F / safe_V; mu = 0.0; tipo = params['tipo_mu']
-        if tipo == "Monod simple": mu = mu_monod_ca(safe_S, params['mumax'], params['Ks'])
-        elif tipo == "Monod sigmoidal": mu = mu_sigmoidal_ca(safe_S, params['mumax'], params['Ks'], params['n_sig'])
-        elif tipo == "Monod con restricciones": mu = mu_completa_ca(safe_S, safe_O2, safe_P, params['mumax'], params['Ks'], params['KO'], params['KP_gen'])
-        elif tipo == "Fermentación": mu = mu_fermentacion_ca(safe_S, safe_P, safe_O2, params['mumax_aerob'], params['Ks_aerob'], params['KO_aerob'], params['mumax_anaerob'], params['Ks_anaerob'], params['KiS_anaerob'], params['KP_anaerob'], params.get('n_p', 1.0), params['KO_inhib_anaerob'], considerar_O2=None)
-        elif tipo == "Fermentación Conmutada": mu = mu_fermentacion_ca(safe_S, safe_P, safe_O2, params['mumax_aerob'], params['Ks_aerob'], params['KO_aerob'], params['mumax_anaerob'], params['Ks_anaerob'], params['KiS_anaerob'], params['KP_anaerob'], params.get('n_p', 1.0), params['KO_inhib_anaerob'], considerar_O2=p_ode_sym[1] )
-        mu_net = ca.fmax(0.0, mu) - params['Kd']; qP_base = params['alpha_lp'] * ca.fmax(0.0, mu) + params['beta_lp']; safe_O2_inhib_prod = ca.fmax(1e-9, safe_O2); inhib_factor_O2_prod = ca.fmax(params['KO_inhib_prod'], 1e-9) / ca.fmax(params['KO_inhib_prod'] + safe_O2_inhib_prod, 1e-9); qP = qP_base * inhib_factor_O2_prod; qP = ca.fmax(0.0, qP); consumo_S_X = (ca.fmax(0.0, mu) / ca.fmax(params['Yxs'], 1e-9)); consumo_S_P = (qP / ca.fmax(params['Yps'], 1e-9)); consumo_S_maint = params['ms']; qS = consumo_S_X + consumo_S_P + consumo_S_maint; qS = ca.fmax(0.0, qS); safe_O2_for_mu_aer = ca.fmax(1e-9, safe_O2); mu_aer_only = params['mumax_aerob'] * (safe_S / ca.fmax(params['Ks_aerob'] + safe_S, 1e-9)) * (safe_O2_for_mu_aer / ca.fmax(params['KO_aerob'] + safe_O2_for_mu_aer, 1e-9)); mu_aer_only = ca.fmax(0.0, mu_aer_only); consumo_O2_X_aerob = (mu_aer_only / ca.fmax(params['Yxo'], 1e-9)); consumo_O2_maint = params['mo']; qO = consumo_O2_X_aerob + consumo_O2_maint; qO = ca.fmax(0.0, qO); Rate_X = mu_net * safe_X; Rate_S = -qS * safe_X; Rate_P = qP * safe_X; OUR = qO * safe_X; current_Kla = p_ode_sym[0]; OTR = current_Kla * (params['Cs'] - safe_O2); Rate_O2 = OTR - OUR; dXdt = Rate_X - D * safe_X; dSdt = Rate_S + D * (params['Sin'] - safe_S); dPdt = Rate_P - D * safe_P; dOdt = Rate_O2 - D * safe_O2; dVdt = F
-        ode_expr_scaled = ca.vertcat(dXdt / x_sc[0], dSdt / x_sc[1], dPdt / x_sc[2], dOdt / x_sc[3], dVdt / x_sc[4])
-        ode_func = ca.Function('ode_func_scaled', [x_scaled_sym, u_scaled_sym, p_ode_sym], [ode_expr_scaled], ['x', 'u', 'p'], ['dxdt'])
+        # Define variables simbólicas
+        nx = 5
+        x_scaled_sym = ca.MX.sym("x_scaled", nx)
+        u_scaled_sym = ca.MX.sym("u_scaled")
+        Kla_sym = ca.MX.sym("Kla_phase")
+        considerar_O2_sym = ca.MX.sym("considerar_O2_flag") # Siempre presente, valdrá 0 si no es conmutado
+        p_ode_sym = ca.vertcat(Kla_sym, considerar_O2_sym) # Parámetros para la ODE
+
+        # Desescalar
+        x_sc = scales['x']; u_sc = scales['u']
+        x_orig_sym = x_scaled_sym * x_sc
+        u_orig_sym = u_scaled_sym * u_sc
+        X, S, P, O2, V = x_orig_sym[0], x_orig_sym[1], x_orig_sym[2], x_orig_sym[3], x_orig_sym[4]
+        F = u_orig_sym
+        safe_X = ca.fmax(1e-9, X); safe_S = ca.fmax(0.0, S); safe_P = ca.fmax(0.0, P); safe_O2 = ca.fmax(0.0, O2); safe_V = ca.fmax(1e-6, V)
+        D = F / safe_V
+
+        # --- Cálculo de mu (total), mu_aer y mu_anaer ---
+        mu = 0.0
+        mu_aer = 0.0
+        mu_anaer = 0.0
+        tipo = params['tipo_mu']
+
+        # Calcular componentes aerobio y anaerobio si el modelo los usa
+        if tipo in ["Fermentación", "Fermentación Conmutada"]:
+            # Componente Aerobio
+            mu_aer = mu_fermentacion_ca(safe_S, safe_P, safe_O2, params['mumax_aerob'], params['Ks_aerob'], params['KO_aerob'], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
+            # Componente Anaerobio
+            mu_anaer = mu_fermentacion_ca(safe_S, safe_P, safe_O2, 0, 1, float('inf'), params['mumax_anaerob'], params['Ks_anaerob'], params['KiS_anaerob'], params['KP_anaerob'], params.get('n_p', 1.0), params['KO_inhib_anaerob'], considerar_O2=False)
+            # Combinar según el tipo de modelo
+            if tipo == "Fermentación":
+                mu = mu_aer + mu_anaer
+            elif tipo == "Fermentación Conmutada":
+                # El flag p_ode_sym[1] decide cuál usar
+                mu = ca.if_else(p_ode_sym[1] > 0.5, mu_aer, mu_anaer)
+                # Asegurar que mu_aer o mu_anaer sea cero si no es la fase activa
+                # (Importante para los balances corregidos)
+                mu_aer = ca.if_else(p_ode_sym[1] > 0.5, mu_aer, 0.0)
+                mu_anaer = ca.if_else(p_ode_sym[1] < 0.5, mu_anaer, 0.0)
+
+        elif tipo == "Monod simple":
+            mu = mu_monod_ca(safe_S, params['mumax'], params['Ks'])
+            mu_aer = mu # Asumir todo aerobio
+            mu_anaer = 0.0
+        elif tipo == "Monod sigmoidal":
+            mu = mu_sigmoidal_ca(safe_S, params['mumax'], params['Ks'], params['n_sig'])
+            mu_aer = mu # Asumir todo aerobio
+            mu_anaer = 0.0
+        elif tipo == "Monod con restricciones":
+            mu = mu_completa_ca(safe_S, safe_O2, safe_P, params['mumax'], params['Ks'], params['KO'], params['KP_gen'])
+            mu_aer = mu # Asumir todo aerobio
+            mu_anaer = 0.0
+
+        # Tasa de crecimiento neta (considerando muerte/declinación)
+        mu_net = ca.fmax(0.0, mu) - params['Kd']
+
+        # --- Calcular Tasa Específica de Producción de Producto (qP) ---
+        # <<< CORRECCIÓN qP: Usar SOLO mu_anaer para el término asociado a crecimiento >>>
+        # <<< CORRECCIÓN qP: Eliminar inhibición por O2 (KO_inhib_prod) >>>
+        qP = params["alpha_lp"] * mu_anaer + params["beta_lp"]
+        qP = ca.fmax(0.0, qP) # Asegurar no negatividad
+
+        # --- Calcular Tasa Específica de Consumo de Sustrato (qS) ---
+        # <<< CORRECCIÓN dSdt: Usar SOLO mu_aer para el consumo por crecimiento >>>
+        consumo_S_X = (mu_aer / ca.fmax(params['Yxs'], 1e-9)) # Usa mu_aer
+        consumo_S_P = (qP / ca.fmax(params['Yps'], 1e-9)) # Usa qP (que depende de mu_anaer)
+        consumo_S_maint = params['ms']
+        qS = consumo_S_X + consumo_S_P + consumo_S_maint
+        qS = ca.fmax(0.0, qS)
+
+        # --- Calcular Tasa Específica de Consumo de Oxígeno (qO) ---
+        # <<< CORRECCIÓN dOdt: qO solo depende de mu_aer >>>
+        consumo_O2_X = (mu_aer / ca.fmax(params['Yxo'], 1e-9))
+        consumo_O2_maint = params['mo']
+        qO = consumo_O2_X + consumo_O2_maint
+        qO = ca.fmax(0.0, qO)
+
+        # Calcular Tasas Volumétricas
+        Rate_X = mu_net * safe_X
+        Rate_S = -qS * safe_X
+        Rate_P = qP * safe_X # rate_P corregido
+        OUR = qO * safe_X # OUR corregido
+
+        # Calcular Tasa de Transferencia de Oxígeno (OTR)
+        current_Kla = p_ode_sym[0] # Usa Kla del parámetro
+        OTR = current_Kla * (params['Cs'] - safe_O2)
+
+        # Calcular Tasa Neta de Cambio de Oxígeno Disuelto
+        Rate_O2 = OTR - OUR
+
+        # --- Ecuaciones Diferenciales (Balances de Masa) ---
+        dXdt = Rate_X - D * safe_X
+        dSdt = Rate_S + D * (params['Sin'] - safe_S) # rate_S corregido
+        dPdt = Rate_P - D * safe_P # rate_P corregido
+        dOdt = Rate_O2 - D * safe_O2 # OUR corregido
+        dVdt = F
+
+        # --- Expresiones ODE Escaladas ---
+        ode_expr_scaled = ca.vertcat(
+            dXdt / x_sc[0],
+            dSdt / x_sc[1],
+            dPdt / x_sc[2],
+            dOdt / x_sc[3],
+            dVdt / x_sc[4]
+        )
+
+        # Crear y devolver la función CasADi
+        ode_func = ca.Function('ode_func_scaled', [x_scaled_sym, u_scaled_sym, p_ode_sym], [ode_expr_scaled],
+                               ['x', 'u', 'p'], ['dxdt'])
         return ode_func
 
     # --- Ejecución de la Optimización RTO ---
@@ -367,7 +469,6 @@ def rto_fermentation_page():
         st.info("Configurando solver IPOPT...")
         p_opts = {"expand": True}
         s_opts = {
-                  # *** CAMBIO: Aumentar max_iter ***
                   "max_iter": 5000, # <-- Aumentado
                   "print_level": 0, "sb": 'yes',
                   "tol": 1e-6, # <-- Tolerancia principal restaurada
