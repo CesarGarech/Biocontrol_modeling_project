@@ -33,7 +33,7 @@ def home_page():
 
     st.subheader("Specific Growth Rate ($\mu$)")
     st.markdown(r"""
-        The specific growth rate ($\mu$, unit $h^{-1}$) describes how fast the biomass increases per unit of 
+        The specific growth rate (($\mu$), unit $h^{-1}$) describes how fast the biomass increases per unit of 
         existing biomass. It depends on factors such as substrate ($S$), product ($P$) and dissolved oxygen ($O_2$)
         concentration. The implemented models are:
         """)
@@ -124,7 +124,7 @@ def home_page():
         (biomass concentration, substrate, product, dissolved oxygen, etc.) in a bioreactor.
         The general material balances for the three main modes of operation are presented below, assuming 
         a perfect mixing of the three main modes of operation. The following are the general matter balances 
-        for the three main modes of operation, assuming perfect mixing. The rates $mu$ and $q_P$ correspond 
+        for the three main modes of operation, assuming perfect mixing. The rates $\mu$ and $q_P$ correspond 
         to the kinetic models described above.
         """)
 
@@ -233,7 +233,7 @@ def home_page():
     st.markdown("---")
     st.subheader("🔹 NMPC Control (Nonlinear Model Predictive Control)")
     st.markdown(r"""
-        Use a nonlinear dynamic model to predict the future ($N_p$) and compute optimal control actions ($$Delta U$ on $N_c$) by minimizing an objective 
+        Use a nonlinear dynamic model to predict the future ($N_p$) and compute optimal control actions ($Delta U$ on $N_c$) by minimizing an objective 
         function $J$ subject to constraints. Apply only the first action and repeat.
         **Problem:** $\min_{\Delta U_k} J = \sum_{j=1}^{N_p} ||\hat{y}_{k+j|k} - y_{sp, k+j}||^2_Q + \sum_{j=0}^{N_c-1} ||\Delta u_{k+j|k}||^2_R$ subject to the dynamic model and constraints in $u, \Delta u, y$.
         """)
