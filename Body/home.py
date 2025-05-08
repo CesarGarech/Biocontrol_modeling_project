@@ -109,13 +109,10 @@ def home_page():
     q_P = (\alpha \cdot \mu_{anaerob} + \beta) 
     """)
     st.markdown(r"""
-        * $\mu$: It is the specific growth rate calculated by the selected kinetic model. ($\mu_{total}$ if Mixed/Switched).
+        * $\mu{anaerob}$: It is the specific growth rate calculated by the selected kinetic model. ($\mu_{anaerob}$ if Mixed/Switched).
         * $\alpha$: Growth-associated product formation coefficient ($g_P \cdot g_X^{-1}$).
         * $\beta$: Non-growth-associated product formation coefficient ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
         * $K_{O,P}$: Oxygen inhibition constant on ethanol *production* ($g/L$). A low value indicates strong suppression of $P$ production by $O_2$.
-        * $\mu_{anaerob}$: Es la tasa específica de crecimiento calculada por el modelo cinético seleccionado ($\mu_{anaerob}$ si es Mixta/Conmutada).
-        * $\alpha$: Coeficiente de formación de producto asociado al crecimiento ($g_P \cdot g_X^{-1}$).
-        * $\beta$: Coeficiente de formación de producto no asociado al crecimiento ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
         """)
 
     st.markdown("---") # Visual separator
@@ -185,11 +182,11 @@ def home_page():
     # (The Sensitivity, Adjustment, EKF, RTO, NMPC subsections are not modified.)
     st.subheader("🔹 Sensitivity analysis")
     st.markdown(r"""
-        Evaluates how uncertainty or variations in the model parameters ($theta$, such as $$mu_{max}, K_S, Y_{XS}$, etc.) 
+        Evaluates how uncertainty or variations in the model parameters ($\theta$, such as $\mu_{\max}, K_S, Y_{XS}$, etc.) 
         affect the model outputs (the state variables $X, S, P, O_2$). It allows identifying the most influential parameters, 
         crucial for optimization and experimental design. A common metric is the normalized sensitivity coefficient:
         $S_{ij} = \frac{\partial y_i / y_i}{\partial \theta_j / \theta_j} = \frac{\partial \ln y_i}{\partial \ln \theta_j}$
-        where $y_i$ is an output $\theta_j$ is a parameter.
+        where $y_i$ is an output and $\theta_j$ is a parameter.
         """)
     st.markdown("---")
     st.subheader("🔹 Parameter Adjustment (Estimation)")
