@@ -1,33 +1,91 @@
-# ferm_alcohol.py
+# -*- coding: utf-8 -*-
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-# Importar TODAS las funciones cinéticas (asegúrate que estén disponibles)
-# from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion
+import traceback # Para mostrar errores detallados
+import time # Para medir tiempos
+
 # --- INICIO: Definiciones dummy de funciones cinéticas (si no tienes Utils.kinetics) ---
 # Reemplaza esto con tus importaciones reales si están disponibles
 def mu_monod(S, mumax, Ks):
-    return mumax * S / (Ks + S)
+    # Asegurar S no negativo y evitar división por cero
+    S = max(0.0, S)
+    Ks = max(1e-9, Ks)
+    # Evitar división por cero en el denominador
+    den = Ks + S
+    if den < 1e-9: return 0.0
+    return mumax * S / den
+
 def mu_sigmoidal(S, mumax, Ks, n):
-    return mumax * (S**n) / (Ks**n + S**n)
+    S = max(0.0, S)
+    Ks = max(1e-9, Ks)
+    n = max(1e-6, n) # Evitar n=0
+    try:
+        S_n = S**n
+        Ks_n = Ks**n
+        den = Ks_n + S_n
+        if den < 1e-9: return 0.0
+        return mumax * S_n / den
+    except OverflowError: # Manejar posible overflow con n grande
+        return mumax if S > Ks else 0.0
+
+
 def mu_completa(S, O2, P, mumax, Ks, KO, KP_gen):
-    mu = mumax * (S / (Ks + S)) * (O2 / (KO + O2)) * (KP_gen / (KP_gen + P))
-    return mu
+    S = max(0.0, S)
+    O2_mgL = max(0.0, O2) # O2 en mg/L
+    P = max(0.0, P)
+    Ks = max(1e-9, Ks)
+    KO_mgL = max(1e-9, KO) # KO en mg/L
+    KP_gen = max(1e-9, KP_gen)
+
+    term_S = S / (Ks + S)
+    term_O2 = O2_mgL / (KO_mgL + O2_mgL) # KO y O2 ambos en mg/L
+    term_P = KP_gen / (KP_gen + P) # Asumiendo inhibición tipo no competitivo
+
+    mu = mumax * term_S * term_O2 * term_P
+    return max(0.0, mu)
+
+
 def mu_fermentacion(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob, Ks_anaerob, KiS_anaerob, KP_anaerob, n_p, KO_inhib_anaerob, considerar_O2=None):
-    # Modelo mixto simplificado: suma ponderada por O2
-    mu_aer = mumax_aerob * (S / (Ks_aerob + S)) * (O2 / (KO_aerob + O2))
-    mu_anaer = mumax_anaerob * (S / (Ks_anaerob + S + S**2/KiS_anaerob)) * (KP_anaerob**n_p / (KP_anaerob**n_p + P**n_p)) * (KO_inhib_anaerob / (KO_inhib_anaerob + O2))
-    # El argumento considerar_O2 no se usa en esta implementación mixta directa,
-    # pero se mantiene por compatibilidad con la llamada en 'Fermentación Conmutada'.
-    # Si 'Fermentación Conmutada' lo llama con considerar_O2=True, debería usar mu_aer.
-    # Si lo llama con considerar_O2=False, debería usar mu_anaer.
-    # Esta implementación simple suma ambas, lo cual es más para el tipo "Fermentación".
-    # Para una implementación correcta de "Conmutada", la lógica debería estar más arriba.
+    # Asegurar valores no negativos y evitar división por cero
+    S = max(0.0, S)
+    P = max(0.0, P)
+    O2_mgL = max(0.0, O2) # O2 en mg/L
+
+    Ks_aerob = max(1e-9, Ks_aerob)
+    KO_aerob_mgL = max(1e-9, KO_aerob) # KO_aerob en mg/L
+    Ks_anaerob = max(1e-9, Ks_anaerob)
+    KiS_anaerob = max(1e-9, KiS_anaerob)
+    KP_anaerob = max(1e-9, KP_anaerob)
+    n_p = max(1e-6, n_p)
+    KO_inhib_anaerob_mgL = max(1e-9, KO_inhib_anaerob) # KO_inhib_anaerob en mg/L
+
+    # --- Crecimiento Aerobio ---
+    den_O2_aer = KO_aerob_mgL + O2_mgL
+    term_O2_aer = O2_mgL / den_O2_aer if den_O2_aer > 1e-9 else 0.0
+    mu_aer = mumax_aerob * (S / (Ks_aerob + S)) * term_O2_aer
+    mu_aer = max(0.0, mu_aer)
+
+    # --- Crecimiento Anaerobio ---
+    den_S_an = Ks_anaerob + S + (S**2 / KiS_anaerob)
+    term_S_an = S / max(1e-9, den_S_an)
+
+    # Asegurar que la base de la potencia no sea negativa
+    term_P_base = max(0.0, 1.0 - (P / KP_anaerob))
+    term_P_an = term_P_base**n_p
+
+    den_O2_inhib = KO_inhib_anaerob_mgL + O2_mgL
+    term_O2_inhib_an = KO_inhib_anaerob_mgL / den_O2_inhib if den_O2_inhib > 1e-9 else 0.0
+
+    mu_anaer = mumax_anaerob * term_S_an * term_P_an * term_O2_inhib_an
+    mu_anaer = max(0.0, mu_anaer)
+
+    # --- Combinación de tasas (dependiendo del contexto de llamada) ---
     if considerar_O2 is True: # Llamado desde Conmutada - Fase Aerobia
-        return mumax_aerob * (S / (Ks_aerob + S)) * (O2 / (KO_aerob + O2)) # Asume Ks_aerob = Ks, KO_aerob = KO
+        return mu_aer
     elif considerar_O2 is False: # Llamado desde Conmutada - Fase Anaerobia
-         return mumax_anaerob * (S / (Ks_anaerob + S + S**2/KiS_anaerob)) * (KP_anaerob**n_p / (KP_anaerob**n_p + P**n_p)) # Asume Ks_anaerob = Ks, etc.
+        return mu_anaer
     else: # Llamado desde modelo "Fermentación" (mixto)
         return mu_aer + mu_anaer
 # --- FIN: Definiciones dummy ---
@@ -39,7 +97,7 @@ def fermentacion_alcoholica_page():
     Este modelo simula una fermentación alcohólica que inicia en **lote (fase aeróbica)**,
     continúa en **lote alimentado (fase de transición/anaeróbica)**, y finaliza
     en **lote (fase anaeróbica)** para agotar el sustrato. Seleccione el modelo cinético.
-    **NUEVO:** Se incluye inhibición de producción de etanol por Oxígeno ($K_{O,P}$).
+    
     """)
 
     with st.sidebar:
@@ -49,7 +107,6 @@ def fermentacion_alcoholica_page():
         Ks = st.slider("Ks base [g/L]", 0.01, 10.0, 1.0, 0.1)
 
         # --- Parámetros específicos de cada modelo cinético ---
-        # (Sin cambios aquí respecto a tu código original)
         if tipo_mu == "Monod simple":
             mumax = st.slider("μmax [1/h]", 0.1, 1.0, 0.4, 0.05)
         elif tipo_mu == "Monod sigmoidal":
@@ -67,6 +124,7 @@ def fermentacion_alcoholica_page():
             KP_c = st.slider("KP (Inhib. Etanol) [g/L]", 20.0, 150.0, 80.0, 5.0, key="kp_c")
             n_p_c = st.slider("Exponente Inhib. Etanol (n_p)", 0.5, 3.0, 1.0, 0.1, key="np_c")
             KO_ferm_c = st.slider("KO (O2 - afinidad aerobia) [mg/L]", 0.01, 5.0, 0.1, 0.01, key="ko_ferm_c")
+            KO_inhib_anaerob_c = st.slider("KO_inhib_anaerob (Inhib. O2 en μ Anaerobio) [mg/L]", 0.01, 5.0, 0.1, 0.01, key="ko_inhib_c") # Añadido para consistencia
         elif tipo_mu == "Fermentación":
             st.info("Modelo mixto: mu = mu1(aerobio) + mu2(anaerobio).")
             st.markdown("**Parámetros mu1 (Aerobio):**")
@@ -86,39 +144,38 @@ def fermentacion_alcoholica_page():
         Yxs = st.slider("Yxs (Biomasa/Sustrato) [g/g]", 0.05, 0.6, 0.1, 0.01, key="yxs")
         Yps = st.slider("Yps (Etanol/Sustrato) [g/g]", 0.1, 0.51, 0.45, 0.01, key="yps")
         Yxo = st.slider("Yxo (Biomasa/O2) [gX/gO2]", 0.1, 2.0, 0.8, 0.1, key="yxo")
-        alpha_lp = st.slider("α (Asociado a crecimiento) [g P / g X]", 0.0, 5.0, 2.2, 0.1, key="alpha")
-        beta_lp = st.slider("β (No asociado a crecimiento) [g P / g X / h]", 0.0, 0.5, 0.05, 0.01, key="beta")
+        alpha_lp = st.slider("α (Asociado a crecimiento) [g P / g X]", 0.0, 10.0, 4.5, 0.1, key="alpha")
+        beta_lp = st.slider("β (No asociado a crecimiento) [g P / g X / h]", 0.0, 1.5, 0.40, 0.01, key="beta")
         ms = st.slider("ms (Mantenimiento Sustrato) [g S / g X / h]", 0.0, 0.2, 0.02, 0.01, key="ms")
         mo = st.slider("mo (Mantenimiento O2) [gO2/gX/h]", 0.0, 0.1, 0.01, 0.005, key="mo")
         Kd = st.slider("Kd (Decaimiento Biomasa) [1/h]", 0.0, 0.1, 0.01, 0.005, key="kd")
-        # <<< NUEVO: Parámetro de inhibición de producción de etanol por O2 >>>
-        KO_inhib_prod = st.slider("KO_inhib_prod (Inhib. O2 en Prod. Etanol) [mg/L]", 0.001, 1.0, 0.05, 0.005, key="ko_inhib_p", help="Concentración de O2 que reduce a la mitad la producción de etanol. Valor bajo = fuerte inhibición.")
+        KO_inhib_prod = st.slider("KO_inhib_prod (Inhib. O2 en Prod. Etanol) [mg/L]", 0.001, 1.0, 0.05, 0.005, key="ko_inhib_p", help="Ya no se usa en rate_P. Concentración de O2 que reduce a la mitad la producción de etanol.")
 
         st.subheader("3. Transferencia de Oxígeno")
         Kla = st.slider("kLa [1/h]", 10.0, 400.0, 100.0, 10.0, key="kla")
-        Cs = st.slider("O2 Saturado (Cs) [mg/L]", 0.01, 15.0, 7.5, 0.01, key="cs") # <<< MODIFICADO: Valor mínimo a 0.01 para evitar problemas
+        Cs = st.slider("O2 Saturado (Cs) [mg/L]", 0.01, 15.0, 0.09, 0.01, key="cs")
 
         st.subheader("4. Fases de Operación y Alimentación")
-        t_batch_inicial_fin = st.slider("Fin Fase Lote Inicial [h]", 1.0, 30.0, 10.0, 1.0, key="t_batch_fin")
-        t_alim_inicio = st.slider("Inicio Alimentación [h]", t_batch_inicial_fin, t_batch_inicial_fin + 24.0, t_batch_inicial_fin + 0.1, 0.5, key="t_alim_ini")
-        t_alim_fin = st.slider("Fin Alimentación (Inicio Lote Final) [h]", t_alim_inicio + 1.0, 40.0, t_alim_inicio + 24.0, 1.0, key="t_alim_fin")
-        t_final = st.slider("Tiempo Total de Simulación [h]", t_alim_fin + 1.0, 100.0, t_alim_fin + 5.0, 1.0, key="t_total")
-        O2_controlado = st.slider("Nivel O2 Objetivo/Ref (Fase Lote Inicial) [mg/L]", 0.01, Cs, 0.08, 0.01, key="o2_control") # Valor 0.08
+        t_batch_inicial_fin = st.slider("Fin Fase Lote Inicial [h]", 1.0, 30.0, 4.0, 1.0, key="t_batch_fin")
+        t_alim_inicio = st.slider("Inicio Alimentación [h]", t_batch_inicial_fin, t_batch_inicial_fin + 24.0, t_batch_inicial_fin + 0.01, 0.5, key="t_alim_ini")
+        t_alim_fin = st.slider("Fin Alimentación (Inicio Lote Final) [h]", t_alim_inicio + 1.0, 40.0, t_alim_inicio + 5.0, 1.0, key="t_alim_fin")
+        t_final = st.slider("Tiempo Total de Simulación [h]", t_alim_fin + 1.0, 100.0, t_alim_fin + 7.0, 1.0, key="t_total")
+        O2_controlado = st.slider("Nivel O2 Objetivo/Ref (Fase Lote Inicial) [mg/L]", 0.01, Cs, 0.08, 0.01, key="o2_control")
 
-        estrategia = st.selectbox("Estrategia Alimentación", ["Constante", "Exponencial", "Lineal", "Escalon"], key="strat")
-        Sin = st.slider("Sustrato en Alimentación (Sin) [g/L]", 10.0, 700.0, 400.0, 10.0, key="sin")
-        F_base = st.slider("Flujo Base (o Inicial) [L/h]", 0.01, 5.0, 0.1, 0.01, key="fbase")
+        estrategia = st.selectbox("Estrategia Alimentación", ["Lineal", "Exponencial","Constante", "Escalon"], key="strat")
+        Sin = st.slider("Sustrato en Alimentación (Sin) [g/L]", 10.0, 700.0, 250.0, 10.0, key="sin")
+        F_base = st.slider("Flujo Base (o Inicial) [L/h]", 0.01, 5.0, 0.01, 0.01, key="fbase")
         if estrategia == "Lineal":
-            F_lineal_fin = st.slider("Flujo Final (Lineal) [L/h]", F_base, 10.0, F_base * 2, 0.01, key="ffin_lin")
+            F_lineal_fin = st.slider("Flujo Final (Lineal) [L/h]", F_base, 10.0, F_base * 11, 0.01, key="ffin_lin")
         elif estrategia == "Exponencial":
             k_exp = st.slider("Constante Crecimiento Exp. (k_exp) [1/h]", 0.01, 0.5, 0.1, 0.01, key="kexp")
 
         st.subheader("5. Condiciones Iniciales")
-        V0 = st.number_input("Volumen Inicial [L]", 0.1, 100.0, 5.0, key="v0")
-        X0 = st.number_input("Biomasa Inicial [g/L]", 0.05, 10.0, 0.1, key="x0")
-        S0 = st.number_input("Sustrato Inicial [g/L]", 10.0, 200.0, 100.0, key="s0")
+        V0 = st.number_input("Volumen Inicial [L]", 0.1, 100.0, 0.25, key="v0")
+        X0 = st.number_input("Biomasa Inicial [g/L]", 0.05, 10.0, 1.20, key="x0")
+        S0 = st.number_input("Sustrato Inicial [g/L]", 10.0, 200.0, 20.0, key="s0")
         P0 = st.number_input("Etanol Inicial [g/L]", 0.0, 50.0, 0.0, key="p0")
-        O0 = st.number_input("O2 Inicial [mg/L]", min_value=0.0, max_value=Cs, value=0.08, step=0.01, key="o0") # Valor 0.08
+        O0 = st.number_input("O2 Inicial [mg/L]", min_value=0.0, max_value=Cs, value=0.08, step=0.01, key="o0")
 
         st.subheader("6. Parámetros del Solver")
         atol = st.number_input("Tolerancia absoluta (atol)", min_value=1e-9, max_value=1e-3, value=1e-6, format="%e", key="atol")
@@ -154,23 +211,21 @@ def fermentacion_alcoholica_page():
         "alpha_lp": alpha_lp, "beta_lp": beta_lp, "ms": ms, "mo": mo, "Kd": Kd,
         "Kla": Kla, "Cs": Cs, "Sin": Sin,
         "t_batch_inicial_fin": t_batch_inicial_fin, # Tiempo crítico
-        "KO_inhib_prod": KO_inhib_prod, # <<< NUEVO: Añadir el parámetro al diccionario
+        "KO_inhib_prod": KO_inhib_prod, # Se mantiene por si se usa en otro lado, pero no en rate_P
     }
     if tipo_mu == "Monod simple": params["mumax"] = mumax
     elif tipo_mu == "Monod sigmoidal": params["mumax"] = mumax; params["n_sig"] = n_sig
     elif tipo_mu == "Monod con restricciones": params["mumax"] = mumax; params["KO"] = KO_restr; params["KP_gen"] = KP_gen
     elif tipo_mu == "Fermentación Conmutada":
         params["mumax_aero"] = mumax_aero_c; params["mumax_anaero"] = mumax_anaero_c
-        params["KiS"] = KiS_c; params["KP"] = KP_c; params["n_p"] = n_p_c; params["KO"] = KO_ferm_c
-        params["O2_controlado"] = O2_controlado # Necesario para este modelo
-         # <<< MODIFICADO: Pasar parámetros necesarios a mu_fermentacion incluso en modo conmutado >>>
         params["Ks_aerob"] = Ks # Usar Ks base como Ks_aerob
-        params["KO_aerob"] = KO_ferm_c # Usar KO_ferm_c como KO_aerob
+        params["KO_aerob"] = KO_ferm_c # Usar KO_ferm_c como KO_aerob (mg/L)
         params["Ks_anaerob"] = Ks # Usar Ks base como Ks_anaerob
         params["KiS_anaerob"] = KiS_c # Usar KiS_c como KiS_anaerob
         params["KP_anaerob"] = KP_c # Usar KP_c como KP_anaerob
-        # n_p ya está ("n_p")
-        params["KO_inhib_anaerob"] = 1e-6 # Asumir inhibición muy fuerte por O2 en anaerobiosis si no se define explícitamente
+        params["n_p"] = n_p_c
+        params["KO_inhib_anaerob"] = KO_inhib_anaerob_c # Usar el nuevo slider (mg/L)
+        params["O2_controlado"] = O2_controlado
     elif tipo_mu == "Fermentación":
         params["mumax_aerob"] = mumax_aerob_m; params["Ks_aerob"] = Ks_aerob_m; params["KO_aerob"] = KO_aerob_m
         params["mumax_anaerob"] = mumax_anaerob_m; params["Ks_anaerob"] = Ks_anaerob_m; params["KiS_anaerob"] = KiS_anaerob_m
@@ -184,97 +239,87 @@ def fermentacion_alcoholica_page():
 
         es_lote_inicial = (t < params["t_batch_inicial_fin"])
 
-        # --- Cálculo de mu ---
+        # --- Cálculo de mu (total), mu_aer y mu_anaer ---
         mu = 0.0
-        # <<< MODIFICADO: Lógica de cálculo de mu para "Fermentación Conmutada" y "Fermentación" >>>
+        mu_aer = 0.0
+        mu_anaer = 0.0
+
         if params["tipo_mu"] == "Fermentación":
-             # Llama a mu_fermentacion que ahora debería sumar componentes aerobio y anaerobio
-             mu = mu_fermentacion(S, P, O2, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"],
-                                  params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"],
-                                  params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"],
-                                  considerar_O2=None) # None indica modo mixto
+            # Calcular ambos componentes por separado
+            mu_aer = mu_fermentacion(S, P, O2, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
+            mu_anaer = mu_fermentacion(S, P, O2, 0, 1, float('inf'), params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"], considerar_O2=False)
+            mu = mu_aer + mu_anaer # mu total es la suma
         elif params["tipo_mu"] == "Fermentación Conmutada":
-             # Llama a mu_fermentacion pasando flag para seleccionar la cinética correcta
-             if es_lote_inicial:
-                 current_mumax = params.get("mumax_aero", 0.0)
-                 current_O2_for_mu = params.get("O2_controlado", O2) # Ojo: Usa O2 controlado para el cálculo de mu en fase 1
-                 mu = mu_fermentacion(S, P, current_O2_for_mu, current_mumax, params["Ks"], # Usa Ks base
-                                      params.get("KO", 0.1), # Usa KO_ferm_c (como KO_aerob)
-                                      0, params.get("Ks", 1.0), # Placeholder para anaerobios
-                                      float('inf'), float('inf'), 1.0, 1e-6, # Placeholder para anaerobios
-                                      considerar_O2=True) # Indica fase aerobia
-             else:
-                 current_mumax = params.get("mumax_anaero", 0.0)
-                 # Usa O2 real simulado para la cinética anaerobia (inhibición por O2)
-                 mu = mu_fermentacion(S, P, O2, 0, params.get("Ks", 1.0), 1e-6, # Placeholder para aerobios
-                                      current_mumax, params["Ks"], # Usa Ks base
-                                      params.get("KiS", float('inf')), params.get("KP", float('inf')),
-                                      params.get("n_p", 1.0), params.get("KO_inhib_anaerob", 1e-6), # Necesita KO_inhib_anaerob
-                                      considerar_O2=False) # Indica fase anaerobia
-        elif params["tipo_mu"] == "Monod simple": mu = mu_monod(S, params.get("mumax", 0.0), params["Ks"])
-        elif params["tipo_mu"] == "Monod sigmoidal": mu = mu_sigmoidal(S, params.get("mumax", 0.0), params["Ks"], params.get("n_sig", 1))
+            if es_lote_inicial:
+                current_O2_for_mu = params.get("O2_controlado", O2)
+                mu_aer = mu_fermentacion(S, P, current_O2_for_mu, params["mumax_aero"], params["Ks_aerob"], params["KO_aerob"], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
+                mu = mu_aer # En fase 1, mu_anaer es 0
+            else:
+                mu_anaer = mu_fermentacion(S, P, O2, 0, 1, float('inf'), params["mumax_anaero"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"], considerar_O2=False)
+                mu = mu_anaer # En fase 2/3, mu_aer es 0
+        elif params["tipo_mu"] == "Monod simple":
+             mu = mu_monod(S, params.get("mumax", 0.0), params["Ks"])
+             # Asumir que todo el crecimiento es aerobio para el balance de S
+             mu_aer = mu
+        elif params["tipo_mu"] == "Monod sigmoidal":
+             mu = mu_sigmoidal(S, params.get("mumax", 0.0), params["Ks"], params.get("n_sig", 1))
+             # Asumir que todo el crecimiento es aerobio para el balance de S
+             mu_aer = mu
         elif params["tipo_mu"] == "Monod con restricciones":
              mu = mu_completa(S, O2, P, params.get("mumax", 0.0), params["Ks"], params.get("KO", 0.1), params.get("KP_gen", 50.0))
+             # Asumir que todo el crecimiento es aerobio para el balance de S
+             mu_aer = mu
 
-        mu = max(0, mu) # Asegurar que mu no sea negativo
+        mu = max(0, mu)
+        mu_aer = max(0, mu_aer)
+        mu_anaer = max(0, mu_anaer)
+        mu_net = mu - params["Kd"] # Tasa neta total
 
         # --- Cálculo de Flujo y Tasas de Consumo/Producción ---
         F = calcular_flujo(t)
 
-        # Tasa específica de producción de Etanol (Luedeking-Piret base)
-        qP_base = params["alpha_lp"] * mu + params["beta_lp"]
+        # <<< CORRECCIÓN qP >>>
+        # Tasa específica de producción de Etanol (Luedeking-Piret)
+        # Usar SOLO mu_anaer para el término asociado a crecimiento
+        qP = params["alpha_lp"] * mu_anaer + params["beta_lp"]
+        qP = max(0.0, qP) # Asegurar no negatividad
 
-        # <<< NUEVO: Factor de inhibición por O2 en la producción de Etanol >>>
-        ko_inhib_p = params.get("KO_inhib_prod", 0.05) # Obtener K_O,P del diccionario
-        # Evitar división por cero si ko_inhib_p es muy pequeño o O2 es negativo
-        inhib_factor_O2_prod = ko_inhib_p / (ko_inhib_p + max(1e-9, O2))
+        # Tasa volumétrica de producción de Etanol (SIN inhibición por O2)
+        rate_P = qP * X
 
-        # Tasa volumétrica de producción de Etanol (MODIFICADA por inhibición de O2)
-        rate_P = qP_base * X * inhib_factor_O2_prod
-        # <<< FIN NUEVO >>>
-
-        # Consumos de Sustrato (sin cambios aquí)
-        consumo_S_X = (mu / params["Yxs"]) * X if params["Yxs"] > 1e-6 else 0
-        # <<< MODIFICADO: Consumo de sustrato para producto debe usar la rate_P efectiva >>>
-        consumo_S_P = (rate_P / params["Yps"]) if params["Yps"] > 1e-6 else 0
+        # <<< CORRECCIÓN dSdt >>>
+        # Consumo de Sustrato para crecimiento: usar SOLO mu_aer
+        consumo_S_X = (mu_aer / params["Yxs"]) * X if params["Yxs"] > 1e-6 else 0
+        # Consumo de Sustrato para producto (usa qP calculado con mu_anaer)
+        consumo_S_P = (qP / params["Yps"]) * X if params["Yps"] > 1e-6 else 0
         consumo_S_maint = params["ms"] * X
         rate_S = consumo_S_X + consumo_S_P + consumo_S_maint
 
-        # Consumos de Oxígeno (sin cambios aquí)
-        consumo_O2_X = (mu / params["Yxo"]) * X if params["Yxo"] > 1e-6 else 0
+        # Consumos de Oxígeno (usa mu_aer para crecimiento)
+        consumo_O2_X = (mu_aer / params["Yxo"]) * X if params["Yxo"] > 1e-6 else 0
         consumo_O2_maint = params["mo"] * X
         OUR_g = consumo_O2_X + consumo_O2_maint # [g O2 / L / h]
-        OUR_mg = OUR_g * 1000.0 # Convertir a [mg O2 / L / h] para balance de O2
+        OUR_mg = OUR_g * 1000.0 # Convertir a [mg O2 / L / h]
 
         # Ecuaciones Diferenciales
-        dXdt = (mu - params["Kd"]) * X - (F / V) * X
-        dSdt = -rate_S + (F / V) * (params["Sin"] - S)
-        # dPdt usa la rate_P modificada que incluye la inhibición por O2
-        dPdt = rate_P - (F / V) * P
+        dXdt = mu_net * X - (F / V) * X # Usa mu_net total
+        dSdt = -rate_S + (F / V) * (params["Sin"] - S) # rate_S ahora usa mu_aer para crecimiento
+        dPdt = rate_P - (F / V) * P # rate_P ahora usa mu_anaer para crecimiento
         dVdt = F
 
         # --- Cálculo de dOdt (sin cambios en la lógica de fase) ---
         if es_lote_inicial:
-             # En la fase inicial, si O2 está controlado, asumimos que dOdt es tal que mantiene O2 en el nivel objetivo.
-             # Para la simulación, fijar O2 puede ser complejo. Fijar dOdt=0 es una simplificación
-             # que mantiene O2 en su valor inicial si O0 = O2_controlado.
-             # Si O0 != O2_controlado, O2 permanecerá en O0 durante esta fase.
-             # Una mejor aproximación sería calcular el OTR necesario y ajustar Kla, pero es más complejo.
-             # Manteniendo tu lógica original:
-             dOdt = 0.0 # Fuerza derivada a cero en la fase inicial batch
-             # <<< NOTA: Si O0 es diferente de O2_controlado, O2 se mantendrá en O0.
-             # El O2 usado en el cálculo de mu para "Fermentación Conmutada" sí usa O2_controlado >>>
+            dOdt = 0.0 # Mantiene O2 constante en la fase inicial
         else:
-             # Calcular normalmente en fases posteriores (fed-batch y final batch)
-             OTR = params["Kla"] * (params["Cs"] - O2) # [mg O2 / L / h]
-             dOdt = OTR - OUR_mg - (F / V) * O2     # [mg/L/h]
+            OTR = params["Kla"] * (params["Cs"] - O2) # [mg O2 / L / h]
+            # <<< CORRECCIÓN SYNTAX ERROR (anterior) >>>
+            dOdt = OTR - OUR_mg - (F / V) * O2 # [mg/L/h]
 
         return [dXdt, dSdt, dPdt, dOdt, dVdt]
 
     # ------- Simulación y Resultados -------
     y0 = [X0, S0, P0, O0, V0]
     t_span = [0, t_final]
-    # Aumentar el número de puntos para capturar mejor la dinámica
     num_puntos = max(500, int(t_final * 25) + 1)
     t_eval = np.linspace(t_span[0], t_span[1], num_puntos)
 
@@ -294,24 +339,17 @@ def fermentacion_alcoholica_page():
         # Corregir posibles valores negativos muy pequeños por errores numéricos
         X = np.maximum(X, 0); S = np.maximum(S, 0); P = np.maximum(P, 0); O2 = np.maximum(O2, 0); V = np.maximum(V, 1e-6)
 
-        # <<< MODIFICADO: Corregir O2 en la fase inicial si dOdt=0 fue usado >>>
-        # Si se usó dOdt=0, O2 debería ser constante = O0 en esa fase.
-        # O si se usó O2_controlado en mu, quizás sea mejor setear O2 a ese valor en la fase 1 para consistencia gráfica.
-        # Por simplicidad, mantendremos la salida del solver, pero ten en cuenta esta posible inconsistencia.
-        # Si quieres forzar O2 = O2_controlado en fase 1 post-simulación:
-        # indices_fase1 = np.where(t < t_batch_inicial_fin)[0]
-        # if len(indices_fase1) > 0:
-        #    O2[indices_fase1] = O2_controlado # O podrías usar O0
-
         flujo_sim = np.array([calcular_flujo(ti) for ti in t])
 
         # --- Recalcular Tasas Específicas y Volumétricas Post-Simulación ---
         mu_sim = []
+        mu_aer_sim = [] # Guardar mu_aer para recálculo
+        mu_anaer_sim = [] # Guardar mu_anaer para recálculo
         qP_sim = []
         qS_sim = []
         qO_sim = []
         OTR_sim = []
-        inhib_factor_sim = []
+        # inhib_factor_sim = [] # Ya no se usa para rate_P
 
         for i in range(len(t)):
             # Recalcular mu usando los valores simulados
@@ -319,58 +357,59 @@ def fermentacion_alcoholica_page():
             ti = t[i]
             es_lote_inicial_i = (ti < params["t_batch_inicial_fin"])
 
-            # Re-calcular mu exactamente como dentro del solver
+            # Re-calcular mu, mu_aer, mu_anaer exactamente como dentro del solver
             mu_i = 0.0
+            mu_aer_i = 0.0
+            mu_anaer_i = 0.0
             if params["tipo_mu"] == "Fermentación":
-                 mu_i = mu_fermentacion(si, pi, o2i, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"],
-                                      params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"],
-                                      params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"],
-                                      considerar_O2=None)
+                mu_aer_i = mu_fermentacion(si, pi, o2i, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
+                mu_anaer_i = mu_fermentacion(si, pi, o2i, 0, 1, float('inf'), params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"], considerar_O2=False)
+                mu_i = mu_aer_i + mu_anaer_i
             elif params["tipo_mu"] == "Fermentación Conmutada":
-                 if es_lote_inicial_i:
-                     current_mumax_i = params.get("mumax_aero", 0.0)
-                     # Usar O2 simulado aquí para ver el mu real bajo esa condición,
-                     # incluso si el solver usó O2_controlado internamente para la fase 1.
-                     # O usar O2_controlado si quieres ver el mu 'objetivo' de esa fase. Usemos el simulado.
-                     current_O2_for_mu_i = o2i
-                     mu_i = mu_fermentacion(si, pi, current_O2_for_mu_i, current_mumax_i, params["Ks"],
-                                          params.get("KO", 0.1), 0, params.get("Ks", 1.0),
-                                          float('inf'), float('inf'), 1.0, 1e-6,
-                                          considerar_O2=True)
-                 else:
-                     current_mumax_i = params.get("mumax_anaero", 0.0)
-                     mu_i = mu_fermentacion(si, pi, o2i, 0, params.get("Ks", 1.0), 1e-6,
-                                          current_mumax_i, params["Ks"], params.get("KiS", float('inf')),
-                                          params.get("KP", float('inf')), params.get("n_p", 1.0),
-                                          params.get("KO_inhib_anaerob", 1e-6),
-                                          considerar_O2=False)
-            elif params["tipo_mu"] == "Monod simple": mu_i = mu_monod(si, params.get("mumax", 0.0), params["Ks"])
-            elif params["tipo_mu"] == "Monod sigmoidal": mu_i = mu_sigmoidal(si, params.get("mumax", 0.0), params["Ks"], params.get("n_sig", 1))
+                if es_lote_inicial_i:
+                    current_O2_for_mu_i = params.get("O2_controlado", o2i)
+                    mu_aer_i = mu_fermentacion(si, pi, current_O2_for_mu_i, params["mumax_aero"], params["Ks_aerob"], params["KO_aerob"], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
+                    mu_i = mu_aer_i
+                else:
+                    mu_anaer_i = mu_fermentacion(si, pi, o2i, 0, 1, float('inf'), params["mumax_anaero"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"], considerar_O2=False)
+                    mu_i = mu_anaer_i
+            elif params["tipo_mu"] == "Monod simple":
+                 mu_i = mu_monod(si, params.get("mumax", 0.0), params["Ks"])
+                 mu_aer_i = mu_i
+            elif params["tipo_mu"] == "Monod sigmoidal":
+                 mu_i = mu_sigmoidal(si, params.get("mumax", 0.0), params["Ks"], params.get("n_sig", 1))
+                 mu_aer_i = mu_i
             elif params["tipo_mu"] == "Monod con restricciones":
                  mu_i = mu_completa(si, o2i, pi, params.get("mumax", 0.0), params["Ks"], params.get("KO", 0.1), params.get("KP_gen", 50.0))
+                 mu_aer_i = mu_i
 
             mu_i = max(0, mu_i)
+            mu_aer_i = max(0, mu_aer_i)
+            mu_anaer_i = max(0, mu_anaer_i)
             mu_sim.append(mu_i)
+            mu_aer_sim.append(mu_aer_i)
+            mu_anaer_sim.append(mu_anaer_i)
 
-            # Recalcular qP, qS, qO, OTR
-            qP_base_i = params["alpha_lp"] * mu_i + params["beta_lp"]
-            ko_inhib_p_i = params.get("KO_inhib_prod", 0.05)
-            inhib_factor_i = ko_inhib_p_i / (ko_inhib_p_i + max(1e-9, o2i))
-            inhib_factor_sim.append(inhib_factor_i)
-            qP_i = qP_base_i * inhib_factor_i
+            # Recalcular qP, qS, qO, OTR usando la misma lógica que el solver
+            # <<< CORRECCIÓN qP >>>
+            qP_i = params["alpha_lp"] * mu_anaer_i + params["beta_lp"] # Usa mu_anaer_i
+            qP_i = max(0.0, qP_i)
             qP_sim.append(qP_i)
 
-            consumo_S_X_i = (mu_i / params["Yxs"]) if params["Yxs"] > 1e-6 else 0
-            consumo_S_P_i = (qP_i / params["Yps"]) if params["Yps"] > 1e-6 else 0 # Usa qP efectivo
+            # <<< CORRECCIÓN dSdt >>>
+            consumo_S_X_i = (mu_aer_i / params["Yxs"]) if params["Yxs"] > 1e-6 else 0 # Usa mu_aer_i
+            consumo_S_P_i = (qP_i / params["Yps"]) if params["Yps"] > 1e-6 else 0
             qS_i = consumo_S_X_i + consumo_S_P_i + params["ms"]
             qS_sim.append(qS_i)
 
-            consumo_O2_X_i = (mu_i / params["Yxo"]) if params["Yxo"] > 1e-6 else 0
+            # qO usa mu_aer_i
+            consumo_O2_X_i = (mu_aer_i / params["Yxo"]) if params["Yxo"] > 1e-6 else 0
             qO_i = consumo_O2_X_i + params["mo"] # gO2/gX/h
             qO_sim.append(qO_i)
 
             OTR_i = params["Kla"] * (params["Cs"] - o2i) # mg/L/h
             OTR_sim.append(OTR_i)
+            # inhib_factor_sim ya no es necesario
 
         # Convertir listas a arrays numpy
         mu_sim = np.array(mu_sim)
@@ -379,7 +418,7 @@ def fermentacion_alcoholica_page():
         qO_sim = np.array(qO_sim) * 1000 # Convertir a mgO2/gX/h
         OTR_sim = np.array(OTR_sim)
         OUR_sim = qO_sim * X # mgO2/L/h
-        inhib_factor_sim = np.array(inhib_factor_sim)
+        #inhib_factor_sim = np.array(inhib_factor_sim)
 
 
          # Importar streamlit se ainda não foi feito no início do seu script
@@ -542,75 +581,49 @@ def fermentacion_alcoholica_page():
 
         # Ajusta o layout para evitar sobreposições
         plt.tight_layout(pad=3.0) # Padding ligeiramente aumentado
+        st.pyplot(fig)
 
-        # --- COMANDO ESSENCIAL PARA EXIBIR O GRÁFICO NO STREAMLIT ---
-        st.pyplot(fig) # <--- Esta linha mostra o gráfico 'fig' na interface do Streamlit
-
-        # --- Métricas Finais (Tradução PT-BR e usando Streamlit) ---
-        # Mantém a estrutura original com st.subheader e st.columns/st.metric
-        st.subheader("Métricas Finais (t = {:.1f} h)".format(t[-1] if len(t) > 0 else 0))
-
-        # Adiciona checagens para evitar erros se as listas/arrays estiverem vazios
+        # --- Métricas Clave ---
+        st.subheader("Métricas Finales (t = {:.1f} h)".format(t[-1]))
         col1, col2, col3 = st.columns(3)
-        vol_final = V[-1] if V.size > 0 else V0
-        etanol_final_conc = P[-1] if len(P) > 0 else P0
-        biomasa_final_conc = X[-1] if len(X) > 0 else X0
-        S_final_total = (S[-1] * V[-1]) if len(S) > 0 and len(V) > 0 else (S0 * V0)
-        
-        etanol_final_total = etanol_final_conc * vol_final
-        
-        
-
-        # Recalcula S_alimentado_total com checagem de tamanho e existência de Sin
-        S_alimentado_total = 0
-        if len(t) > 0 and len(flujo_sim) > 0 and 'Sin' in locals():
-            # Garante que fluxo_sim e Sin tenham o mesmo tamanho que t para trapz
-            len_t = len(t)
-            if len(flujo_sim) == len_t:
-                flujo_sim_corr = flujo_sim
-            else:
-                # Trata caso de tamanho incorreto (pode precisar de ajuste específico)
-                print(f"Aviso: Tamanho de flujo_sim ({len(flujo_sim)}) diferente de t ({len_t}).")
-                flujo_sim_corr = flujo_sim[:len_t] if len(flujo_sim) > len_t else np.pad(flujo_sim, (0, len_t - len(flujo_sim)))
-
-
-            if isinstance(Sin, (int, float)): # Se Sin for um número
-                S_alimentado_total = Sin * np.trapz(flujo_sim_corr, t)
-            elif isinstance(Sin, (list, np.ndarray)): # Se Sin for array/lista
-                if len(Sin) == len_t:
-                    S_alimentado_total = np.trapz(np.array(flujo_sim_corr) * np.array(Sin), t)
-                else:
-                    print(f"Aviso: Tamanho de Sin ({len(Sin)}) diferente de t ({len_t}). Cálculo de S_alimentado_total pode estar incorreto.")
-                    # Tenta usar Sin escalar se possível ou os primeiros elementos
-                    if len(Sin) > 0:
-                        S_alimentado_total = np.trapz(np.array(flujo_sim_corr) * Sin[0], t) # Exemplo: usa o primeiro valor de Sin
-
-        S_final_total = (S[-1] * V[-1]) if len(S) > 0 and len(V) > 0 else (S0 * V0)
+        vol_final = V[-1]; etanol_final_conc = P[-1]; biomasa_final_conc = X[-1]
         S_inicial_total = S0 * V0
-        S_consumido_total = S_inicial_total + S_alimentado_total - S_final_total
+        S_alimentado_total = np.trapz(flujo_sim * Sin, t) if len(t)>1 else 0
+        S_final_total = S[-1] * V[-1]
+        S_consumido_total = max(1e-9, S_inicial_total + S_alimentado_total - S_final_total)
+        P_inicial_total = P0 * V0
+        etanol_final_total = etanol_final_conc * vol_final
+        etanol_producido_total = etanol_final_total - P_inicial_total
 
-        col1.metric("Volume Final [L]", f"{vol_final:.2f}") # Traduzido
-        col2.metric("Etanol Final [g/L]", f"{etanol_final_conc:.2f}") # Traduzido
-        col3.metric("Biomassa Final [g/L]", f"{biomasa_final_conc:.2f}") # Traduzido
+        col1.metric("Volumen Final [L]", f"{vol_final:.2f}")
+        col2.metric("Etanol Final [g/L]", f"{etanol_final_conc:.2f}")
+        col3.metric("Biomasa Final [g/L]", f"{biomasa_final_conc:.2f}")
 
-        prod_vol_etanol = etanol_final_conc / t[-1] if len(t) > 0 and t[-1] > 0 else 0
-        col1.metric("Produtividade Vol. Etanol [g/L/h]", f"{prod_vol_etanol:.3f}") # Traduzido
-        rend_global_etanol = (etanol_final_total - P0 * V0) / S_consumido_total if S_consumido_total > 1e-6 else 0
-        col2.metric("Rendimento Global P/S [g/g]", f"{rend_global_etanol:.3f}") # Traduzido
+        prod_vol_etanol = etanol_producido_total / vol_final / t[-1] if t[-1] > 0 and vol_final > 1e-6 else 0
+        col1.metric("Productividad Vol. Etanol [g/L/h]", f"{prod_vol_etanol:.3f}")
+
+        rend_global_etanol = etanol_producido_total / S_consumido_total if S_consumido_total > 1e-9 else 0
+        col2.metric("Rendimiento Global P/S [g/g]", f"{rend_global_etanol:.3f}")
+
         try:
-            if len(P) > 0:  # Verifica se P não está vazio
-                p_max_idx = np.argmax(P)
-                col3.metric("Etanol Máx [g/L]", f"{P[p_max_idx]:.2f} (em t={t[p_max_idx]:.1f} h)") # Traduzido
-            else:
-                col3.metric("Etanol Máx [g/L]", "N/A") # Traduzido
-        except (ValueError, IndexError) as e:  # Captura possíveis erros de índice também
-            print(f"Erro ao calcular Etanol Máx: {e}")
-            col3.metric("Etanol Máx [g/L]", "N/A") # Traduzido
+            X_V_int = np.trapz(X*V, t) if t[-1] > 0 else 0 # Integral de X*V
+            if X_V_int > 1e-9 and t[-1] > 0:
+                 prod_esp_etanol_media = etanol_producido_total / X_V_int
+                 col3.metric("Prod. Esp. Etanol Media [g/gXh]", f"{prod_esp_etanol_media:.4f}")
+            else: col3.metric("Prod. Esp. Etanol Media [g/gXh]", "N/A")
+        except Exception: col3.metric("Prod. Esp. Etanol Media [g/gXh]", "Error")
+
+
+        try:
+            p_max_idx = np.argmax(P)
+            col1.metric("Etanol Máx [g/L]", f"{P[p_max_idx]:.2f} (a t={t[p_max_idx]:.1f} h)")
+        except ValueError: col1.metric("Etanol Máx [g/L]", "N/A")
+
+        col2.metric("Sustrato Residual [g/L]", f"{S[-1]:.2f}")
 
 
     except Exception as e:
         st.error(f"Ocurrió un error durante la simulación o el procesamiento de resultados: {e}")
-        import traceback
         st.error(traceback.format_exc())
 
 # --- Ejecución de la Aplicación ---
