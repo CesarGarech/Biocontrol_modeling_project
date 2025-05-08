@@ -106,13 +106,16 @@ def home_page():
         The specific product formation rate ($q_P$, unit $g_P \cdot g_X^{-1} \cdot h^{-1}$), specifically for ethanol in this context, is modeled using the Luedeking-Piret equation modified to include direct inhibition by oxygen. This reflects that ethanol production is predominantly anaerobic.
         """)
     st.latex(r"""
-    q_P = (\alpha \cdot \mu + \beta) \left( \frac{K_{O,P}}{K_{O,P} + O_2} \right)
+    q_P = (\alpha \cdot \mu_{anaerob} + \beta) 
     """)
     st.markdown(r"""
         * $\mu$: It is the specific growth rate calculated by the selected kinetic model. ($\mu_{total}$ if Mixed/Switched).
         * $\alpha$: Growth-associated product formation coefficient ($g_P \cdot g_X^{-1}$).
         * $\beta$: Non-growth-associated product formation coefficient ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
         * $K_{O,P}$: Oxygen inhibition constant on ethanol *production* ($g/L$). A low value indicates strong suppression of $P$ production by $O_2$.
+        * $\mu_{anaerob}$: Es la tasa específica de crecimiento calculada por el modelo cinético seleccionado ($\mu_{anaerob}$ si es Mixta/Conmutada).
+        * $\alpha$: Coeficiente de formación de producto asociado al crecimiento ($g_P \cdot g_X^{-1}$).
+        * $\beta$: Coeficiente de formación de producto no asociado al crecimiento ($g_P \cdot g_X^{-1} \cdot h^{-1}$).
         """)
 
     st.markdown("---") # Visual separator
