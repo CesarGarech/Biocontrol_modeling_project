@@ -27,7 +27,7 @@ menu_structure = {
     "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo", "Fermentacion"],
     "📈 Análisis de Sensibilidad": None,
     "🔧 Ajuste de Parámetros": ["Ajuste de Parámetros Lote", "Ajuste de Parámetros Lote alim", "Ajuste de Parámetros Fermentación"],
-    "📊 Estimación de Estados": ["EKF"],
+    "📊 Estimación de Estados": ["EKFgy"],
     # --- NUEVA ESTRUCTURA PARA CONTROL ---
     "⚙️ Control": {
         # "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
