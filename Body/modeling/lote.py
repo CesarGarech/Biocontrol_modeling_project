@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa  # Import kinetic functions
+from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, aiba  # Import kinetic functions
 
 def lote_page():
     st.header("Modo de operación: Lote")
@@ -21,6 +21,9 @@ def lote_page():
     Kd = st.sidebar.slider("Decaimiento (Kd)", 0.0, 0.5, 0.005)
     mo = st.sidebar.slider("Mantenimiento O2 (mo)", 0.0, 0.5, 0.05)
 
+    I = st.sidebar.slider(" Intensidad de luz (W m^-2)", 0.0, 83.0, 40.0)
+    Ki= st.sidebar.slider(" Constante de inhibición (W/m○^2)", 0.0, 1000.0, 959.2)
+    KiL= st.sidebar.slider(" Constante de photoinhibición (m^2/W", 0.01, 1.0, 0.58)
     # Iniciales
     X0 = st.sidebar.number_input("Biomasa inicial (g/L)", 0.1, 10.0, 0.5)
     S0 = st.sidebar.number_input("Sustrato inicial (g/L)", 0.1, 100.0, 20.0)
@@ -28,7 +31,7 @@ def lote_page():
     O0 = st.sidebar.number_input("O2 disuelto inicial (mg/L)", 0.0, 10.0, 5.0)
 
     # Tipo de cinética
-    tipo_mu = st.sidebar.selectbox("Tipo de cinética", ["Monod simple", "Monod sigmoidal", "Monod con restricciones"])
+    tipo_mu = st.sidebar.selectbox("Tipo de cinética", ["Monod simple", "Monod sigmoidal", "Monod con restricciones","Aiba"])
 
     # Tiempo de simulación
     t_final = st.sidebar.slider("Tiempo final (h)", 1, 100, 30)
@@ -46,6 +49,8 @@ def lote_page():
             mu = mu_sigmoidal(S, mumax, Ks, n=2)
         elif tipo_mu == "Monod con restricciones":
             mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
+        elif tipo_mu=="Aiba":
+            mu = aiba(mumax,I,Ki,KiL)
 
         dXdt = mu * X - Kd * X
         dSdt = -1/Yxs * mu * X - ms * X

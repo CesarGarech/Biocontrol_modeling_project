@@ -7,6 +7,9 @@ def mu_sigmoidal(S, mumax, Ks, n):
 def mu_completa(S, O2, P, mumax, Ks, KO, KP):
     return mumax * S / (Ks + S) * O2 / (KO + O2) * KP / (KP + P)
 
+def aiba(mumax,I,Ki,KiL):
+    return mumax*(I/(Ki+I+((I**2)/KiL)))
+
 def mu_fermentacion(S, P, O2,
                            mumax_aerob, Ks_aerob, KO_aerob, # Params mu1 (aerobio)
                            mumax_anaerob, Ks_anaerob, KiS_anaerob, # Params mu2 (anaerobio) - Sustrato
