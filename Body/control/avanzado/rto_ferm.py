@@ -8,6 +8,7 @@ from matplotlib.patches import Patch
 from matplotlib.lines import Line2D # Para leyendas personalizadas
 import traceback # Para mostrar errores detallados
 import time # Para medir tiempos
+from io import BytesIO
 
 # ====================================================
 # --- Definiciones Cinéticas (Sin cambios) ---
@@ -861,6 +862,40 @@ def rto_fermentation_page():
                     col_m1.metric("Etanol Máx [g/L]", "N/A") # Traduzido
 
                col_m2.metric("Substrato Res [g/L]", f"{S_final:.3f}") # Traduzido
+
+               data_simulation = {
+                    'Tempo [h]': t_sim,
+                    'Vazão [L/h]': f_sim,
+                    'Volume [L]': V_sim,
+                    'Biomassa (X) [g/L]': X_sim,
+                    'Substrato (S) [g/L]': S_sim,
+                    'Etanol (P) [g/L]': P_sim,
+                    'Oxigênio Dissolvido (O2) [g/L]': O2_sim_mgL,
+                    'Taxa Específica de Crescimento (mu) [1/h]': mu_sim
+               }
+
+               df_data_simulation = pd.DataFrame(data_simulation)
+
+               buffer = BytesIO()
+               with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_data_simulation.to_excel(writer, index=False, sheet_name='Dados')
+
+                    # Inserir o gráfico na planilha
+                    workbook = writer.book
+                    worksheet = writer.sheets['Dados']
+                    img_stream = BytesIO()
+                    fig.savefig(img_stream, format='png')
+                    img_stream.seek(0)
+                    worksheet.insert_image('E2', 'grafico.png', {'image_data': img_stream})
+
+               buffer.seek(0)
+
+               st.download_button(
+                    label="Baixar arquivo Excel com gráfico",
+                    data=buffer,
+                    file_name="dados_rto.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+               )
 
           else: # Si plot_ok es False
             st.error("No se pudieron generar las gráficas detalladas debido a un error en la simulación.")

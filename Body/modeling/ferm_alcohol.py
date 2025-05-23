@@ -6,6 +6,11 @@ from scipy.integrate import solve_ivp
 import traceback # Para mostrar errores detallados
 import time # Para medir tiempos
 
+#libraries for saving the data
+import pandas as pd
+from io import BytesIO
+import xlsxwriter
+
 # --- INICIO: Definiciones dummy de funciones cinéticas (si no tienes Utils.kinetics) ---
 # Reemplaza esto con tus importaciones reales si están disponibles
 def mu_monod(S, mumax, Ks):
@@ -620,6 +625,43 @@ def fermentacion_alcoholica_page():
         except ValueError: col1.metric("Etanol Máx [g/L]", "N/A")
 
         col2.metric("Sustrato Residual [g/L]", f"{S[-1]:.2f}")
+
+        #Adição do código para salvar as variáveis
+
+        data_simulation = {
+            'Tempo [h]': t,
+            'Vazão [L/h]': flujo_sim,
+            'Volume [L]': V,
+			'Biomassa (X) [g/L]': X,
+			'Substrato (S) [g/L]': S,
+			'Etanol (P) [g/L]': P,
+			'Oxigênio Dissolvido (O2) [g/L]': O2,
+			'Taxa Específica de Crescimento (mu) [1/h]': mu_sim
+        }
+
+        df_data_simulation = pd.DataFrame(data_simulation)
+
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_data_simulation.to_excel(writer, index=False, sheet_name='Dados')
+
+            # Inserir o gráfico na planilha
+            workbook = writer.book
+            worksheet = writer.sheets['Dados']
+            img_stream = BytesIO()
+            fig.savefig(img_stream, format='png')
+            img_stream.seek(0)
+            worksheet.insert_image('E2', 'grafico.png', {'image_data': img_stream})
+
+        buffer.seek(0)
+
+
+        st.download_button(
+            label="Baixar arquivo Excel com gráfico",
+            data=buffer,
+            file_name="dados_simulacao.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
     except Exception as e:
