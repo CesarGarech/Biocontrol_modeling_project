@@ -94,5 +94,5 @@ outputs/
 # results/
 
 # Optional: ignore notebooks (if only for local experiments)
-*.ipynb
+#*.ipynb
 notebooks/
