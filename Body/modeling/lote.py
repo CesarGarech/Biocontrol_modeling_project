@@ -46,6 +46,8 @@ def lote_page():
         if tipo_mu == "Monod simple":
             mu = mu_monod(S, mumax, Ks)
         elif tipo_mu == "Monod sigmoidal":
+            if S<=0:
+                S=0
             mu = mu_sigmoidal(S, mumax, Ks, n=2)
         elif tipo_mu == "Monod con restricciones":
             mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
@@ -54,6 +56,8 @@ def lote_page():
 
         dXdt = mu * X - Kd * X
         dSdt = -1/Yxs * mu * X - ms * X
+        if S<=0:
+            dSdt=0
         dPdt = Ypx * mu * X
         dOdt = Kla * (Cs - O2) - (1/Yxo) * mu * X - mo * X
         return [dXdt, dSdt, dPdt, dOdt]
