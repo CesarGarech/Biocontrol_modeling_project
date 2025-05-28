@@ -27,7 +27,7 @@ menu_structure = {
     "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo", "Fermentacion"],
     "📈 Análisis de Sensibilidad": None,
     "🔧 Ajuste de Parámetros": ["Ajuste de Parámetros Lote", "Ajuste de Parámetros Lote alim", "Ajuste de Parámetros Fermentación"],
-    "📊 Estimación de Estados": ["EKFgy"],
+    "📊 Estimación de Estados": None,
     # --- NUEVA ESTRUCTURA PARA CONTROL ---
     "⚙️ Control": {
         # "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
@@ -121,7 +121,7 @@ def main():
         elif selected_page == "Ajuste de Parámetros Fermentación":
             from Body.estimacion_parametros import ajuste_parametros_ferm
             ajuste_parametros_ferm.ajuste_parametros_ferm_page()
-        elif selected_page == "EKF":
+        elif selected_page == "📊 Estimación de Estados":
             from Body.estimation import ekf # Asumiendo que existe ekf.py
             ekf.ekf_page() # Asumiendo que tiene esta función
 
