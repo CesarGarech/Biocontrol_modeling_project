@@ -7,9 +7,9 @@ from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa  # Import kinetic
 
 def lote_page():
     st.header("Operation mode: Batch")
-    st.sidebar.subheader("Parámetros del modelo")
+    st.sidebar.subheader("Model Parameters")
     # Tipo de cinética
-    tipo_mu = st.sidebar.selectbox("Type of kinetics", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
+    tipo_mu = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
     if tipo_mu == "Simple Monod":
         st.markdown(""" 
         ## Simple Monod Kinetics
@@ -80,27 +80,27 @@ def lote_page():
     Ypx = st.sidebar.slider("Ypx", 0.1, 1.0, 0.3)
     Yxo = st.sidebar.slider("Yxo", 0.1, 1.0, 0.3)
     Kla = st.sidebar.slider("kLa", 0.1, 100.0, 20.0)
-    Cs = st.sidebar.slider("Oxígeno saturado (Cs)", 0.1, 10.0, 8.0)
-    V = st.sidebar.slider("Volumen del biorreactor (L)", 0.5, 10.0, 2.0)
-    ms = st.sidebar.slider("Mantenimiento (ms)", 0.0, 0.5, 0.005)
-    Kd = st.sidebar.slider("Decaimiento (Kd)", 0.0, 0.5, 0.005)
-    mo = st.sidebar.slider("Mantenimiento O2 (mo)", 0.0, 0.5, 0.05)
+    Cs = st.sidebar.slider("Saturated Oxygen (Cs)", 0.1, 10.0, 8.0)
+    V = st.sidebar.slider("Bioreactor Volumen (L)", 0.5, 10.0, 2.0)
+    ms = st.sidebar.slider("Maintenance (ms)", 0.0, 0.5, 0.005)
+    Kd = st.sidebar.slider("Decay (Kd)", 0.0, 0.5, 0.005)
+    mo = st.sidebar.slider("O2 Maintenance (mo)", 0.0, 0.5, 0.05)
 
     # Iniciales
-    X0 = st.sidebar.number_input("Biomasa inicial (g/L)", 0.1, 10.0, 0.5)
-    S0 = st.sidebar.number_input("Sustrato inicial (g/L)", 0.1, 100.0, 20.0)
-    P0 = st.sidebar.number_input("Producto inicial (g/L)", 0.0, 50.0, 0.0)
-    O0 = st.sidebar.number_input("O2 disuelto inicial (mg/L)", 0.0, 10.0, 5.0)
+    X0 = st.sidebar.number_input("Initial Biomass (g/L)", 0.1, 10.0, 0.5)
+    S0 = st.sidebar.number_input("Initial Substrate (g/L)", 0.1, 100.0, 20.0)
+    P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
+    O0 = st.sidebar.number_input("Initial dissolved O2 (mg/L)", 0.0, 10.0, 5.0)
 
     
 
     # Tiempo de simulación
-    t_final = st.sidebar.slider("Tiempo final (h)", 1, 100, 30)
+    t_final = st.sidebar.slider("Final time (h)", 1, 100, 30)
     t_eval = np.linspace(0, t_final, 300)
 
     # Tolerancias
-    atol = st.sidebar.number_input("Tolerancia absoluta (atol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
-    rtol = st.sidebar.number_input("Tolerancia relativa (rtol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
+    atol = st.sidebar.number_input("Absolute tolerance (atol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
+    rtol = st.sidebar.number_input("Relative tolerance (rtol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
 
     def modelo_lote(t, y):
         X, S, P, O2 = y

@@ -24,27 +24,27 @@ except ImportError:
 # 1. Define la NUEVA estructura del menú jerárquico
 menu_structure = {
     "🏠 Home": None,
-    "🔬 Modelos": ["Lote", "Lote Alimentado", "Continuo", "Fermentacion"],
-    "📈 Análisis de Sensibilidad": None,
-    "🔧 Ajuste de Parámetros": ["Ajuste de Parámetros Lote", "Ajuste de Parámetros Lote alim", "Ajuste de Parámetros Fermentación"],
-    "📊 Estimación de Estados": None,
+    "🔬 Models": ["Batch", "Fed-Batch", "Continuous", "Fermentation"],
+    "📈 Sensitivity Analysis": None,
+    "🔧 Parameter Adjustment": ["Batch Parameter Adjustment", "Fed-Batch Parameter Adjustment", "Fermentation Parameter Adjustment"],
+    "📊 State Estimation": None,
     # --- NUEVA ESTRUCTURA PARA CONTROL ---
     "⚙️ Control": {
         # "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
-        "Regulatorio": ["Temperatura", "pH", "Oxigeno", "Alimentación On-Off"],
-        "Avanzado": ["RTO", "RTO Ferm", "NMPC"]
+        "Regulatory": ["Temperature", "pH", "Oxygen", "On-Off Feeding"],
+        "Advanced": ["RTO", "RTO Ferm", "NMPC"]
     }
 }
 
 def main():
-    st.set_page_config(page_title="Modelado de Bioprocesos", layout="wide")
+    st.set_page_config(page_title="Bioprocess Modeling", layout="wide")
 
     # --- Navegación en la Barra Lateral (MODIFICADA) ---
-    st.sidebar.title("Navegación Principal")
+    st.sidebar.title("Main Navigation")
 
     # Widget para seleccionar la categoría principal
     main_category = st.sidebar.selectbox(
-        "Seleccione una sección:",
+        "Select a section:",
         list(menu_structure.keys()),
         key="main_cat_select" # Añadir key por robustez
     )
@@ -57,7 +57,7 @@ def main():
         st.sidebar.markdown("---")
         sub_selection = st.sidebar.radio(
              # Usar split() con cuidado, asegurarse que el emoji no interfiera
-            f"Detalle - {main_category.split(' ')[-1]}:", # Título dinámico
+            f"Detail - {main_category.split(' ')[-1]}:", # Título dinámico
             sub_options,
             key=f"radio_sub_{main_category.replace(' ', '_')}" # Clave única
         )
@@ -67,7 +67,7 @@ def main():
         st.sidebar.markdown("---")
         # Primer Nivel de Submenú (Regulatorio / Avanzado)
         sub_level1_selection = st.sidebar.selectbox(
-            f"Tipo - {main_category.split(' ')[-1]}:",
+            f"Type - {main_category.split(' ')[-1]}:",
             list(sub_options.keys()), # Obtiene ["Regulatorio", "Avanzado"]
             key=f"select_sub1_{main_category.replace(' ', '_')}"
         )
@@ -77,7 +77,7 @@ def main():
         if sub_level2_options: # Asegurarse que hay opciones de segundo nivel
             st.sidebar.markdown("---") # Otro separador
             sub_level2_selection = st.sidebar.radio(
-                f"Opción - {sub_level1_selection}:",
+                f"Option - {sub_level1_selection}:",
                 sub_level2_options, # Lista como ["Temperatura", "pH", ...] o ["RTO", ...]
                 key=f"radio_sub2_{main_category.replace(' ', '_')}_{sub_level1_selection}"
             )
@@ -89,7 +89,7 @@ def main():
     # --- Carga de la Página Seleccionada (AÑADIR NUEVAS PÁGINAS DE CONTROL) ---
     # La lógica if/elif ahora busca el valor final de 'selected_page'
 
-    st.subheader(f"Página Seleccionada: {selected_page}") # Para depuración
+    st.subheader(f"Selected Page: {selected_page}") # Para depuración
     st.markdown("---")
 
     # --- Carga dinámica de módulos ---
@@ -97,36 +97,36 @@ def main():
         if selected_page == "🏠 Home":
             from Body import home
             home.home_page()
-        elif selected_page == "Lote":
+        elif selected_page == "Batch":
             from Body.modeling import lote
             lote.lote_page()
-        elif selected_page == "Lote Alimentado":
+        elif selected_page == "Fed-Batch":
             from Body.modeling import lote_alimentado
             lote_alimentado.lote_alimentado_page()
-        elif selected_page == "Continuo":
+        elif selected_page == "Continuous":
             from Body.modeling import continuo
             continuo.continuo_page()
-        elif selected_page == "Fermentacion":
+        elif selected_page == "Fermentation":
             from Body.modeling import ferm_alcohol
             ferm_alcohol.fermentacion_alcoholica_page()
-        elif selected_page == "📈 Análisis de Sensibilidad":
+        elif selected_page == "📈 Sensitivity Analysis":
             from Body import analysis # Asumiendo que existe analysis.py
             analysis.analysis_page() # Asumiendo que tiene esta función
-        elif selected_page == "Ajuste de Parámetros Lote":
+        elif selected_page == "Batch Parameter Adjustment":
             from Body.estimacion_parametros import ajuste_parametros_lote
             ajuste_parametros_lote.ajuste_parametros_page()
-        elif selected_page == "Ajuste de Parámetros Lote alim":
+        elif selected_page == "Fed-Batch Parameter Adjustment":
             from Body.estimacion_parametros import ajuste_parametros_lote_alim
             ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
-        elif selected_page == "Ajuste de Parámetros Fermentación":
+        elif selected_page == "Fermentation Parameter Adjustment":
             from Body.estimacion_parametros import ajuste_parametros_ferm
             ajuste_parametros_ferm.ajuste_parametros_ferm_page()
-        elif selected_page == "📊 Estimación de Estados":
+        elif selected_page == "📊 State Estimation":
             from Body.estimation import ekf # Asumiendo que existe ekf.py
             ekf.ekf_page() # Asumiendo que tiene esta función
 
         # --- PÁGINAS DE CONTROL REGULATORIO ---
-        elif selected_page == "Temperatura":
+        elif selected_page == "Temperature":
             # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_temp
             reg_temp.regulatorio_temperatura_page()
@@ -134,11 +134,11 @@ def main():
             # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_ph
             reg_ph.regulatorio_ph_page()
-        elif selected_page == "Oxigeno":
+        elif selected_page == "Oxygen":
              # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_oxigeno
             reg_oxigeno.regulatorio_oxigeno_page()
-        elif selected_page == "Alimentación On-Off":
+        elif selected_page == "On-Off Feeding":
              # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_feed_onoff
             reg_feed_onoff.regulatorio_feed_onoff_page()
@@ -155,26 +155,26 @@ def main():
             nmpc.nmpc_page()
         else:
             # Mostrar Home o un mensaje si la página no coincide con ninguna carga
-             st.warning(f"Página '{selected_page}' seleccionada, mostrando Home por defecto o página no implementada.")
+             st.warning(f"'{selected_page}' page selected, displaying Home by default or unimplemented page.")
              from Body import home
              home.home_page()
 
     except ModuleNotFoundError as e:
-         st.error(f"Error al importar el módulo para '{selected_page}': {e}")
-         st.error(f"Verifica que el archivo '{e.name}.py' existe en la carpeta correcta (ej. Body/control/) y no tiene errores de sintaxis.")
-         st.info("Mostrando página de Inicio.")
+         st.error(f"Error importing the module for '{selected_page}': {e}")
+         st.error(f"Check that the file '{e.name}.py' exist in the correct folder (ej. Body/control/) and has no syntax errors.")
+         st.info("Displaying Home Page.")
          from Body import home
          home.home_page()
     except AttributeError as e:
-         st.error(f"Error al llamar la función de página para '{selected_page}': {e}")
-         st.error(f"Asegúrate que el archivo importado tiene la función de página con el nombre correcto (ej. '{selected_page.lower()}_page()').")
-         st.info("Mostrando página de Inicio.")
+         st.error(f"Error calling the page function for '{selected_page}': {e}")
+         st.error(f"Make sure the imported file contains a page function with the correct name (e.g. '{selected_page.lower()}_page()').")
+         st.info("Displaying Home Page.")
          from Body import home
          home.home_page()
     except Exception as e:
-         st.error(f"Ocurrió un error inesperado al cargar la página '{selected_page}':")
+         st.error(f"An unexpected error occurred while loading the page '{selected_page}':")
          st.exception(e)
-         st.info("Mostrando página de Inicio.")
+         st.info("Displaying Homa Page.")
          from Body import home
          home.home_page()
 

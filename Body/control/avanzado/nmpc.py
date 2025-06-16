@@ -7,87 +7,87 @@ import time # Para medir tiempo si es necesario
 
 # Define la página/función principal de Streamlit
 def nmpc_page():
-    st.header("Control No Lineal Predictivo (NMPC) del Biorreactor")
+    st.header("Nonlinear Model Predictive Control (NMPC) of the Bioreactor")
     st.markdown("""
-    Esta aplicación simula el control NMPC de un biorreactor simple.
-    Configura los parámetros del modelo, NMPC, límites y condiciones iniciales
-    en la barra lateral y haz clic en "Iniciar Simulación NMPC".
+    This application simulates the NMPC control of a simple bioreactor.
+    Set the model parameters, NMPC settings, limits and initisl conditions
+    in the sidebar, and then click on "Start NMPC Simulation".
 
-    **Modelo Simplificado:**
-    Considera un biorreactor con balances de materia para biomasa (X) y sustrato (S),
-    y un balance de energía para la temperatura (T).
-    - **Estados (x):** `[X, S, T]`
-    - **Entradas Manipuladas (u):** `[F_S, Q_j]` (Flujo de sustrato y Tasa de calor de la chaqueta)
-    - **Salidas Controladas (c):** `[X, T]`
+    **Simplified Model:**
+    It considers a bioreactor with material balances for biomass (X) and substrate (S),
+    and an energy balance for temperature (T).
+    - **States (x):** `[X, S, T]`
+    - **Manipulated Inputs (u):** `[F_S, Q_j]` (Substrate feed flow and jacket heat rate)
+    - **Controlled Outputs (c):** `[X, T]`
     """)
 
     # --- Sidebar para configuración ---
     with st.sidebar:
-        st.subheader("Configuración del Modelo")
+        st.subheader("Model Configuration")
         # Usamos claves únicas para los number_input si se repiten nombres
-        mu_max_input = st.number_input("Tasa Máx. Crecimiento (μ_max) [1/h]", value=0.4, key="mu_max")
-        K_S_input = st.number_input("Constante Monod (K_S) [g/L]", value=0.05, key="K_S")
-        Y_XS_input = st.number_input("Rendimiento Biomasa/Sustrato (Y_XS) [g/g]", value=0.5, key="Y_XS")
-        Y_QX_input = st.number_input("Rendimiento Calor/Biomasa (Y_QX) [J/g]", value=15000.0, key="Y_QX", format="%e")
-        S_in_input = st.number_input("Concentración Sustrato Entrada (S_in) [g/L]", value=10.0, key="S_in")
-        V_input = st.number_input("Volumen Reactor (V) [L]", value=1.0, key="V")
-        rho_input = st.number_input("Densidad Medio (ρ) [g/L]", value=1000.0, key="rho", format="%e")
-        Cp_input = st.number_input("Capacidad Calorífica (Cp) [J/(g*K)]", value=4184.0, key="Cp", format="%e")
-        T_in_input = st.number_input("Temperatura Entrada (T_in) [K]", value=298.15, key="T_in")
-        F_const_input = st.number_input("Flujo Constante Adicional (F_const) [L/h]", value=0.0, key="F_const")
+        mu_max_input = st.number_input("Maximum Growth Rate (μ_max) [1/h]", value=0.4, key="mu_max")
+        K_S_input = st.number_input("Monod Constant (K_S) [g/L]", value=0.05, key="K_S")
+        Y_XS_input = st.number_input("Biomass/Substrate Yield (Y_XS) [g/g]", value=0.5, key="Y_XS")
+        Y_QX_input = st.number_input("Heat/Biomass Yield (Y_QX) [J/g]", value=15000.0, key="Y_QX", format="%e")
+        S_in_input = st.number_input("Inlet Substrate Concentration (S_in) [g/L]", value=10.0, key="S_in")
+        V_input = st.number_input("Reactor Volume (V) [L]", value=1.0, key="V")
+        rho_input = st.number_input("Average Density (ρ) [g/L]", value=1000.0, key="rho", format="%e")
+        Cp_input = st.number_input("Heat Capacity (Cp) [J/(g*K)]", value=4184.0, key="Cp", format="%e")
+        T_in_input = st.number_input("Inlet Temperature (T_in) [K]", value=298.15, key="T_in")
+        F_const_input = st.number_input("Aditional Constant Flow (F_const) [L/h]", value=0.0, key="F_const")
 
-        st.subheader("Configuración NMPC")
-        N_input = st.number_input("Horizonte de Predicción (N)", min_value=1, value=10, key="N")
-        M_input = st.number_input("Horizonte de Control (M)", min_value=1, value=4, key="M")
-        dt_nmpc_input = st.number_input("Tiempo de Muestreo NMPC (dt) [h]", min_value=0.01, value=0.1, step=0.01, format="%.2f", key="dt_nmpc")
-        simulation_time = st.number_input("Tiempo Total de Simulación [h]", min_value=1.0, value=24.0, key="sim_time")
+        st.subheader("NMPC Configuration")
+        N_input = st.number_input("Prediction Horizon (N)", min_value=1, value=10, key="N")
+        M_input = st.number_input("Control Horizon (M)", min_value=1, value=4, key="M")
+        dt_nmpc_input = st.number_input("NMPC Sampling Time (dt) [h]", min_value=0.01, value=0.1, step=0.01, format="%.2f", key="dt_nmpc")
+        simulation_time = st.number_input("Total Simulation Time [h]", min_value=1.0, value=24.0, key="sim_time")
 
-        st.subheader("Límites de Entradas (u)")
-        min_FS = st.number_input("Mínimo Flujo Sustrato (F_S) [L/h]", value=0.0, key="min_FS")
-        max_FS = st.number_input("Máximo Flujo Sustrato (F_S) [L/h]", value=1.5, key="max_FS")
-        min_Qj = st.number_input("Mínima Carga Térmica (Q_j) [W]", value=-10000.0, key="min_Qj", format="%e") # Watts
-        max_Qj = st.number_input("Máxima Carga Térmica (Q_j) [W]", value=10000.0, key="max_Qj", format="%e") # Watts
+        st.subheader("Input Limits (u)")
+        min_FS = st.number_input("Minimum Substrate Flow (F_S) [L/h]", value=0.0, key="min_FS")
+        max_FS = st.number_input("Maximum Substrate Flow (F_S) [L/h]", value=1.5, key="max_FS")
+        min_Qj = st.number_input("Minimum Thermal Load (Q_j) [W]", value=-10000.0, key="min_Qj", format="%e") # Watts
+        max_Qj = st.number_input("Maximum Thermal Load (Q_j) [W]", value=10000.0, key="max_Qj", format="%e") # Watts
 
-        st.subheader("Límites Tasa Cambio Entradas (Δu)")
+        st.subheader("Inputs Change Rate Limits (Δu)")
         # Por defecto, permitir cambios grandes, ajustar según necesidad
-        delta_FS_max = st.number_input("Máximo Cambio |ΔF_S| por paso [L/h]", value=0.1, min_value=0.0, key="dFS_max")
-        delta_Qj_max = st.number_input("Máximo Cambio |ΔQ_j| por paso [W]", value=5000.0, min_value=0.0, key="dQj_max", format="%e")
+        delta_FS_max = st.number_input("Maximum |ΔF_S| change per step [L/h]", value=0.1, min_value=0.0, key="dFS_max")
+        delta_Qj_max = st.number_input("Maximum |ΔQ_j| change per step [W]", value=5000.0, min_value=0.0, key="dQj_max", format="%e")
 
-        st.subheader("Límites Estados (x) - Para optimización")
+        st.subheader("State Limits (x) - For optimization")
         # Estos son límites suaves o de referencia para el optimizador
-        min_X_opt = st.number_input("Min X (Optimizador)", value=0.0, key="min_X_opt")
-        max_X_opt = st.number_input("Max X (Optimizador)", value=5.0, key="max_X_opt")
-        min_S_opt = st.number_input("Min S (Optimizador)", value=0.0, key="min_S_opt")
-        max_S_opt = st.number_input("Max S (Optimizador)", value=10.0, key="max_S_opt")
-        min_T_opt = st.number_input("Min T (Optimizador) [K]", value=290.0, key="min_T_opt")
-        max_T_opt = st.number_input("Max T (Optimizador) [K]", value=315.0, key="max_T_opt")
+        min_X_opt = st.number_input("Min X (Optimizer)", value=0.0, key="min_X_opt")
+        max_X_opt = st.number_input("Max X (Optimizer)", value=5.0, key="max_X_opt")
+        min_S_opt = st.number_input("Min S (Optimizer)", value=0.0, key="min_S_opt")
+        max_S_opt = st.number_input("Max S (Optimizer)", value=10.0, key="max_S_opt")
+        min_T_opt = st.number_input("Min T (Optimizer) [K]", value=290.0, key="min_T_opt")
+        max_T_opt = st.number_input("Max T (Optimizer) [K]", value=315.0, key="max_T_opt")
 
 
-        st.subheader("Pesos NMPC")
-        Q_X_weight = st.number_input("Peso Q - Error Biomasa (X)", value=1.0, key="Q_X")
-        Q_T_weight = st.number_input("Peso Q - Error Temperatura (T)", value=0.01, key="Q_T")
-        W_FS_weight = st.number_input("Peso W - Cambio Flujo Sustrato (ΔF_S)", value=0.1, key="W_FS")
+        st.subheader("NMPC Weights")
+        Q_X_weight = st.number_input("Weight Q - Biomass Error (X)", value=1.0, key="Q_X")
+        Q_T_weight = st.number_input("Weight Q - Temperature Error (T)", value=0.01, key="Q_T")
+        W_FS_weight = st.number_input("Weight W - Substrate Flow Change (ΔF_S)", value=0.1, key="W_FS")
         # Ajustar el peso de Qj según la escala (Watts vs L/h)
-        W_Qj_weight = st.number_input("Peso W - Cambio Carga Térmica (ΔQ_j) [1/W^2]", value=1e-8, format="%e", key="W_Qj")
+        W_Qj_weight = st.number_input("Weight W - Heat Load Change (ΔQ_j) [1/W^2]", value=1e-8, format="%e", key="W_Qj")
 
-        st.subheader("Condiciones Iniciales y Setpoints")
-        initial_X = st.number_input("Biomasa Inicial (X0) [g/L]", value=1.5, key="X0")
-        initial_S = st.number_input("Substrato Inicial (S0) [g/L]", value=9.0, key="S0")
-        initial_T = st.number_input("Temperatura Inicial (T0) [K]", value=305.0, key="T0")
-        initial_FS = st.number_input("Flujo Sustrato Inicial (F_S,0) [L/h]", value=0.1, key="Fs0")
-        initial_Qj = st.number_input("Carga Térmica Inicial (Q_j,0) [W]", value=0.0, key="Qj0")
+        st.subheader("Initial Conditions and Setpoints")
+        initial_X = st.number_input("Initial Biomass (X0) [g/L]", value=1.5, key="X0")
+        initial_S = st.number_input("Initial Substrate (S0) [g/L]", value=9.0, key="S0")
+        initial_T = st.number_input("Initial Temperature (T0) [K]", value=305.0, key="T0")
+        initial_FS = st.number_input("Initial Substrate Flow (F_S,0) [L/h]", value=0.1, key="Fs0")
+        initial_Qj = st.number_input("Initial Thermal Load (Q_j,0) [W]", value=0.0, key="Qj0")
 
         # Setpoints Escalonados (Ejemplo fijo en el tiempo, valores configurables)
         t_sp1 = 5.0
         t_sp2 = 12.0
-        st.markdown(f"**Setpoints en t={t_sp1}h:**")
-        setpoint_X_t1 = st.number_input(f"Setpoint Biomasa (X) en t={t_sp1}h", value=2.0, key="sp_X1")
-        setpoint_T_t1 = st.number_input(f"Setpoint Temperatura (T) en t={t_sp1}h [K]", value=308.0, key="sp_T1")
-        st.markdown(f"**Setpoints en t={t_sp2}h:**")
-        setpoint_X_t2 = st.number_input(f"Setpoint Biomasa (X) en t={t_sp2}h", value=1.0, key="sp_X2")
-        setpoint_T_t2 = st.number_input(f"Setpoint Temperatura (T) en t={t_sp2}h [K]", value=303.0, key="sp_T2")
+        st.markdown(f"**Setpoints in t={t_sp1}h:**")
+        setpoint_X_t1 = st.number_input(f"Biomass Setpoint (X) in t={t_sp1}h", value=2.0, key="sp_X1")
+        setpoint_T_t1 = st.number_input(f"Temperature Setpoint (T) in t={t_sp1}h [K]", value=308.0, key="sp_T1")
+        st.markdown(f"**Setpoints in t={t_sp2}h:**")
+        setpoint_X_t2 = st.number_input(f"Biomass Setpoint (X) in t={t_sp2}h", value=1.0, key="sp_X2")
+        setpoint_T_t2 = st.number_input(f"Temperature Setpoint (T) in t={t_sp2}h [K]", value=303.0, key="sp_T2")
 
-        start_simulation = st.button("Iniciar Simulación NMPC")
+        start_simulation = st.button("Start NMPC Simulation")
 
     # ---------------------------------------------------
     # 1. Modelo del Biorreactor (Simbólico con CasADi)
@@ -393,7 +393,7 @@ def nmpc_page():
 
                 # Verificar éxito del solver
                 if not sol_stats['success']:
-                    st.warning(f"Solver NMPC no convergió! Estado: {sol_stats.get('return_status', 'Desconocido')}")
+                    st.warning(f"NMPC Solver did not converged! Status: {sol_stats.get('return_status', 'Unknown')}")
                     # No actualizar w0 si falló, reusar el anterior o resetear
                     # self.w0 = np.zeros(self.dim_w) # Opción: resetear en fallo
                     return u_previous, sol_stats, None, None # Devolver entrada anterior
@@ -415,7 +415,7 @@ def nmpc_page():
                 return u_apply, sol_stats, x_predicted_sequence, u_optimal_sequence
 
             except Exception as e:
-                st.error(f"Error durante la optimización NMPC: {e}")
+                st.error(f"Error during the NMPC optimization: {e}")
                 # Fallback: devolver la entrada anterior
                 return u_previous, {'success': False, 'return_status': 'SolverError'}, None, None
 
@@ -424,7 +424,7 @@ def nmpc_page():
     # ---------------------------------------------------
     # @st.cache_data # No cachear si depende de u que cambia
     def simulate_plant_step(x_current, u_applied, dt_sim, model_ode_func):
-        """Simula un paso de la planta real (integrando el modelo)."""
+        """Simulates a step of the real plant (integrating model)."""
         # Define la función de EDO para solve_ivp (compatible con NumPy)
         def ode_sys(t, x, u):
             # Llama a la función CasADi y convierte a numpy array plano
@@ -440,7 +440,7 @@ def nmpc_page():
     # 4. Bucle Principal de Simulación (dentro del if button)
     # ---------------------------------------------------
     if start_simulation:
-        st.info("Iniciando simulación NMPC...")
+        st.info("Starting NMPC Simulation ...")
         progress_bar = st.progress(0)
         status_text = st.empty() # Para mostrar el progreso
 
@@ -478,7 +478,7 @@ def nmpc_page():
                                   model_ode, output_func, x_sym, u_sym, c_sym, params,
                                   lbx_opt, ubx_opt, lbu_nmpc, ubu_nmpc, lbdu_nmpc, ubdu_nmpc)
         except Exception as e:
-            st.error(f"Error al inicializar NMPC: {e}")
+            st.error(f"Error initializing NMPC: {e}")
             st.stop() # Detener ejecución si falla la inicialización
 
         # --- Preparar Simulación ---
@@ -518,7 +518,7 @@ def nmpc_page():
         # --- Bucle de Simulación ---
         for k in range(n_steps):
             t_current = k * dt_sim
-            status_text.text(f"Simulando paso {k+1}/{n_steps} (t={t_current:.2f}h)...")
+            status_text.text(f"Simulating step {k+1}/{n_steps} (t={t_current:.2f}h)...")
 
             # Actualizar setpoint si es necesario
             # Comprobar si el *siguiente* paso cruzará un tiempo de cambio de SP
@@ -526,7 +526,7 @@ def nmpc_page():
             for sp_time, new_sp in sorted(setpoint_changes.items()):
                 # Si el tiempo del SP está dentro del intervalo [t_current, next_step_time)
                 if t_current < sp_time <= next_step_time + 1e-9: # Usar tolerancia pequeña
-                    st.write(f"-> Cambio de setpoint detectado en t ≈ {sp_time:.2f}h a: X={new_sp[0]}, T={new_sp[1]}K")
+                    st.write(f"-> Setpoint change detected in t ≈ {sp_time:.2f}h to: X={new_sp[0]}, T={new_sp[1]}K")
                     current_setpoint = new_sp
                     break # Aplicar solo el primer cambio encontrado en el intervalo
 
@@ -541,7 +541,7 @@ def nmpc_page():
             if not stats['success']:
                 # Mantener la entrada anterior si NMPC falla
                 u_apply = u_previous
-                st.warning(f"Paso {k+1}: NMPC no convergió, usando u_prev = [{u_apply[0]:.3f}, {u_apply[1]:.1f}]")
+                st.warning(f"Step {k+1}: NMPC did not converged, using u_prev = [{u_apply[0]:.3f}, {u_apply[1]:.1f}]")
             else:
                 u_apply = u_optimal
                 # Aplicar restricciones de límites y tasa de cambio a la acción calculada
@@ -557,8 +557,8 @@ def nmpc_page():
             try:
                 x_next = simulate_plant_step(x_current, u_apply, dt_sim, model_ode)
             except Exception as e:
-                st.error(f"Error al simular la planta en el paso {k+1}: {e}")
-                st.warning("Deteniendo simulación.")
+                st.error(f"Error when simulating the plant in step {k+1}: {e}")
+                st.warning("Stopping simulation.")
                 break # Salir del bucle si la simulación de la planta falla
 
             # Actualizar estado y entrada para el siguiente ciclo
@@ -576,52 +576,52 @@ def nmpc_page():
 
         end_time_sim = time.time()
         total_sim_time = end_time_sim - start_time_sim
-        status_text.text(f"Simulación completada en {total_sim_time:.2f} segundos.")
-        st.success("Simulación NMPC finalizada.")
+        status_text.text(f"Simulation completed in {total_sim_time:.2f} seconds.")
+        st.success("NMPC simulation completed.")
 
         # --- Graficar Resultados ---
-        st.subheader("Resultados de la Simulación NMPC")
+        st.subheader("NMPC Simulation Results")
 
         # Crear figura Matplotlib
         fig, axes = plt.subplots(3, 2, figsize=(12, 10), sharex=True)
-        fig.suptitle("Resultados Simulación NMPC Biorreactor", fontsize=16)
+        fig.suptitle("NMPC Bioreactor Simulation Results", fontsize=16)
 
         # Estados y Setpoints
-        axes[0, 0].plot(t_history, x_history[0, :], label='Biomasa (X)')
-        axes[0, 0].plot(t_history, sp_history[0, :], 'r--', label='Setpoint X')
-        axes[0, 0].set_ylabel('Biomasa (g/L)')
+        axes[0, 0].plot(t_history, x_history[0, :], label='Biomass (X)')
+        axes[0, 0].plot(t_history, sp_history[0, :], 'r--', label='X Setpoint')
+        axes[0, 0].set_ylabel('Biomass (g/L)')
         axes[0, 0].legend()
         axes[0, 0].grid(True)
 
-        axes[1, 0].plot(t_history, x_history[1, :], label='Substrato (S)')
-        axes[1, 0].set_ylabel('Substrato (g/L)')
+        axes[1, 0].plot(t_history, x_history[1, :], label='Substrate (S)')
+        axes[1, 0].set_ylabel('Substrate (g/L)')
         axes[1, 0].legend()
         axes[1, 0].grid(True)
 
-        axes[2, 0].plot(t_history, x_history[2, :], label='Temperatura (T)')
-        axes[2, 0].plot(t_history, sp_history[1, :], 'r--', label='Setpoint T')
-        axes[2, 0].set_ylabel('Temperatura (K)')
-        axes[2, 0].set_xlabel('Tiempo (h)')
+        axes[2, 0].plot(t_history, x_history[2, :], label='Temperature (T)')
+        axes[2, 0].plot(t_history, sp_history[1, :], 'r--', label='T Setpoint')
+        axes[2, 0].set_ylabel('Temperature (K)')
+        axes[2, 0].set_xlabel('Time (h)')
         axes[2, 0].legend()
         axes[2, 0].grid(True)
 
         # Entradas (acción de control)
         # Usar drawstyle='steps-post' para visualizar mejor acción ZOH
-        axes[0, 1].step(t_history, np.append(u_history[0, :], u_history[0, -1]), where='post', label=f'Flujo Sustrato (F_S)')
-        axes[0, 1].hlines([min_FS, max_FS], t_history[0], t_history[-1], colors='gray', linestyles='--', label='Límites Fs')
+        axes[0, 1].step(t_history, np.append(u_history[0, :], u_history[0, -1]), where='post', label=f'Substrate Flow (F_S)')
+        axes[0, 1].hlines([min_FS, max_FS], t_history[0], t_history[-1], colors='gray', linestyles='--', label='Fs Limits')
         axes[0, 1].set_ylabel('F_S (L/h)')
         axes[0, 1].legend()
         axes[0, 1].grid(True)
 
-        axes[1, 1].step(t_history, np.append(u_history[1, :], u_history[1, -1]), where='post', label=f'Carga Térmica (Q_j)')
-        axes[1, 1].hlines([min_Qj, max_Qj], t_history[0], t_history[-1], colors='gray', linestyles='--', label='Límites Qj')
+        axes[1, 1].step(t_history, np.append(u_history[1, :], u_history[1, -1]), where='post', label=f'Thermal Load (Q_j)')
+        axes[1, 1].hlines([min_Qj, max_Qj], t_history[0], t_history[-1], colors='gray', linestyles='--', label='Qj Limits')
         axes[1, 1].set_ylabel('Q_j (W)')
         axes[1, 1].legend()
         axes[1, 1].grid(True)
 
         # Gráfico vacío para alinear
         axes[2, 1].axis('off')
-        axes[2, 1].set_xlabel('Tiempo (h)')
+        axes[2, 1].set_xlabel('Time (h)')
 
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Ajustar para el supertítulo

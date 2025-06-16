@@ -7,7 +7,7 @@ try:
     import control # Python Control Systems Library (necesita: pip install control)
 except ImportError:
     # Muestra un error y detiene si la librería no está instalada
-    st.error("La librería 'python-control' no está instalada. Por favor, instálala ejecutando: pip install control")
+    st.error("The 'python-control'library is not installed. Please, install it by running: pip install control")
     st.stop() # Detiene la ejecución del script de esta página
 import pandas as pd # Opcional: para mostrar parámetros o resultados en tabla
 import traceback # Para mostrar errores detallados si ocurren
@@ -17,87 +17,87 @@ def regulatorio_ph_page():
     """
     Página de Streamlit para simular control regulatorio de pH con gama partida.
     """
-    st.header("💧 Simulación de Control Regulatorio de pH (Gama Partida)")
+    st.header("💧 pH Regulatory Control Simulation (Split-Range)")
     st.markdown("""
-    Esta página simula un sistema de control de pH en lazo cerrado para un
-    biorreactor utilizando una estrategia de **gama partida (split-range)**.
-    Se emplean dos elementos finales de control (bombas de ácido y base)
-    accionados por un único controlador PID.
+    This page simulates a closed-loop pH control system for a
+    bioreactor using a **split-range** strategy.
+    Two final control elements (acid and base pumps)
+    are operated by a single PID controller.
+    
+    * **Process:** The relationship between acid/base flow and reactor pH.
+    * **Pumps (Acid/Base):** The dynamics of each dosing pump.
+    * **Sensor:** The dynamics of the pH sensor.
+    * **PID Controller:** Calculates the necessary control action.
+    * **Split-Range Logic:** If the measured pH is above the setpoint, the
+        acid pump is activated. If it is below, the base pump is activated.
 
-    * **Proceso:** La relación entre el flujo de ácido/base y el pH del reactor.
-    * **Bombas (Ácido/Base):** La dinámica de cada bomba dosificadora.
-    * **Sensor:** La dinámica del sensor de pH.
-    * **Controlador PID:** Calcula la acción de control necesaria.
-    * **Lógica Gama Partida:** Si el pH medido es mayor al setpoint, se activa la
-        bomba de ácido. Si es menor, se activa la bomba de base.
-
-    Puedes modificar los parámetros para observar la respuesta del sistema.
+    You can modify the parameters to observe the system response.
     """)
     st.markdown("---")
 
     # --- Explicación de Funciones de Transferencia ---
-    st.subheader("Funciones de Transferencia")
+    st.subheader("System Transfer Functions")
     col1, col2 = st.columns(2)
     with col1:
         st.latex(r'G_{proc}(s) = \frac{K_{p_{proc}}}{T_{proc} s + 1}')
-        st.caption("Proceso (pH vs Flujo)")
+        st.caption("Process (pH vs Flow)")
         st.latex(r'G_{acid}(s) = \frac{K_{p_{acid}}}{T_{acid} s + 1}')
-        st.caption("Bomba Ácido")
+        st.caption("Acid Pump")
         st.latex(r'G_{sensor}(s) = \frac{K_{p_{sensor}}}{T_{sensor} s + 1}')
-        st.caption("Sensor pH")
+        st.caption("pH Sensor")
     with col2:
         st.latex(r'G_{base}(s) = \frac{K_{p_{base}}}{T_{base} s + 1}')
-        st.caption("Bomba Base")
+        st.caption("Base Pump")
         st.latex(r'C(s) = K_p + \frac{K_i}{s} + K_d s')
-        st.caption("Controlador PID")
+        st.caption("PID Controller")
 
-    st.markdown("Lazos abiertos (simplificados para simulación desacoplada):")
+    st.markdown("Open-loops (simplified for decoupled simulation):")
     st.latex(r'G_{open, acid}(s) = G_{proc}(s) G_{acid}(s) G_{sensor}(s)')
     st.latex(r'G_{open, base}(s) = G_{proc}(s) G_{base}(s) G_{sensor}(s)')
-    st.caption("Nota: Se simulan los lazos cerrados para ácido y base de forma independiente y luego se combinan según la lógica de gama partida, similar al ejemplo original.")
+    st.caption("Note:The closed-loops for acid and base are simulated independently and then combined according to the split-range logic, similar to the original example.")
     st.markdown("---")
 
     # --- Entradas del Usuario en la Barra Lateral ---
     with st.sidebar:
-        st.header("Parámetros de Simulación")
+        st.header("Simulation Parameters")
 
-        with st.expander("1. Parámetros del Proceso", expanded=True):
+        with st.expander("1. Process Parameters", expanded=True):
             # Valores por defecto del script MATLAB
-            Kp_proc = st.number_input("Ganancia Proceso (Kp_proc) [pH/(unidad flujo)]", min_value=0.01, value=0.1, step=0.01, format="%.3f", key="Kp_proc", help="Cambio de pH por unidad de flujo neto (magnitud)")
-            T_proc = st.number_input("Constante Tiempo Proceso (T_proc) [s]", min_value=1.0, value=20.0, step=1.0, format="%.1f", key="T_proc")
+            Kp_proc = st.number_input("Proces Gain (Kp_proc) [pH/(flow unit)]", min_value=0.01, value=0.1, step=0.01, format="%.3f", key="Kp_proc", help="pH change per unit net flux (magnitude)")
+            T_proc = st.number_input("Process Time Constant (T_proc) [s]", min_value=1.0, value=20.0, step=1.0, format="%.1f", key="T_proc")
 
-        with st.expander("2. Parámetros Bombas", expanded=True):
-            Kp_acid = st.number_input("Ganancia Bomba Ácido (Kp_acid)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_acid")
-            T_acid = st.number_input("Constante Tiempo Bomba Ácido (T_acid) [s]", min_value=0.1, value=5.0, step=0.1, format="%.1f", key="T_acid")
+        with st.expander("2. Pumps Parameters", expanded=True):
+            Kp_acid = st.number_input("Acid Pump Gain (Kp_acid)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_acid")
+            T_acid = st.number_input("Acid Pump Time Constant (T_acid) [s]", min_value=0.1, value=5.0, step=0.1, format="%.1f", key="T_acid")
             st.divider() # Separador visual
-            Kp_base = st.number_input("Ganancia Bomba Base (Kp_base)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_base")
-            T_base = st.number_input("Constante Tiempo Bomba Base (T_base) [s]", min_value=0.1, value=5.0, step=0.1, format="%.1f", key="T_base")
+            Kp_base = st.number_input("Base Pump Gain (Kp_base)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_base")
+            T_base = st.number_input("Base Pump Time Constant (T_base) [s]", min_value=0.1, value=5.0, step=0.1, format="%.1f", key="T_base")
 
-        with st.expander("3. Parámetros del Sensor", expanded=True):
-            Kp_sensor = st.number_input("Ganancia Sensor (Kp_sensor)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_sensor")
-            T_sensor = st.number_input("Constante Tiempo Sensor (T_sensor) [s]", min_value=0.1, value=1.0, step=0.1, format="%.1f", key="T_sensor")
+        with st.expander("3. Sensor Parameters", expanded=True):
+            Kp_sensor = st.number_input("Sensor Gain (Kp_sensor)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kp_sensor")
+            T_sensor = st.number_input("Sensor Time Constant (T_sensor) [s]", min_value=0.1, value=1.0, step=0.1, format="%.1f", key="T_sensor")
 
-        with st.expander("4. Parámetros del Controlador PID", expanded=True):
+        with st.expander("4. PID Controller Parameters", expanded=True):
             # Usar Kp, Ki, Kd como en el script MATLAB
-            Kp_pid = st.number_input("Ganancia Proporcional (Kp)", min_value=0.0, value=2.0, step=0.1, format="%.2f", key="Kp_pid_ph")
-            Ki_pid = st.number_input("Ganancia Integral (Ki)", min_value=0.0, value=1.2, step=0.1, format="%.3f", help="Poner 0 para control P o PD", key="Ki_pid_ph")
-            Kd_pid = st.number_input("Ganancia Derivativa (Kd)", min_value=0.0, value=0.0, step=0.1, format="%.2f", help="Poner 0 para control P o PI", key="Kd_pid_ph")
+            Kp_pid = st.number_input("Proportional Gain (Kp)", min_value=0.0, value=2.0, step=0.1, format="%.2f", key="Kp_pid_ph")
+            Ki_pid = st.number_input("Integral Gain (Ki)", min_value=0.0, value=1.2, step=0.1, format="%.3f", help="Set 0 for P or PD control", key="Ki_pid_ph")
+            Kd_pid = st.number_input("Derivative Gain (Kd)", min_value=0.0, value=0.0, step=0.1, format="%.2f", help="Set 0 for P or PI control", key="Kd_pid_ph")
 
-        with st.expander("5. Configuración de Simulación", expanded=True):
-            t_final_ph = st.number_input("Tiempo Final Simulación [s]", min_value=100.0, value=1000.0, step=50.0, key="t_final_ph")
-            st.markdown("Configuración del Setpoint (Escalón)")
-            sp_initial_ph = st.number_input("Valor Inicial Setpoint [pH]", min_value=0.0, max_value=14.0, value=8.1, step=0.1, format="%.1f", key="sp_initial_ph")
-            sp_final_ph = st.number_input("Valor Final Setpoint [pH]", min_value=0.0, max_value=14.0, value=4.5, step=0.1, format="%.1f", key="sp_final_ph")
+        with st.expander("5. Simulation Configuration", expanded=True):
+            t_final_ph = st.number_input("Final Time Simulation [s]", min_value=100.0, value=1000.0, step=50.0, key="t_final_ph")
+            st.markdown("Setpoint Configuration (Step Input)")
+            sp_initial_ph = st.number_input("Initial Setpoint Value [pH]", min_value=0.0, max_value=14.0, value=8.1, step=0.1, format="%.1f", key="sp_initial_ph")
+            sp_final_ph = st.number_input("Final Setpoint Value [pH]", min_value=0.0, max_value=14.0, value=4.5, step=0.1, format="%.1f", key="sp_final_ph")
             # Asegurar que t_step no sea mayor que t_final
-            t_step_ph_value = st.number_input("Tiempo Cambio Setpoint [s]", min_value=0.0, max_value=float(t_final_ph), value=450.0, step=10.0, key="t_step_ph")
+            t_step_ph_value = st.number_input("Setpoint Change Time [s]", min_value=0.0, max_value=float(t_final_ph), value=450.0, step=10.0, key="t_step_ph")
             # Offset inicial para decidir la primera acción de control
-            y0_offset = st.number_input("Offset Inicial pH (vs SP inicial)", value=0.1, step=0.05, format="%.2f", help="Offset sobre SP inicial para decidir bomba inicial (positivo activa base, negativo activa ácido).", key="y0_offset")
+            y0_offset = st.number_input("Initial Offset pH (vs initial SP)", value=0.1, step=0.05, format="%.2f", help="Offset on initial SP to decide initial pump (positive activates base, negative activates acid).", key="y0_offset")
 
 
     # --- Simulación y Gráfica en el Área Principal ---
-    st.subheader("Simulación del Control")
+    st.subheader("Control Simulation")
 
-    if st.button("▶️ Simular Control de pH", key="run_ph_sim"):
+    if st.button("▶️ Simulate pH Control", key="run_ph_sim"):
         try:
             # 1. Definir funciones de transferencia
             s = control.tf('s')
@@ -126,13 +126,13 @@ def regulatorio_ph_page():
             setpoint[t >= t_step_ph_value] = sp_final_ph
 
             # 5. Simular respuestas independientes
-            st.write("Simulando respuestas de lazos independientes...")
+            st.write("Simulating independent loop responses...")
             T_sim, y_acid_resp = control.forced_response(G_closed_acid, T=t, U=setpoint)
             _, y_base_resp = control.forced_response(G_closed_base, T=t, U=setpoint) # T es el mismo
-            st.write("Simulaciones independientes completadas.")
+            st.write("Independent simulations completed.")
 
             # 6. Aplicar lógica de Gama Partida (Split-Range)
-            st.write("Aplicando lógica de gama partida...")
+            st.write("Applying split-range logic...")
             y_combined = np.zeros_like(t)
             pump_active = np.zeros_like(t) # 0: None, 1: Base, -1: Acid
 
@@ -155,17 +155,17 @@ def regulatorio_ph_page():
 
             # Forzar pH a estar entre 0 y 14 (límites físicos)
             y_combined = np.clip(y_combined, 0, 14)
-            st.write("Lógica de gama partida aplicada.")
+            st.write("Split-range logic applied.")
 
             # 7. Graficar resultados
-            st.subheader("Respuesta del Sistema con Gama Partida")
+            st.subheader("System Response with Split-Range")
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
             # Gráfico 1: pH
-            ax1.plot(t, setpoint, 'r--', linewidth=1.5, label='Setpoint pH')
-            ax1.plot(t, y_combined, 'b-', linewidth=1.5, label='pH Controlado (Simulado)')
+            ax1.plot(t, setpoint, 'r--', linewidth=1.5, label='pH Setpoint')
+            ax1.plot(t, y_combined, 'b-', linewidth=1.5, label='Controlled pH (Simulated)')
             ax1.set_ylabel('pH')
-            ax1.set_title('Respuesta del Sistema: pH')
+            ax1.set_title('System Response: pH')
             ax1.legend(loc='best')
             ax1.grid(True)
             # Ajuste dinámico de límites del eje Y para pH
@@ -179,15 +179,15 @@ def regulatorio_ph_page():
             # Gráfico 2: Indicador de Bomba Activa
             acid_signal = np.where(pump_active == -1, 1, 0) # 1 si ácido activo
             base_signal = np.where(pump_active == 1, 1, 0) # 1 si base activo
-            ax2.plot(t, acid_signal, 'g-', drawstyle='steps-post', linewidth=1.5, label='Bomba Ácido Activa')
-            ax2.plot(t, base_signal, 'm-', drawstyle='steps-post', linewidth=1.5, label='Bomba Base Activa')
-            ax2.set_xlabel('Tiempo (s)')
-            ax2.set_ylabel('Estado Bomba (Activa=1)')
-            ax2.set_title('Acción de Control (Gama Partida)')
+            ax2.plot(t, acid_signal, 'g-', drawstyle='steps-post', linewidth=1.5, label='Active Acid Pump')
+            ax2.plot(t, base_signal, 'm-', drawstyle='steps-post', linewidth=1.5, label='Active Base Pump')
+            ax2.set_xlabel('Time (s)')
+            ax2.set_ylabel('Pump Status (Active=1)')
+            ax2.set_title('Control Action (Split-Range)')
             ax2.legend(loc='best')
             ax2.grid(True)
             ax2.set_yticks([0, 1])
-            ax2.set_yticklabels(['Inactiva', 'Activa'])
+            ax2.set_yticklabels(['Inactive', 'Active'])
             ax2.set_ylim(-0.1, 1.1)
             ax2.set_xlim(0, t_final_ph) # Asegurar límite X correcto
 
@@ -196,28 +196,28 @@ def regulatorio_ph_page():
 
             # 8. Mostrar tabla de resultados (opcional)
             df_results_ph = pd.DataFrame({
-                'Tiempo (s)': t,
-                'Setpoint pH': setpoint,
-                'pH Simulado': y_combined,
-                'Bomba Activa': np.where(pump_active==-1, 'Ácido', np.where(pump_active==1, 'Base', 'Ninguna'))
+                'Time (s)': t,
+                'pH Setpoint': setpoint,
+                'Simulated pH': y_combined,
+                'Active Pump': np.where(pump_active==-1, 'Acid', np.where(pump_active==1, 'Base', 'None'))
              })
-            with st.expander("Ver datos de simulación detallados"):
+            with st.expander("View simulation data"):
                 st.dataframe(df_results_ph.style.format({
-                    'Tiempo (s)': '{:.1f}',
-                    'Setpoint pH': '{:.2f}',
-                    'pH Simulado': '{:.3f}'
+                    'Time (s)': '{:.1f}',
+                    'pH Setpoint': '{:.2f}',
+                    'Simulated pH': '{:.3f}'
                 }))
 
         except Exception as e:
-            st.error(f"Ocurrió un error durante la simulación de pH:")
+            st.error(f"An error occurred during the pH simulation:")
             # Muestra el traceback completo en la página de Streamlit para depuración
             st.exception(e)
 
     else:
         # Mensaje inicial antes de presionar el botón
-        st.info("Ajuste los parámetros en la barra lateral y presione 'Simular Control de pH'.")
+        st.info("Set the parameters in the sidebar and click on 'Simulate pH Control'.")
 
 # --- Punto de Entrada (para ejecución directa del script) ---
 if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="Control pH")
+    st.set_page_config(layout="wide", page_title="pH Control")
     regulatorio_ph_page()

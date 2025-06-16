@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa
 
 def rto_page():
-    st.header("🧠 Control RTO - Optimización del perfil de alimentación")
+    st.header("🧠 RTO Control -Feed Profile Optimization")
 
     with st.sidebar:
-        st.subheader("📌 Parámetros del modelo")
+        st.subheader("📌 Model Parameters")
         mu_max = st.number_input("μmax [1/h]", value=0.6, min_value=0.01)
         Ks = st.number_input("Ks [g/L]", value=0.2, min_value=0.01)
         Ko = st.number_input("KO [g/L]", value=0.01, min_value=0.001)
@@ -16,32 +16,32 @@ def rto_page():
         Yxs = st.number_input("Yxs [g/g]", value=0.5, min_value=0.1, max_value=1.0)
         Yxo = st.number_input("Yxo [g/g]", value=0.1, min_value=0.01, max_value=1.0)
         Yps = st.number_input("Yps [g/g]", value=0.3, min_value=0.1, max_value=1.0)
-        Sf_input = st.number_input("Concentración del alimentado Sf [g/L]", value=500.0)
-        V_max_input = st.number_input("Volumen máximo del reactor [L]", value=2.0)
+        Sf_input = st.number_input("Concentration of the feed Sf [g/L]", value=500.0)
+        V_max_input = st.number_input("Maximum reactor volume [L]", value=2.0)
 
-        st.subheader("🎚 Condiciones Iniciales")
-        X0 = st.number_input("X0 (Biomasa) [g/L]", value=1.0)
-        S0 = st.number_input("S0 (Sustrato) [g/L]", value=20.0)
-        P0 = st.number_input("P0 (Producto) [g/L]", value=0.0)
-        O0 = st.number_input("O0 (Oxígeno) [g/L]", value=0.08)
-        V0 = st.number_input("V0 (Volumen inicial) [L]", value=0.2)
+        st.subheader("🎚 Initial Conditions")
+        X0 = st.number_input("X0 (Biomass) [g/L]", value=1.0)
+        S0 = st.number_input("S0 (Substrate) [g/L]", value=20.0)
+        P0 = st.number_input("P0 (Product) [g/L]", value=0.0)
+        O0 = st.number_input("O0 (Oxygen) [g/L]", value=0.08)
+        V0 = st.number_input("V0 (Volume) [L]", value=0.2)
 
-        st.subheader("⏳ Configuración temporal")
-        t_batch = st.number_input("Tiempo de lote (t_batch) [h]", value=5.0, min_value=0.0)
-        t_total = st.number_input("Tiempo total del proceso [h]", value=24.0, min_value=t_batch + 1.0)
+        st.subheader("⏳ Temporary Configuration")
+        t_batch = st.number_input("Batch time (t_batch) [h]", value=5.0, min_value=0.0)
+        t_total = st.number_input("Total process time [h]", value=24.0, min_value=t_batch + 1.0)
 
-        st.subheader("🔧 Restricciones de operación")
-        F_min = st.number_input("Flujo mínimo [L/h]", value=0.0, min_value=0.0)
-        F_max = st.number_input("Flujo máximo [L/h]", value=0.3, min_value=F_min)
-        S_max = st.number_input("Sustrato máximo permitido [g/L]", value=30.0)
+        st.subheader("🔧 Operating Restrictions")
+        F_min = st.number_input("Minimum Flow [L/h]", value=0.0, min_value=0.0)
+        F_max = st.number_input("Maximum Flow [L/h]", value=0.3, min_value=F_min)
+        S_max = st.number_input("Maximum subtrate allowed [g/L]", value=30.0)
 
-        st.subheader("🔬 Selección del modelo cinético")
-        kinetic_model = st.selectbox("Modelo cinético", ["Monod", "Sigmoidal", "Completa"])
+        st.subheader("🔬 Selection of the kinetic model")
+        kinetic_model = st.selectbox("Kinetic model", ["Monod", "Sigmoidal", "Complete"])
         if kinetic_model == "Sigmoidal":
-            n_sigmoidal = st.number_input("n (para Monod Sigmoidal)", value=2.0, min_value=1.0)
+            n_sigmoidal = st.number_input("n (for Sigmoidal Monod)", value=2.0, min_value=1.0)
 
-    if st.button("🚀 Ejecutar Optimización RTO"):
-        st.info("Optimizando perfil de alimentación...")
+    if st.button("🚀 Run RTO Optimization"):
+        st.info("Optimizing feed profile...")
 
         try:
             def radau_coefficients(d):
@@ -59,7 +59,7 @@ def rto_page():
                     D_vec = np.array([0.0, 0.0, 1.0])
                     return C_mat, D_vec
                 else:
-                    raise NotImplementedError("Solo implementado para d=2.")
+                    raise NotImplementedError("Only implemented for d=2.")
             # ====================================================
             # 1) Definición de la función ODE BIO
             # ====================================================
@@ -91,10 +91,10 @@ def rto_page():
                     mu = mu_monod(S_, mu_max_local, Ks_local) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
                 elif kinetic_model == "Sigmoidal":
                     mu = mu_sigmoidal(S_, mu_max_local, Ks_local, n_sigmoidal) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
-                elif kinetic_model == "Completa":
+                elif kinetic_model == "Complete":
                     mu = mu_completa(S_, O_, P_, mu_max_local, Ks_local, Ko_local, KP_local)
                 else:
-                    raise ValueError("Modelo cinético no seleccionado correctamente.")
+                    raise ValueError("Kinetic model not selected correctly.")
 
                 # Tasa de dilución
                 D = u / V_
@@ -129,7 +129,7 @@ def rto_page():
             x0_np = np.array([X0, S0, P0, O0, V0])
             res_batch = batch_integrator(x0=x0_np, p=0.0)
             x_after_batch = np.array(res_batch['xf']).flatten()
-            st.info(f"[INFO] Estado tras fase batch: {x_after_batch}")
+            st.info(f"[INFO] Status after batch phase: {x_after_batch}")
 
             # ====================================================
             # 5) Formulación de la fase Fed-Batch con colocación
@@ -235,9 +235,9 @@ def rto_page():
 
             try:
                 sol = opti.solve()
-                st.success("[INFO] ¡Solución encontrada!")
+                st.success("[INFO] ¡Solution found!")
             except RuntimeError as e:
-                st.error(f"[ERROR] No se encontró solución: {e}")
+                st.error(f"[ERROR] No solution found: {e}")
                 try:
                     # Mostrar infeasibilidades
                     opti.debug.show_infeasibilities()
@@ -250,11 +250,11 @@ def rto_page():
             P_fin_val = X_fin_val[2]
             V_fin_val = X_fin_val[4]
 
-            st.info(f"Flujo óptimo de alimentación (F_opt): {F_opt}")
-            st.info(f"Estado final del reactor: {X_fin_val}")
-            st.info(f"Concentración final de Producto (P_final): {P_fin_val:.4f} g/L")
-            st.info(f"Volumen final del reactor (V_final): {V_fin_val:.4f} L")
-            st.info(f"Producto total final: {(P_fin_val * V_fin_val):.4f} g")
+            st.info(f"Optimal feed flow (F_opt): {F_opt}")
+            st.info(f"Final state of the reactor: {X_fin_val}")
+            st.info(f"Final product concentration (P_final): {P_fin_val:.4f} g/L")
+            st.info(f"Final reactor volume (V_final): {V_fin_val:.4f} L")
+            st.info(f"Final total product: {(P_fin_val * V_fin_val):.4f} g")
 
             # ====================================================
             # 10) Reconstruir y graficar trayectoria
@@ -343,46 +343,46 @@ def rto_page():
 
             # F
             axs[0].plot(t_full, F_plot, linewidth=2)
-            axs[0].set_title("Flujo de alimentación F(t)")
-            axs[0].set_xlabel("Tiempo (h)")
+            axs[0].set_title("Feed flow F(t)")
+            axs[0].set_xlabel("Time (h)")
             axs[0].set_ylabel("F (L/h)")
             axs[0].grid(True)
 
             # X
             axs[1].plot(t_full, X_full, linewidth=2)
-            axs[1].set_title("Biomasa X(t)")
-            axs[1].set_xlabel("Tiempo (h)")
+            axs[1].set_title("Biomass X(t)")
+            axs[1].set_xlabel("Time (h)")
             axs[1].set_ylabel("X (g/L)")
             axs[1].grid(True)
 
             # S
             axs[2].plot(t_full, S_full, linewidth=2)
             axs[2].axhline(S_max, color='r', linestyle='--', label="S_max")
-            axs[2].set_title("Sustrato S(t)")
-            axs[2].set_xlabel("Tiempo (h)")
+            axs[2].set_title("Substrate S(t)")
+            axs[2].set_xlabel("Time (h)")
             axs[2].set_ylabel("S (g/L)")
             axs[2].legend()
             axs[2].grid(True)
 
             # P
             axs[3].plot(t_full, P_full, linewidth=2)
-            axs[3].set_title("Producto P(t)")
-            axs[3].set_xlabel("Tiempo (h)")
+            axs[3].set_title("Product P(t)")
+            axs[3].set_xlabel("Time (h)")
             axs[3].set_ylabel("P (g/L)")
             axs[3].grid(True)
 
             # O
             axs[4].plot(t_full, O_full, linewidth=2)
-            axs[4].set_title("Oxígeno disuelto O(t) (constante)")
-            axs[4].set_xlabel("Tiempo (h)")
+            axs[4].set_title("Dissolved oxygen O(t) (constant)")
+            axs[4].set_xlabel("Time (h)")
             axs[4].set_ylabel("O (g/L)")
             axs[4].grid(True)
 
             # V
             axs[5].plot(t_full, V_full, linewidth=2)
             axs[5].axhline(V_max_input, color='r', linestyle='--', label="V_max")
-            axs[5].set_title("Volumen V(t)")
-            axs[5].set_xlabel("Tiempo (h)")
+            axs[5].set_title("Volume V(t)")
+            axs[5].set_xlabel("Time (h)")
             axs[5].set_ylabel("V (L)")
             axs[5].legend()
             axs[5].grid(True)
@@ -391,16 +391,16 @@ def rto_page():
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Producto total acumulado", f"{P_fin_val * V_fin_val:.2f} g")
+                st.metric("Total accumulated product", f"{P_fin_val * V_fin_val:.2f} g")
                 s_in_total = Sf_input * (V_fin_val - V0)
                 rend = (P_fin_val * V_fin_val) / s_in_total if s_in_total > 1e-9 else 0
-                st.metric("Rendimiento Producto/Sustrato", f"{rend:.3f} g/g")
+                st.metric("Product/Substrate Yield", f"{rend:.3f} g/g")
             with col2:
-                st.metric("Tiempo total del proceso", f"{t_total:.2f} h")
-                st.metric("Volumen final", f"{V_fin_val:.2f} L")
+                st.metric("Total process time", f"{t_total:.2f} h")
+                st.metric("Final volume", f"{V_fin_val:.2f} L")
 
         except Exception as e:
-            st.error(f"Error en la optimización: {str(e)}")
+            st.error(f"Error in optimization: {str(e)}")
             st.stop()
 
 if __name__ == '__main__':
