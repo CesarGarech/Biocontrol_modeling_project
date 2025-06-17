@@ -4,21 +4,21 @@ import matplotlib.pyplot as plt
 import casadi as ca
 
 def ekf_page():
-    st.header("Estimación de Estados y Parámetros con Filtro de Kalman Extendido (EKF)")
+    st.header("Estimation of States and Parameters with Extended Kalman Filter (EKF)")
     st.markdown("""
-    Esta sección simula un bioproceso batch y utiliza un EKF para estimar las concentraciones
-    de Biomasa (X), Sustrato (S), Producto (P), y dos parámetros cinéticos
-    ($\mu_{max}$, $Y_{X/S}$) a partir de mediciones simuladas y ruidosas de
-    Oxígeno Disuelto (OD), pH y Temperatura (T).
+    This section simulates a batch bioprocess and uses an EKF to estimate the concentrations
+    of Biomass (X), Substrate (S), Product (P), and two kinetic parameters
+    ($\mu_{max}$, $Y_{X/S}$) based on simulated and noisy measurements of
+    Dissolved Oxygen (DO), pH y Temperature (T).
 
-    **Puedes ajustar:**
-    * Las **condiciones iniciales** que supone el EKF (la "conjetura inicial").
-    * La **incertidumbre inicial** sobre esa conjetura (matriz $P_0$).
-    * Los niveles de **ruido** asumidos por el filtro para el proceso ($Q$) y las mediciones ($R$).
-    Observa cómo estos ajustes afectan la capacidad del EKF para seguir los valores reales.
+    **You can adjusts:**
+    * The **initial conditions** assumed by the EKF (the "initial guess").
+    * The **initial uncertainty** about that guess (matrix $P_0$).
+    * The **noise** levels assumed by the filter for the process ($Q$) and the measurements ($R$).
+    Observe how these adjustments affect the EKF's ability to track actual values.
     """)
 
-    st.sidebar.subheader("Parámetros del EKF y Simulación")
+    st.sidebar.subheader("EKF Parameters and Simulation")
 
     # --- Parámetros Fijos del Modelo "Real" (No ajustables por usuario aquí) ---
     #     (Podrían ponerse en un expander si se quiere verlos)
@@ -35,37 +35,37 @@ def ekf_page():
     k_Temp      = 0.02
 
     # --- Parámetros Ajustables por el Usuario ---
-    t_final_ekf = st.sidebar.slider("Tiempo final (h)", 5, 50, 20, key="ekf_tf")
+    t_final_ekf = st.sidebar.slider("Final time (h)", 5, 50, 20, key="ekf_tf")
     dt_ekf      = 0.1 # Fijo para esta simulación EKF
 
-    st.sidebar.markdown("**Condiciones Iniciales del EKF**")
-    X0_est  = st.sidebar.number_input("X inicial estimada (g/L)", 0.01, 5.0, 0.05, format="%.2f", key="ekf_x0e")
-    S0_est  = st.sidebar.number_input("S inicial estimada (g/L)", 0.1, 50.0, 4.5, format="%.1f", key="ekf_s0e")
-    P0_est  = st.sidebar.number_input("P inicial estimada (g/L)", 0.0, 10.0, 0.1, format="%.2f", key="ekf_p0e")
-    mu0_est = st.sidebar.number_input("μmax inicial estimada (1/h)", 0.1, 1.0, 0.35, format="%.2f", key="ekf_mu0e")
-    yxs0_est= st.sidebar.number_input("Yxs inicial estimada (g/g)", 0.1, 1.0, 0.55, format="%.2f", key="ekf_yxs0e")
+    st.sidebar.markdown("**EKF Initial Conditions**")
+    X0_est  = st.sidebar.number_input("Estimated initial X (g/L)", 0.01, 5.0, 0.05, format="%.2f", key="ekf_x0e")
+    S0_est  = st.sidebar.number_input("Estimated initial S (g/L)", 0.1, 50.0, 4.5, format="%.1f", key="ekf_s0e")
+    P0_est  = st.sidebar.number_input("Estimated initial P (g/L)", 0.0, 10.0, 0.1, format="%.2f", key="ekf_p0e")
+    mu0_est = st.sidebar.number_input("Estimated initial μmax (1/h)", 0.1, 1.0, 0.35, format="%.2f", key="ekf_mu0e")
+    yxs0_est= st.sidebar.number_input("Estimated initial Yxs (g/g)", 0.1, 1.0, 0.55, format="%.2f", key="ekf_yxs0e")
 
-    st.sidebar.markdown("**Incertidumbre Inicial $P_0$ (Diagonales)**")
+    st.sidebar.markdown("**Initial Uncertainty $P_0$ (Diagonals)**")
     p0_X   = st.sidebar.number_input("P0 - X", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0x")
     p0_S   = st.sidebar.number_input("P0 - S", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0s")
     p0_P   = st.sidebar.number_input("P0 - P", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0p")
     p0_mu  = st.sidebar.number_input("P0 - μmax", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0mu")
     p0_yxs = st.sidebar.number_input("P0 - Yxs", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0yxs")
 
-    st.sidebar.markdown("**Ruido de Proceso $Q$ (Diagonales)**")
+    st.sidebar.markdown("**Process Noise $Q$ (Diagonals)**")
     q_X   = st.sidebar.number_input("Q - X", 1e-8, 1e-2, 1e-5, format="%.2e", key="ekf_qx")
     q_S   = st.sidebar.number_input("Q - S", 1e-10, 1e-2, 1e-8, format="%.2e", key="ekf_qs")
     q_P   = st.sidebar.number_input("Q - P", 1e-8, 1e-2, 1e-5, format="%.2e", key="ekf_qp")
     q_mu  = st.sidebar.number_input("Q - μmax", 1e-8, 1e-2, 1e-6, format="%.2e", key="ekf_qmu")
     q_yxs = st.sidebar.number_input("Q - Yxs", 1e-8, 1e-2, 1e-6, format="%.2e", key="ekf_qyxs")
 
-    st.sidebar.markdown("**Ruido de Medición $R$ (Diagonales)**")
-    r_OD = st.sidebar.number_input("R - OD", 1e-4, 1.0, 0.05, format="%.4f", key="ekf_rod")
+    st.sidebar.markdown("**Measurement Noise $R$ (Diagonals)**")
+    r_OD = st.sidebar.number_input("R - DO", 1e-4, 1.0, 0.05, format="%.4f", key="ekf_rod")
     r_pH = st.sidebar.number_input("R - pH", 1e-4, 1.0, 0.02, format="%.4f", key="ekf_rph")
     r_T  = st.sidebar.number_input("R - Temp", 1e-2, 5.0, 0.5, format="%.2f", key="ekf_rtemp")
 
     # Botón para ejecutar la simulación
-    run_ekf = st.sidebar.button("Ejecutar Simulación EKF")
+    run_ekf = st.sidebar.button("Run EKF Simulation")
 
     # --- Definiciones CasADi (Fuera del botón para no redefinir) ---
     n_states_ekf = 5
@@ -96,7 +96,7 @@ def ekf_page():
 
 
     if run_ekf:
-        st.subheader("Resultados de la Estimación EKF")
+        st.subheader("EKF Estimation Results")
 
         # --- Preparación basada en Inputs del Usuario ---
         time_vec_ekf = np.arange(0, t_final_ekf + dt_ekf, dt_ekf)
@@ -177,49 +177,49 @@ def ekf_page():
 
         # Figura 1: Estados y Mediciones
         fig1_ekf, axs1_ekf = plt.subplots(3, 2, figsize=(12, 10), sharex=True)
-        fig1_ekf.suptitle('Estimación de Estados y Mediciones (EKF)', fontsize=14)
+        fig1_ekf.suptitle('Estimation of States and Measurements (EKF)', fontsize=14)
 
         # Biomasa
         axs1_ekf[0, 0].plot(time_vec_ekf, x_real_hist[0, :], 'b-', label='X real')
         axs1_ekf[0, 0].plot(time_vec_ekf, x_est_hist[0, :], 'r--', label='X estimada')
-        axs1_ekf[0, 0].set_ylabel('Biomasa (g/L)')
+        axs1_ekf[0, 0].set_ylabel('Biomass (g/L)')
         axs1_ekf[0, 0].legend()
         axs1_ekf[0, 0].grid(True)
 
         # Medición OD
         axs1_ekf[0, 1].plot(time_vec_ekf, z_meas_hist[0, :], 'k.-', markersize=3, linewidth=1, label='OD medido')
-        axs1_ekf[0, 1].set_ylabel('OD (mg/L)')
-        axs1_ekf[0, 1].set_title('Medición OD')
+        axs1_ekf[0, 1].set_ylabel('DO (mg/L)')
+        axs1_ekf[0, 1].set_title('DO measurement')
         axs1_ekf[0, 1].legend()
         axs1_ekf[0, 1].grid(True)
 
         # Sustrato
         axs1_ekf[1, 0].plot(time_vec_ekf, x_real_hist[1, :], 'b-', label='S real')
         axs1_ekf[1, 0].plot(time_vec_ekf, x_est_hist[1, :], 'r--', label='S estimada')
-        axs1_ekf[1, 0].set_ylabel('Sustrato (g/L)')
+        axs1_ekf[1, 0].set_ylabel('Substrate (g/L)')
         axs1_ekf[1, 0].legend()
         axs1_ekf[1, 0].grid(True)
 
         # Medición pH
         axs1_ekf[1, 1].plot(time_vec_ekf, z_meas_hist[1, :], 'k.-', markersize=3, linewidth=1, label='pH medido')
         axs1_ekf[1, 1].set_ylabel('pH')
-        axs1_ekf[1, 1].set_title('Medición pH')
+        axs1_ekf[1, 1].set_title('pH measurement')
         axs1_ekf[1, 1].legend()
         axs1_ekf[1, 1].grid(True)
 
         # Producto
         axs1_ekf[2, 0].plot(time_vec_ekf, x_real_hist[2, :], 'b-', label='P real')
         axs1_ekf[2, 0].plot(time_vec_ekf, x_est_hist[2, :], 'r--', label='P estimada')
-        axs1_ekf[2, 0].set_xlabel('Tiempo (h)')
-        axs1_ekf[2, 0].set_ylabel('Producto (g/L)')
+        axs1_ekf[2, 0].set_xlabel('Time (h)')
+        axs1_ekf[2, 0].set_ylabel('Product (g/L)')
         axs1_ekf[2, 0].legend()
         axs1_ekf[2, 0].grid(True)
 
         # Medición Temperatura
         axs1_ekf[2, 1].plot(time_vec_ekf, z_meas_hist[2, :], 'k.-', markersize=3, linewidth=1, label='T medida')
-        axs1_ekf[2, 1].set_xlabel('Tiempo (h)')
-        axs1_ekf[2, 1].set_ylabel('Temperatura (°C)')
-        axs1_ekf[2, 1].set_title('Medición Temperatura')
+        axs1_ekf[2, 1].set_xlabel('Time (h)')
+        axs1_ekf[2, 1].set_ylabel('Temperature (°C)')
+        axs1_ekf[2, 1].set_title('Temperature Measurement')
         axs1_ekf[2, 1].legend()
         axs1_ekf[2, 1].grid(True)
 
@@ -229,7 +229,7 @@ def ekf_page():
 
         # Figura 2: Parámetros Estimados
         fig2_ekf, axs2_ekf = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-        fig2_ekf.suptitle('Estimación de Parámetros (EKF)', fontsize=14)
+        fig2_ekf.suptitle('Parameter Estimation (EKF)', fontsize=14)
 
         # mu_max
         axs2_ekf[0].plot(time_vec_ekf, x_real_hist[3, :], 'b-', label=r'$\mu_{max}$ real')
@@ -241,7 +241,7 @@ def ekf_page():
         # Yxs
         axs2_ekf[1].plot(time_vec_ekf, x_real_hist[4, :], 'b-', label=r'$Y_{X/S}$ real')
         axs2_ekf[1].plot(time_vec_ekf, x_est_hist[4, :], 'r--', label=r'$Y_{X/S}$ estimada')
-        axs2_ekf[1].set_xlabel('Tiempo (h)')
+        axs2_ekf[1].set_xlabel('Time (h)')
         axs2_ekf[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)')
         axs2_ekf[1].legend()
         axs2_ekf[1].grid(True)
@@ -249,17 +249,17 @@ def ekf_page():
         plt.tight_layout(rect=[0, 0.03, 1, 0.96])
         st.pyplot(fig2_ekf)
 
-        st.write("Valores Finales:")
+        st.write("Final Values:")
         col1, col2 = st.columns(2)
         with col1:
-            st.write("**Reales**")
+            st.write("**Actual**")
             st.metric("X", f"{x_real_ekf[0,0]:.3f} g/L")
             st.metric("S", f"{x_real_ekf[1,0]:.3f} g/L")
             st.metric("P", f"{x_real_ekf[2,0]:.3f} g/L")
             st.metric("μmax", f"{x_real_ekf[3,0]:.3f} 1/h")
             st.metric("Yxs", f"{x_real_ekf[4,0]:.3f} g/g")
         with col2:
-            st.write("**Estimados**")
+            st.write("**Estimated**")
             st.metric("X est.", f"{x_est_ekf[0,0]:.3f} g/L")
             st.metric("S est.", f"{x_est_ekf[1,0]:.3f} g/L")
             st.metric("P est.", f"{x_est_ekf[2,0]:.3f} g/L")
@@ -267,7 +267,7 @@ def ekf_page():
             st.metric("Yxs est.", f"{x_est_ekf[4,0]:.3f} g/g")
 
     else:
-        st.info("Ajusta los parámetros en la barra lateral y haz clic en 'Ejecutar Simulación EKF'.")
+        st.info("Set the parameters in the sidebar and click on 'Run EKF Simulation'.")
 
     if __name__ == '__main__':
         ekf_page()

@@ -6,10 +6,10 @@ from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa  # Import kinetic
 
 
 def lote_page():
-    st.header("Operation Mode: Batch")
+    st.header("Operation mode: Batch")
     st.sidebar.subheader("Model Parameters")
     # Tipo de cinética
-    tipo_mu = st.sidebar.selectbox("Type of kinetics", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
+    tipo_mu = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
     if tipo_mu == "Simple Monod":
         st.markdown(""" 
         ## Simple Monod Kinetics
@@ -81,26 +81,26 @@ def lote_page():
     Yxo = st.sidebar.slider("Yxo", 0.1, 1.0, 0.3)
     Kla = st.sidebar.slider("kLa", 0.1, 100.0, 20.0)
     Cs = st.sidebar.slider("Saturated Oxygen (Cs)", 0.1, 10.0, 8.0)
-    V = st.sidebar.slider("Bioreactor Volume (L)", 0.5, 10.0, 2.0)
-    ms = st.sidebar.slider("Maintenace (ms)", 0.0, 0.5, 0.005)
-    Kd = st.sidebar.slider("Decline (Kd)", 0.0, 0.5, 0.005)
-    mo = st.sidebar.slider("Maintenace O2 (mo)", 0.0, 0.5, 0.05)
+    V = st.sidebar.slider("Bioreactor Volumen (L)", 0.5, 10.0, 2.0)
+    ms = st.sidebar.slider("Maintenance (ms)", 0.0, 0.5, 0.005)
+    Kd = st.sidebar.slider("Decay (Kd)", 0.0, 0.5, 0.005)
+    mo = st.sidebar.slider("O2 Maintenance (mo)", 0.0, 0.5, 0.05)
 
     # Iniciales
     X0 = st.sidebar.number_input("Initial Biomass (g/L)", 0.1, 10.0, 0.5)
-    S0 = st.sidebar.number_input("Initial Sustrate (g/L)", 0.1, 100.0, 20.0)
+    S0 = st.sidebar.number_input("Initial Substrate (g/L)", 0.1, 100.0, 20.0)
     P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
-    O0 = st.sidebar.number_input("Initial Dissolved O2 (mg/L)", 0.0, 10.0, 5.0)
+    O0 = st.sidebar.number_input("Initial dissolved O2 (mg/L)", 0.0, 10.0, 5.0)
 
     
 
     # Tiempo de simulación
-    t_final = st.sidebar.slider("Final Time (h)", 1, 100, 30)
+    t_final = st.sidebar.slider("Final time (h)", 1, 100, 30)
     t_eval = np.linspace(0, t_final, 300)
 
     # Tolerancias
-    atol = st.sidebar.number_input("Absolute Tolerance (atol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
-    rtol = st.sidebar.number_input("Relative Tolerance (rtol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
+    atol = st.sidebar.number_input("Absolute tolerance (atol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
+    rtol = st.sidebar.number_input("Relative tolerance (rtol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
 
     def modelo_lote(t, y):
         X, S, P, O2 = y

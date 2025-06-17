@@ -98,27 +98,27 @@ def lote_alimentado_page():
         Ks = st.slider(r"$\ K_{\mathrm{s}}$[g/L]", 0.01, 2.0, 0.5)
 
         if tipo_mu == "Sigmoidal Monod":
-            n = st.slider("Sigmoidal Exponent (n)", 1, 5, 2)
+            n = st.slider("Sigmoidal exponent (n)", 1, 5, 2)
         elif tipo_mu == "Monod with restrictions":
-            KO = st.slider("O2 Saturation Constant [mg/L]", 0.1, 5.0, 0.5)
-            KP = st.slider("Product Inhibition Constant [g/L]", 0.1, 10.0, 5.0) # Ajustado el valor por defecto
+            KO = st.slider("O2 saturation constant [mg/L]", 0.1, 5.0, 0.5)
+            KP = st.slider("Product inhibition constant [g/L]", 0.1, 10.0, 5.0) # Ajustado el valor por defecto
 
         Yxs = st.slider("Yxs [g/g]", 0.1, 1.0, 0.6)
         Ypx = st.slider("Ypx [g/g]", 0.0, 1.0, 0.3)
         Yxo = st.slider("Yxo [g/g]", 0.1, 1.0, 0.2)
         Kla = st.slider("kLa [1/h]", 1.0, 200.0, 50.0)
         Cs = st.slider("Saturated O2 [mg/L]", 5.0, 15.0, 8.0)
-        Sin = st.slider("Substrate in Fed [g/L]", 50.0, 300.0, 150.0)
-        ms = st.slider("Maintenace S [g/g/h]", 0.0, 0.1, 0.001)
-        Kd = st.slider("Decline X [1/h]", 0.0, 0.1, 0.02) # Unidades corregidas
-        mo = st.slider("Maintenace O2 [g/g/h]", 0.0, 0.1, 0.01)
+        Sin = st.slider("Substrate in Feed [g/L]", 50.0, 300.0, 150.0)
+        ms = st.slider("S Maintenance [g/g/h]", 0.0, 0.1, 0.001)
+        Kd = st.slider("X Decay [1/h]", 0.0, 0.1, 0.02) # Unidades corregidas
+        mo = st.slider("O2 Maintenance [g/g/h]", 0.0, 0.1, 0.01)
 
         st.subheader("Feeding Strategy")
         # Añadida opción "Lineal"
-        estrategia = st.selectbox("Type", ["Constant", "Exponential", "Step", "Lineal"])
-        F_base = st.slider("Base Flow (or Initial to Lineal) [L/h]", 0.01, 5.0, 0.5)
-        t_alim_inicio = st.slider("Initial Feeding Time [h]", 0.0, 24.0, 2.0, 0.5) # Ajustado a float
-        t_alim_fin = st.slider("Final Feeding Time [h]", t_alim_inicio + 0.1, 48.0, 24.0, 0.5) # Asegura t_fin > t_inicio
+        estrategia = st.selectbox("Type", ["Constant", "Exponential", "Step", "Linear"])
+        F_base = st.slider("Base Flow (or Initial for Linear) [L/h]", 0.01, 5.0, 0.5)
+        t_alim_inicio = st.slider("Start Feeding [h]", 0.0, 24.0, 2.0, 0.5) # Ajustado a float
+        t_alim_fin = st.slider("End Feeding [h]", t_alim_inicio + 0.1, 48.0, 24.0, 0.5) # Asegura t_fin > t_inicio
 
         # Parámetro adicional solo para la estrategia Lineal
         F_lineal_fin = 0.0 # Inicializar
@@ -126,9 +126,9 @@ def lote_alimentado_page():
             F_lineal_fin = st.slider("Final Flow (Lineal) [L/h]", F_base, 10.0, F_base * 2) # Asegura F_fin >= F_base
 
         st.subheader("Initial Conditions")
-        V0 = st.number_input("Initial Volume [L]", 1.0, 100.0, 3.0) # Rango aumentado
+        V0 = st.number_input(" Initial Volume [L]", 1.0, 100.0, 3.0) # Rango aumentado
         X0 = st.number_input("Initial Biomass [g/L]", 0.1, 50.0, 1.0) # Rango aumentado
-        S0 = st.number_input("Initial Sustrate [g/L]", 0.1, 100.0, 30.0)
+        S0 = st.number_input("Initial Substrate [g/L]", 0.1, 100.0, 30.0)
         P0 = st.number_input("Initial Product [g/L]", 0.0, 50.0, 0.0)
         O0 = st.number_input("Initial O2 [mg/L]", 0.0, float(Cs), float(Cs)) # O2 inicial igual a saturado
 
@@ -151,7 +151,7 @@ def lote_alimentado_page():
                 # Usar un punto medio claro entre inicio y fin
                 t_medio = t_alim_inicio + (t_alim_fin - t_alim_inicio) / 2
                 return F_base * 2 if t > t_medio else F_base
-            elif estrategia == "Lineal":
+            elif estrategia == "Linear":
                 delta_t = t_alim_fin - t_alim_inicio
                 if delta_t > 0:
                     slope = (F_lineal_fin - F_base) / delta_t
@@ -214,7 +214,7 @@ def lote_alimentado_page():
 
     # Verificar si la solución fue exitosa
     if not sol.success:
-        st.error(f"Integration fail: {sol.message}")
+        st.error(f"Integration failed: {sol.message}")
         st.stop() # Detener la ejecución si falla la integración
 
     # Calcular el flujo para los tiempos de la solución
@@ -231,11 +231,11 @@ def lote_alimentado_page():
 
     # Gráfico Flujo y Volumen
     ax1 = plt.subplot2grid((3, 2), (0, 0), colspan=2)
-    ax1.plot(sol.t, flujo_sim, 'r-', label='Alimetation Flow [L/h]')
+    ax1.plot(sol.t, flujo_sim, 'r-', label='Feed Flow [L/h]')
     ax1.set_ylabel('Flow [L/h]', color='r')
     ax1.tick_params(axis='y', labelcolor='r')
     ax1.set_xlabel('Time [h]')
-    ax1.set_title('Feeding and Volume Evolution')
+    ax1.set_title('Feeding and Volume Profile')
     ax1.grid(True)
     ax1.legend(loc='upper left')
 
@@ -256,7 +256,7 @@ def lote_alimentado_page():
     # Gráfico Sustrato
     ax3 = plt.subplot2grid((3, 2), (1, 1))
     ax3.plot(sol.t, sol.y[1], 'm-')
-    ax3.set_title('Sustrate (S) [g/L]')
+    ax3.set_title('Substrate (S) [g/L]')
     ax3.set_ylabel('[g/L]')
     ax3.set_xlabel('Time [h]')
     ax3.grid(True)
@@ -291,12 +291,12 @@ def lote_alimentado_page():
     col3.metric("Final Product [g/L]", "{:.2f}".format(sol.y[2, -1]))
     col1.metric("Productivity Vol. P [g/L/h]", "{:.3f}".format(sol.y[2, -1] / sol.t[-1]) if sol.t[-1] > 0 else 0)
     col2.metric("Productivity Vol. X [g/L/h]", "{:.3f}".format(sol.y[0, -1] / sol.t[-1]) if sol.t[-1] > 0 else 0)
-    col3.metric("Performance P/S Total [g/g]", "{:.3f}".format( (sol.y[2,-1]*sol.y[4,-1] - P0*V0) / (S0*V0 + np.trapz(flujo_sim * Sin, sol.t) - sol.y[1,-1]*sol.y[4,-1]) ) if (S0*V0 + np.trapz(flujo_sim * Sin, sol.t) - sol.y[1,-1]*sol.y[4,-1]) > 1e-6 else 0)
+    col3.metric("Total P/S Yield [g/g]", "{:.3f}".format( (sol.y[2,-1]*sol.y[4,-1] - P0*V0) / (S0*V0 + np.trapz(flujo_sim * Sin, sol.t) - sol.y[1,-1]*sol.y[4,-1]) ) if (S0*V0 + np.trapz(flujo_sim * Sin, sol.t) - sol.y[1,-1]*sol.y[4,-1]) > 1e-6 else 0)
 
 
 if __name__ == '__main__':
     # Configuración de la página de Streamlit (opcional pero recomendado)
-    st.set_page_config(layout="wide", page_title="Simulator Fed-Batch")
+    st.set_page_config(layout="wide", page_title="Fed-Batch Simulator")
     # Cargar las funciones de cinética si están en un archivo separado
     # from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa
     lote_alimentado_page()
