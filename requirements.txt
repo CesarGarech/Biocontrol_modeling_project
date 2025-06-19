@@ -8,4 +8,5 @@ seaborn
 casadi
 control
 xlsxwriter
+tensorflow
 # casadi ipopt
