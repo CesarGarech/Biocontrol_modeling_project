@@ -40,15 +40,15 @@ def ekf_page():
 
     st.sidebar.markdown("**EKF Initial Conditions**")
     X0_est  = st.sidebar.number_input("Estimated initial X (g/L)", 0.01, 5.0, 0.05, format="%.2f", key="ekf_x0e")
-    S0_est  = st.sidebar.number_input("Estimated initial S (g/L)", 0.1, 50.0, 4.5, format="%.1f", key="ekf_s0e")
-    P0_est  = st.sidebar.number_input("Estimated initial P (g/L)", 0.0, 10.0, 0.1, format="%.2f", key="ekf_p0e")
-    mu0_est = st.sidebar.number_input("Estimated initial μmax (1/h)", 0.1, 1.0, 0.35, format="%.2f", key="ekf_mu0e")
-    yxs0_est= st.sidebar.number_input("Estimated initial Yxs (g/g)", 0.1, 1.0, 0.55, format="%.2f", key="ekf_yxs0e")
+    S0_est  = st.sidebar.number_input("Estimated initial S (g/L)", 0.1, 50.0, 5.0, format="%.1f", key="ekf_s0e")
+    P0_est  = st.sidebar.number_input("Estimated initial P (g/L)", 0.0, 10.0, 0.01, format="%.2f", key="ekf_p0e")
+    mu0_est = st.sidebar.number_input("Estimated initial μmax (1/h)", 0.1, 1.0, 0.40, format="%.2f", key="ekf_mu0e")
+    yxs0_est= st.sidebar.number_input("Estimated initial Yxs (g/g)", 0.1, 1.0, 0.50, format="%.2f", key="ekf_yxs0e")
 
     st.sidebar.markdown("**Initial Uncertainty $P_0$ (Diagonals)**")
     p0_X   = st.sidebar.number_input("P0 - X", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0x")
     p0_S   = st.sidebar.number_input("P0 - S", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0s")
-    p0_P   = st.sidebar.number_input("P0 - P", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0p")
+    p0_P   = st.sidebar.number_input("P0 - P", 1e-4, 1.0, 0.03, format="%.4f", key="ekf_p0p")
     p0_mu  = st.sidebar.number_input("P0 - μmax", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0mu")
     p0_yxs = st.sidebar.number_input("P0 - Yxs", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_p0yxs")
 
