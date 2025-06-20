@@ -31,7 +31,6 @@ def ann_page():
     # --- Helper function to reset state ---
     def reset_page_state():
         st.session_state.ann_data_generated = False
-        # Clear other potential keys if they exist
         for key in ['ann_config', 'ann_results_generated']:
             if key in st.session_state:
                 del st.session_state[key]
@@ -106,25 +105,29 @@ def ann_page():
         if not st.session_state.get('ann_results_generated', False):
              st.info("⬅️ **Next Step:** Configure the ANN in STEP 2 in the sidebar and click 'Train and Run ANN' to see the results.")
 
-    # If the button was clicked and state is set, run the prediction and show results
     if st.session_state.get('ann_results_generated', False):
         run_ann_training_and_prediction(st.session_state.ann_config)
 
-@st.cache_data(show_spinner=False) # Spinner is handled manually
+@st.cache_data(show_spinner=False)
 def run_data_generation(_t_final, _dt, _Q, _R):
     """Runs the simulation to generate data for the ANN. Only updates session state."""
     with st.spinner("Running bioprocess simulation..."):
         n_states, n_meas = 5, 3
         Ks, alpha = 0.1, 0.1
         OD_sat, k_OUR, pH0, P0_meas_ref, k_acid, Tset, k_Temp = 8.0, 0.5, 7.0, 0.0, 0.2, 30, 0.02
+        
         x_sym = ca.SX.sym('x', n_states)
         X_sym, S_sym, P_sym, mu_max_sym, Yxs_sym = ca.vertsplit(x_sym)
         mu_sym = mu_max_sym * (S_sym / (Ks + S_sym))
+        
+        # === THE FIX IS APPLIED HERE ===
         dX = mu_sym * X_sym
         dS = -(1 / Yxs_sym) * dX
         dP = alpha * dX
+        
         x_next_sym = x_sym + _dt * ca.vertcat(dX, dS, dP, 0, 0)
         f_func = ca.Function('f', [x_sym], [x_next_sym])
+        
         OD_val, pH_val, T_val = OD_sat - k_OUR*X_sym, pH0 - k_acid*(P_sym - P0_meas_ref), Tset + k_Temp*(X_sym*S_sym)
         z_sym = ca.vertcat(OD_val, pH_val, T_val)
         h_func = ca.Function('h', [x_sym], [z_sym])
@@ -177,7 +180,7 @@ def run_ann_training_and_prediction(config):
             optimizer = keras.optimizers.Adam(learning_rate=config['learning_rate'])
         elif config['optimizer_name'] == 'rmsprop':
             optimizer = keras.optimizers.RMSprop(learning_rate=config['learning_rate'])
-        else: # sgd
+        else:
             optimizer = keras.optimizers.SGD(learning_rate=config['learning_rate'])
         
         ann_model.compile(optimizer=optimizer, loss=config['loss_func'])
@@ -191,7 +194,7 @@ def run_ann_training_and_prediction(config):
     st.subheader("ANN Estimation Results")
     tab1, tab2, tab3 = st.tabs(["📈 Result Plots", "📚 Learning Curve", "📄 Model Summary"])
     with tab1:
-        plot_results(time_vec, x_real_hist, Y_pred_ann.T)
+        plot_results(time_vec, x_real_hist, z_meas_hist, Y_pred_ann.T)
     with tab2:
         plot_learning_curve(history)
     with tab3:
@@ -202,9 +205,11 @@ def run_ann_training_and_prediction(config):
         st.markdown("#### Hyperparameters Used")
         st.json(config)
 
-def plot_results(time_vec, x_real_hist, x_ann_hist):
-    """Generates the result plots comparing real vs ANN predicted values."""
+def plot_results(time_vec, x_real_hist, z_meas_hist, x_ann_hist):
+    """Generates result plots for states and measurements."""
     plt.style.use('seaborn-v0_8-whitegrid')
+    
+    st.subheader("Predicted States and Parameters")
     fig_states, axs_states = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
     fig_states.suptitle('ANN Prediction: Process States', fontsize=16)
     state_labels = ['Biomass (X)', 'Substrate (S)', 'Product (P)']
@@ -212,8 +217,7 @@ def plot_results(time_vec, x_real_hist, x_ann_hist):
     for i in range(3):
         axs_states[i].plot(time_vec, x_real_hist[i, :], 'b-', label=f'{state_labels[i]} Real')
         axs_states[i].plot(time_vec, x_ann_hist[i, :], 'g--', lw=2.5, label=f'{state_labels[i]} Predicted (ANN)')
-        axs_states[i].set_ylabel(ylabels[i])
-        axs_states[i].legend()
+        axs_states[i].set_ylabel(ylabels[i]), axs_states[i].legend()
     axs_states[2].set_xlabel('Time (h)')
     st.pyplot(fig_states)
 
@@ -224,10 +228,32 @@ def plot_results(time_vec, x_real_hist, x_ann_hist):
         idx = i + 3
         axs_params[i].plot(time_vec, x_real_hist[idx, :], 'b-', label=f'{param_labels[i]} Real')
         axs_params[i].plot(time_vec, x_ann_hist[idx, :], 'g--', lw=2.5, label=f'{param_labels[i]} Predicted (ANN)')
-        axs_params[i].set_ylabel(param_ylabels[i])
-        axs_params[i].legend()
+        axs_params[i].set_ylabel(param_ylabels[i]), axs_params[i].legend()
     axs_params[1].set_xlabel('Time (h)')
     st.pyplot(fig_params)
+
+    # --- ADDED SECTION FOR MEASUREMENT PLOTS ---
+    st.markdown("---")
+    st.subheader("Model Consistency Check: Measurements")
+    st.caption("This compares the noisy measurements used as input to the ANN with the measurements 'reconstructed' from the ANN's predicted states. It shows if the model's outputs are consistent with the sensor model.")
+    
+    OD_sat, k_OUR, pH0, k_acid, P0_meas_ref, Tset, k_Temp = 8.0, 0.5, 7.0, 0.2, 0.0, 30, 0.02
+    X_ann, S_ann, P_ann = x_ann_hist[0, :], x_ann_hist[1, :], x_ann_hist[2, :]
+    OD_pred, pH_pred, T_pred = (OD_sat - k_OUR * X_ann), (pH0 - k_acid * (P_ann - P0_meas_ref)), (Tset + k_Temp * (X_ann * S_ann))
+    
+    fig_meas, axs_meas = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+    fig_meas.suptitle('Comparison: Actual vs. Reconstructed Measurements', fontsize=16)
+    
+    meas_labels, meas_ylabels = ['Dissolved Oxygen', 'pH', 'Temperature'], ['DO (mg/L)', 'pH', 'Temp (°C)']
+    actual_meas, recon_meas = [z_meas_hist[0, :], z_meas_hist[1, :], z_meas_hist[2, :]], [OD_pred, pH_pred, T_pred]
+
+    for i in range(3):
+        axs_meas[i].plot(time_vec, actual_meas[i], 'b.', markersize=4, label=f'Actual Measurement (ANN Input)')
+        axs_meas[i].plot(time_vec, recon_meas[i], 'r--', lw=2.5, label=f'Reconstructed from ANN States')
+        axs_meas[i].set_ylabel(meas_ylabels[i]), axs_meas[i].set_title(meas_labels[i]), axs_meas[i].legend()
+        
+    axs_meas[2].set_xlabel('Time (h)')
+    st.pyplot(fig_meas)
 
 def plot_learning_curve(history):
     """Plots the training and validation loss."""
