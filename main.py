@@ -1,36 +1,29 @@
 import streamlit as st
 import os
-import sys # Necesario para añadir carpetas al path (si Utils está fuera)
+import sys
 
 # --- Añadir carpetas relevantes al path (Ajusta según tu estructura) ---
-# Esto es importante si 'Utils' u otros módulos están en carpetas diferentes
-# Obtener el directorio del script actual (main.py)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Añadir el directorio padre (si Body y Utils están al mismo nivel que main.py o en subcarpetas)
 # sys.path.append(os.path.dirname(script_dir))
-# Añadir carpetas específicas si es necesario
 # sys.path.append(os.path.join(script_dir, 'Body'))
-# sys.path.append(os.path.join(script_dir, 'Utils')) # Si Utils es una carpeta separada
+# sys.path.append(os.path.join(script_dir, 'Utils'))
 
 # --- Asumiendo que Utils.kinetics está accesible ---
 try:
     from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion
 except ImportError:
-    # Puedes mantener las funciones dummy o simplemente pasar
-    # print("Advertencia: Módulo Utils.kinetics no encontrado.")
     pass
 
-
 # 1. Define la NUEVA estructura del menú jerárquico
+# --- MODIFICACIÓN AQUÍ ---
 menu_structure = {
     "🏠 Home": None,
     "🔬 Models": ["Batch", "Fed-Batch", "Continuous", "Fermentation"],
     "📈 Sensitivity Analysis": None,
     "🔧 Parameter Adjustment": ["Batch Parameter Adjustment", "Fed-Batch Parameter Adjustment", "Fermentation Parameter Adjustment"],
-    "📊 State Estimation": None,
-    # --- NUEVA ESTRUCTURA PARA CONTROL ---
+    # La clave "State Estimation" ahora contiene una lista para crear un submenú
+    "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
-        # "Regulatorio": ["Temperatura", "pH", "Oxigeno"],
         "Regulatory": ["Temperature", "pH", "Oxygen", "On-Off Feeding"],
         "Advanced": ["RTO", "RTO Ferm", "NMPC"]
     }
@@ -39,57 +32,53 @@ menu_structure = {
 def main():
     st.set_page_config(page_title="Bioprocess Modeling", layout="wide")
 
-    # --- Navegación en la Barra Lateral (MODIFICADA) ---
+    # --- Navegación en la Barra Lateral (sin cambios necesarios aquí) ---
     st.sidebar.title("Main Navigation")
 
     # Widget para seleccionar la categoría principal
     main_category = st.sidebar.selectbox(
         "Select a section:",
         list(menu_structure.keys()),
-        key="main_cat_select" # Añadir key por robustez
+        key="main_cat_select"
     )
 
     sub_options = menu_structure[main_category]
-    selected_page = main_category # Página por defecto si no hay submenú
+    selected_page = main_category
 
-    # --- Lógica MODIFICADA para manejar submenús simples y anidados ---
-    if isinstance(sub_options, list): # Caso: Submenú de un nivel (ej. Modelos)
+    # La lógica existente ya maneja submenús basados en listas, por lo que
+    # "State Estimation" funcionará automáticamente sin cambios en esta sección.
+    if isinstance(sub_options, list):
         st.sidebar.markdown("---")
         sub_selection = st.sidebar.radio(
-             # Usar split() con cuidado, asegurarse que el emoji no interfiera
-            f"Detail - {main_category.split(' ')[-1]}:", # Título dinámico
+            f"Detail - {main_category.split(' ')[-1]}:",
             sub_options,
-            key=f"radio_sub_{main_category.replace(' ', '_')}" # Clave única
+            key=f"radio_sub_{main_category.replace(' ', '_')}"
         )
-        selected_page = sub_selection # La página final es la sub-opción
+        selected_page = sub_selection
 
-    elif isinstance(sub_options, dict): # Caso: Submenú de dos niveles (ej. Control)
+    elif isinstance(sub_options, dict):
         st.sidebar.markdown("---")
-        # Primer Nivel de Submenú (Regulatorio / Avanzado)
         sub_level1_selection = st.sidebar.selectbox(
             f"Type - {main_category.split(' ')[-1]}:",
-            list(sub_options.keys()), # Obtiene ["Regulatorio", "Avanzado"]
+            list(sub_options.keys()),
             key=f"select_sub1_{main_category.replace(' ', '_')}"
         )
 
-        # Segundo Nivel de Submenú (Opciones dentro de Regulatorio o Avanzado)
         sub_level2_options = sub_options[sub_level1_selection]
-        if sub_level2_options: # Asegurarse que hay opciones de segundo nivel
-            st.sidebar.markdown("---") # Otro separador
+        if sub_level2_options:
+            st.sidebar.markdown("---")
             sub_level2_selection = st.sidebar.radio(
                 f"Option - {sub_level1_selection}:",
-                sub_level2_options, # Lista como ["Temperatura", "pH", ...] o ["RTO", ...]
+                sub_level2_options,
                 key=f"radio_sub2_{main_category.replace(' ', '_')}_{sub_level1_selection}"
             )
-            selected_page = sub_level2_selection # La página final es la del segundo nivel
+            selected_page = sub_level2_selection
 
     # --- Fin Navegación ---
 
 
     # --- Carga de la Página Seleccionada (AÑADIR NUEVAS PÁGINAS DE CONTROL) ---
-    # La lógica if/elif ahora busca el valor final de 'selected_page'
-
-    st.subheader(f"Selected Page: {selected_page}") # Para depuración
+    st.subheader(f"Selected Page: {selected_page}")
     st.markdown("---")
 
     # --- Carga dinámica de módulos ---
@@ -110,8 +99,8 @@ def main():
             from Body.modeling import ferm_alcohol
             ferm_alcohol.fermentacion_alcoholica_page()
         elif selected_page == "📈 Sensitivity Analysis":
-            from Body import analysis # Asumiendo que existe analysis.py
-            analysis.analysis_page() # Asumiendo que tiene esta función
+            from Body import analysis
+            analysis.analysis_page()
         elif selected_page == "Batch Parameter Adjustment":
             from Body.estimacion_parametros import ajuste_parametros_lote
             ajuste_parametros_lote.ajuste_parametros_page()
@@ -121,25 +110,32 @@ def main():
         elif selected_page == "Fermentation Parameter Adjustment":
             from Body.estimacion_parametros import ajuste_parametros_ferm
             ajuste_parametros_ferm.ajuste_parametros_ferm_page()
-        elif selected_page == "📊 State Estimation":
-            from Body.estimation import ekf # Asumiendo que existe ekf.py
-            ekf.ekf_page() # Asumiendo que tiene esta función
+
+        # --- MODIFICACIÓN EN LA LÓGICA DE CARGA ---
+        # Se elimina la condición anterior para "State Estimation" y se reemplaza por las siguientes dos.
+        
+        elif selected_page == "EKF":
+            # Asumimos que la página EKF está en Body/estimation/ekf.py con una función ekf_page()
+            from Body.estimation import ekf
+            ekf.ekf_page()
+
+        elif selected_page == "ANN":
+            # Asumimos que la nueva página ANN estará en Body/estimation/ann.py con una función ann_page()
+            # Este es el módulo que crearemos a continuación.
+            from Body.estimation import ann
+            ann.ann_page()
 
         # --- PÁGINAS DE CONTROL REGULATORIO ---
         elif selected_page == "Temperature":
-            # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_temp
             reg_temp.regulatorio_temperatura_page()
         elif selected_page == "pH":
-            # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_ph
             reg_ph.regulatorio_ph_page()
         elif selected_page == "Oxygen":
-             # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_oxigeno
             reg_oxigeno.regulatorio_oxigeno_page()
         elif selected_page == "On-Off Feeding":
-             # Asegúrate de tener este archivo y función
             from Body.control.regulatorio import reg_feed_onoff
             reg_feed_onoff.regulatorio_feed_onoff_page()
 
@@ -154,30 +150,28 @@ def main():
             from Body.control.avanzado import nmpc
             nmpc.nmpc_page()
         else:
-            # Mostrar Home o un mensaje si la página no coincide con ninguna carga
-             st.warning(f"'{selected_page}' page selected, displaying Home by default or unimplemented page.")
-             from Body import home
-             home.home_page()
+            st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")
+            from Body import home
+            home.home_page()
 
     except ModuleNotFoundError as e:
          st.error(f"Error importing the module for '{selected_page}': {e}")
-         st.error(f"Check that the file '{e.name}.py' exist in the correct folder (ej. Body/control/) and has no syntax errors.")
-         st.info("Displaying Home Page.")
+         st.error(f"Check that the file '{e.name.replace('.', '/')}.py' exists in the correct folder (e.g., Body/estimation/) and has no syntax errors.")
+         st.info("Displaying Home Page as a fallback.")
          from Body import home
          home.home_page()
     except AttributeError as e:
          st.error(f"Error calling the page function for '{selected_page}': {e}")
-         st.error(f"Make sure the imported file contains a page function with the correct name (e.g. '{selected_page.lower()}_page()').")
-         st.info("Displaying Home Page.")
+         st.error(f"Make sure the imported file contains a page function with the correct name (e.g., '{selected_page.lower()}_page()').")
+         st.info("Displaying Home Page as a fallback.")
          from Body import home
          home.home_page()
     except Exception as e:
          st.error(f"An unexpected error occurred while loading the page '{selected_page}':")
          st.exception(e)
-         st.info("Displaying Homa Page.")
+         st.info("Displaying Home Page as a fallback.")
          from Body import home
          home.home_page()
-
 
 if __name__ == "__main__":
     main()
