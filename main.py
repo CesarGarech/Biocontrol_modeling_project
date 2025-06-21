@@ -24,7 +24,7 @@ menu_structure = {
     # La clave "State Estimation" ahora contiene una lista para crear un submenú
     "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
-        "Regulatory": ["Temperature", "pH", "Oxygen", "On-Off Feeding"],
+        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "On-Off Feeding"],
         "Advanced": ["RTO", "RTO Ferm", "NMPC"]
     }
 }
@@ -126,6 +126,9 @@ def main():
             ann.ann_page()
 
         # --- PÁGINAS DE CONTROL REGULATORIO ---
+        elif selected_page == "Identification (pH)":
+            from Body.control.regulatorio import reg_ident
+            reg_ident.ph_identification_page()
         elif selected_page == "Temperature":
             from Body.control.regulatorio import reg_temp
             reg_temp.regulatorio_temperatura_page()
