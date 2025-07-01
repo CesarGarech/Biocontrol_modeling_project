@@ -40,62 +40,62 @@ def sustrato_onoff_fedbatch_py(t, y, mu_max, Ks, Y_XS, Sin, V0, Fmax, S_min, S_m
 # PÁGINA STREAMLIT
 #==========================================================================
 def regulatorio_feed_onoff_page():
-    st.header("⛽ Simulación de Control On-Off de Sustrato (Fed-Batch con Ventana)")
+    st.header("⛽ On-Off Substrate Control Simulation (Fed-Batch with Window)")
     st.markdown("""
-    Simulación de Fed-Batch con control On-Off de sustrato activo **solo durante un intervalo de tiempo especificado** ($t_{start}$ a $t_{end}$).
-    Fuera de este intervalo, la alimentación ($F$) es cero.
+    This page simulates a Fed-Batch process with On-Off substrate control active **only during a specified time interval** ($t_{start}$ to $t_{end}$).
+    Outside this window, the feed rate ($F$) is zero.
 
-    * **Modelo Biológico:** Monod.
-    * **Control On-Off (Ventana):**
-        - Si $t_{start} \le t < t_{end}$ Y $S \le S_{min}$, entonces $F = F_{max}$.
-        - En cualquier otro caso, $F = 0$.
-    * **Modelo Físico:** Lote alimentado con volumen variable.
-    **Ecuaciones:**
+    * **Biological Model:** Monod.
+    * **On-Off Control (Time Window):**
+    - If $t_{start} \\le t < t_{end}$ AND $S \\le S_{min}$, then $F = F_{max}$.
+        - In all other cases, $F = 0$.
+    * **Physical Model:** Fed-batch with variable volume.
+     **Equations:**
     """)
     st.latex(r'\frac{dX}{dt} = \mu X - D X')
     st.latex(r'\frac{dS}{dt} = -\frac{\mu}{Y_{XS}} X + D (S_{in} - S)')
     st.latex(r'\frac{dV}{dt} = F')
     st.latex(r'D = F / V')
     st.latex(r'\mu = \mu_{max} \frac{S}{K_s + S}')
-    st.latex(r'F = \begin{cases} F_{max} & \text{si } t_{start} \le t < t_{end} \text{ y } S \le S_{min} \\ 0 & \text{en otro caso} \end{cases}')
+    st.latex(r'F = \begin{cases} F_{max} & \text{if } t_{start} \le t < t_{end} \text{ and } S \le S_{min} \\ 0 & \text{in other cases} \end{cases}')
     st.markdown("---")
 
     # --- Entradas del Usuario en la Barra Lateral ---
     with st.sidebar:
-        st.header("Parámetros de Simulación")
-        with st.expander("1. Cinéticos y Estequiométricos", expanded=True):
+        st.header("Simulation Parameters")
+        with st.expander("1. Kinetic and Stoichiometric", expanded=True):
              mu_max = st.number_input("μ_max [1/h]", 0.01, 2.0, 0.4, format="%.3f", key="onoff_mumax")
              Ks = st.number_input("Ks [g/L]", 0.01, 5.0, 0.1, format="%.3f", key="onoff_ks")
              Y_XS = st.number_input("Y_XS [gX/gS]", 0.1, 1.0, 0.5, format="%.2f", key="onoff_yxs")
              Sin = st.number_input("Sin [g/L]", 1.0, 100.0, 10.0, format="%.1f", key="onoff_sin")
-        with st.expander("2. Operacionales", expanded=True):
+        with st.expander("2. Operational", expanded=True):
              Fmax = st.number_input("Fmax [L/h]", 0.01, 1.0, 0.2, format="%.3f", key="onoff_fmax") # Ajustado a 0.2?
 
         # --- MODIFICADO: Control On-Off con Ventana ---
-        with st.expander("3. Control On-Off", expanded=True):
+        with st.expander("3. On-Off Control", expanded=True):
             S_min = st.number_input("S_min [g/L]", 0.1, 10.0, 1.5, format="%.2f", key="onoff_smin")
-            S_max = st.number_input("S_max (Referencia Visual) [g/L]", S_min + 0.01, 15.0, 2.5, format="%.2f", key="onoff_smax")
-            st.markdown("**Ventana de Tiempo para Control On-Off:**")
+            S_max = st.number_input("S_max (Visual Reference) [g/L]", S_min + 0.01, 15.0, 2.5, format="%.2f", key="onoff_smax")
+            st.markdown("**Time Window for On-Off Control:**")
             # Input para inicio y fin de la ventana de control
-            t_onoff_start = st.number_input("Inicio Control [h]", 0.0, 100.0, 5.0, step=0.5, key="t_onoff_start", help="Tiempo a partir del cual el control On-Off puede activarse.")
-            t_onoff_end = st.number_input("Fin Control [h]", t_onoff_start + 0.1, 100.0, 8.0, step=0.5, key="t_onoff_end", help="Tiempo a partir del cual el flujo será siempre CERO.")
+            t_onoff_start = st.number_input("Start of Control [h]", 0.0, 100.0, 5.0, step=0.5, key="t_onoff_start", help="Time from which On-Off control can be activated.")
+            t_onoff_end = st.number_input("End of Control [h]", t_onoff_start + 0.1, 100.0, 8.0, step=0.5, key="t_onoff_end", help="Time from which the feed rate will always be ZERO.")
 
-        with st.expander("4. Iniciales y Simulación", expanded=True):
+        with st.expander("4. Initials and Simulation", expanded=True):
             X0 = st.number_input("X0 [g/L]", 0.01, 10.0, 0.1, format="%.3f", key="onoff_x0")
             S0 = st.number_input("S0 [g/L]", 0.0, 50.0, 3.0, format="%.2f", key="onoff_s0")
             V0 = st.number_input("V0 [L]", 0.1, 100.0, 1.0, format="%.2f", key="onoff_v0")
             # Quitar la advertencia sobre S0 vs S_min ya que el control ahora tiene ventana
             # if S0 <= S_min: st.warning(f"S0 ({S0:.2f}) <= S_min ({S_min:.2f}). Alimentación empezará ON.")
-            t_final_onoff = st.number_input("Tiempo Final Simulación [h]", 10.0, 200.0, 40.0, step=10.0, key="onoff_tfinal")
+            t_final_onoff = st.number_input("Final Time Simulation [h]", 10.0, 200.0, 40.0, step=10.0, key="onoff_tfinal")
             # Opciones Solver
             rtol_sim = st.number_input("rtol Solver", 1e-7, 1e-3, 1e-5, format="%e", key="onoff_rtol")
             atol_sim = st.number_input("atol Solver", 1e-10, 1e-5, 1e-8, format="%e", key="onoff_atol")
 
 
     # --- Simulación y Gráfica en el Área Principal ---
-    st.subheader("Simulación del Control On-Off (Fed-Batch con Ventana)")
+    st.subheader("On-Off Control Simulation (Fed-Batch with Window)")
 
-    if st.button("▶️ Simular Control On-Off", key="run_onoff_sim_fed_window"):
+    if st.button("▶️ Simulate On-Off Control", key="run_onoff_sim_fed_window"):
         try:
             # 1. Preparar simulación con V0
             y0 = [X0, S0, V0]
@@ -105,15 +105,15 @@ def regulatorio_feed_onoff_page():
             ode_args = (mu_max, Ks, Y_XS, Sin, V0, Fmax, S_min, S_max, t_onoff_start, t_onoff_end)
 
             # 2. Simular usando solve_ivp con la nueva ODE
-            st.write(f"Simulando para t = 0 a {t_final_onoff} h...")
+            st.write(f"Simulating from t = 0 to {t_final_onoff} h...")
             sol = solve_ivp(sustrato_onoff_fedbatch_py, t_span, y0, args=ode_args, t_eval=t_eval, method='LSODA', rtol=rtol_sim, atol=atol_sim)
             if not sol.success:
-                st.warning(f"Simulación con lsoda falló: {sol.message}. Intentando con BDF...")
+                st.warning(f"Simulation with lsoda failed: {sol.message}. Trying with BDF...")
                 sol = solve_ivp(sustrato_onoff_fedbatch_py, t_span, y0, args=ode_args, t_eval=t_eval, method='BDF', rtol=rtol_sim, atol=atol_sim)
                 if not sol.success:
-                    st.error(f"Simulación falló con ambos métodos: {sol.message}"); st.stop()
+                    st.error(f"Simulation failed with both methods: {sol.message}"); st.stop()
 
-            st.write("Simulación completada.")
+            st.write("Simulation completed.")
             t_sim = sol.t; X_sim = np.maximum(0, sol.y[0, :]); S_sim = np.maximum(0, sol.y[1, :]); V_sim = np.maximum(1e-6, sol.y[2, :])
 
             # 3. Reconstruir Flujo F post-simulación (CON VENTANA DE TIEMPO)
@@ -126,19 +126,19 @@ def regulatorio_feed_onoff_page():
                     F_sim[i] = 0
 
             # 4. Graficar resultados
-            st.subheader("Resultados de la Simulación")
+            st.subheader("Simulation Results")
             fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True); axes = axes.flatten()
             # Biomasa
-            axes[0].plot(t_sim, X_sim, '-', color='b', linewidth=2); axes[0].set_ylabel('Biomasa (g/L)'); axes[0].set_title('Evolución Biomasa'); axes[0].grid(True); axes[0].set_ylim(bottom=0)
+            axes[0].plot(t_sim, X_sim, '-', color='b', linewidth=2); axes[0].set_ylabel('Biomass (g/L)'); axes[0].set_title('Biomass Evolution'); axes[0].grid(True); axes[0].set_ylim(bottom=0)
             # Sustrato
-            axes[1].plot(t_sim, S_sim, '-', color='r', linewidth=2); axes[1].axhline(S_min, color='gray', linestyle='--', linewidth=1, label=f'S_min ({S_min:.2f})'); axes[1].axhline(S_max, color='gray', linestyle=':', linewidth=1, label=f'S_max Ref. ({S_max:.2f})'); axes[1].set_ylabel('Sustrato (g/L)'); axes[1].set_title('Evolución Sustrato (Control On-Off)'); axes[1].grid(True); axes[1].legend(loc='best'); axes[1].set_ylim(bottom=0); axes[1].set_xlabel('Tiempo (h)')
+            axes[1].plot(t_sim, S_sim, '-', color='r', linewidth=2); axes[1].axhline(S_min, color='gray', linestyle='--', linewidth=1, label=f'S_min ({S_min:.2f})'); axes[1].axhline(S_max, color='gray', linestyle=':', linewidth=1, label=f'S_max Ref. ({S_max:.2f})'); axes[1].set_ylabel('Substrate (g/L)'); axes[1].set_title('Substrate Evolution (On-Off Control)'); axes[1].grid(True); axes[1].legend(loc='best'); axes[1].set_ylim(bottom=0); axes[1].set_xlabel('Time (h)')
             # Flujo
-            axes[2].step(t_sim, F_sim, where='post', color='k', linewidth=1.5); axes[2].set_xlabel('Tiempo (h)'); axes[2].set_ylabel('Flujo Alimentación (L/h)'); axes[2].set_title('Perfil Flujo (On-Off)'); axes[2].grid(True); axes[2].set_ylim(-0.01 * Fmax, Fmax * 1.1 + 0.01);
+            axes[2].step(t_sim, F_sim, where='post', color='k', linewidth=1.5); axes[2].set_xlabel('Time (h)'); axes[2].set_ylabel('Feed Flow (L/h)'); axes[2].set_title('Feed Flow Profile (On-Off)'); axes[2].grid(True); axes[2].set_ylim(-0.01 * Fmax, Fmax * 1.1 + 0.01);
             # Volumen
-            axes[3].plot(t_sim, V_sim, '-', color='purple', linewidth=2); axes[3].set_xlabel('Tiempo (h)'); axes[3].set_ylabel('Volumen (L)'); axes[3].set_title('Evolución Volumen'); axes[3].grid(True); axes[3].set_ylim(bottom=max(0, V0*0.9))
+            axes[3].plot(t_sim, V_sim, '-', color='purple', linewidth=2); axes[3].set_xlabel('Time (h)'); axes[3].set_ylabel('Volume (L)'); axes[3].set_title('Volume Evolution'); axes[3].grid(True); axes[3].set_ylim(bottom=max(0, V0*0.9))
             # Añadir líneas para ventana de control
-            line_labels = {'Inicio Ctrl': t_onoff_start, 'Fin Ctrl': t_onoff_end}
-            colors = {'Inicio Ctrl': 'limegreen', 'Fin Ctrl': 'tomato'}
+            line_labels = {'Start Ctrl': t_onoff_start, 'End Ctrl': t_onoff_end}
+            colors = {'Start Ctrl': 'limegreen', 'End Ctrl': 'tomato'}
             for i, ax in enumerate(axes):
                 for label, time_val in line_labels.items():
                      ax.axvline(time_val, color=colors[label], linestyle='--', lw=1, alpha=0.9, label=label if i==0 else "_nolegend_") # Label solo en el primer eje
@@ -148,13 +148,13 @@ def regulatorio_feed_onoff_page():
             plt.tight_layout(); st.pyplot(fig)
 
             # 5. Mostrar tabla (opcional)
-            df_results_onoff = pd.DataFrame({'Tiempo (h)': t_sim, 'Biomasa (g/L)': X_sim, 'Sustrato (g/L)': S_sim, 'Volumen (L)': V_sim, 'Flujo (L/h)': F_sim})
-            with st.expander("Ver datos de simulación"):
-                st.dataframe(df_results_onoff.style.format({'Tiempo (h)': '{:.2f}', 'Biomasa (g/L)': '{:.4f}', 'Sustrato (g/L)': '{:.4f}', 'Volumen (L)': '{:.3f}', 'Flujo (L/h)': '{:.3f}'}))
-        except Exception as e: st.error(f"Ocurrió un error durante la simulación On-Off:"); st.exception(e)
-    else: st.info("Ajuste los parámetros y presione 'Simular Control On-Off'.")
+            df_results_onoff = pd.DataFrame({'Time (h)': t_sim, 'Biomass (g/L)': X_sim, 'Substrate (g/L)': S_sim, 'Volume (L)': V_sim, 'Flow (L/h)': F_sim})
+            with st.expander("View simulation data"):
+                st.dataframe(df_results_onoff.style.format({'Time (h)': '{:.2f}', 'Biomass (g/L)': '{:.4f}', 'Substrate (g/L)': '{:.4f}', 'Volume (L)': '{:.3f}', 'Flow (L/h)': '{:.3f}'}))
+        except Exception as e: st.error(f"An error occurred during the On-Off simulation:"); st.exception(e)
+    else: st.info("Set the parameters in the sidebar and click on 'Simulate On-Off Control'.")
 
 # --- Punto de Entrada ---
 if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="Control On-Off Sustrato (Fed-Batch)")
+    st.set_page_config(layout="wide", page_title="On-Off Substrate Control (Fed-Batch)")
     regulatorio_feed_onoff_page()

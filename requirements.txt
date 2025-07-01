@@ -3,9 +3,10 @@ streamlit
 scipy
 matplotlib
 openpyxl
-scipy
 scikit-learn
 seaborn
 casadi
 control
+xlsxwriter
+tensorflow
 # casadi ipopt

@@ -34,16 +34,16 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
     F_min = float(F_min)
     F_max = float(F_max)
 
-    if strategy == 'Constante':
+    if strategy == 'Constant':
         return F_max
 
-    elif strategy == 'Lineal':
+    elif strategy == 'Linear':
         if abs(t_end - t_start) < 1e-9:
              return F_max if abs(t - t_start) < 1e-9 else 0.0
         F = F_min + (F_max - F_min) * (t - t_start) / (t_end - t_start)
         return max(F_min, min(F, F_max))
 
-    elif strategy == 'Exponencial (Simple)':
+    elif strategy == 'Exponential (Simple)':
         if abs(t_end - t_start) < 1e-9 or F_min <= 1e-9 or F_max < F_min:
              if abs(t_end - t_start) < 1e-9:
                  return F_max if abs(t-t_start) < 1e-9 else 0.0
@@ -53,7 +53,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
         F = F_min * np.exp(k * (t - t_start))
         return max(F_min, min(F, F_max))
 
-    elif strategy == 'Exponencial (mu constante)':
+    elif strategy == 'Exponential (constant mu)':
         if mu_set is None or X_current is None or V_current is None or Sf is None or Xs_f_ratio is None or Sf <= 1e-9 or Xs_f_ratio <= 1e-9 or mu_set < 0:
              return 0.0
         Yxs_est = float(Xs_f_ratio)
@@ -62,7 +62,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
         F = (mu_set / Yxs_est) * X_current * V_current / Sf
         return max(F_min, min(F, F_max))
 
-    elif strategy == 'Escalonada':
+    elif strategy == 'Step':
         if not step_data:
             return 0.0
         step_data.sort(key=lambda item: item[0])
@@ -87,7 +87,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
         else:
             return max(F_min, min(current_flow, F_max))
     else:
-        st.error(f"Estrategia de alimentación desconocida: {strategy}")
+        st.error(f"Unknown feeding strategy: {strategy}")
         return 0.0
 
 #--------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
         X, S, P, O2, V = y
         # --- ¡AHORA SE DESEMPAQUETAN 6 PARÁMETROS! ---
         if len(params) != 6:
-             raise ValueError(f"Se esperaban 6 parámetros [mumax, Ks, Yxs, Kd, Ypx, Ksi], pero se recibieron {len(params)}")
+             raise ValueError(f"6 parameters were expected [mumax, Ks, Yxs, Kd, Ypx, Ksi], but only {len(params)} were received")
         mumax, Ks, Yxs, Kd, Ypx, Ksi = params
 
         # Extraer parámetros de alimentación
@@ -165,7 +165,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
         return [dXdt, dSdt, dPdt, dO2dt, dVdt]
 
     except Exception as e:
-        st.error(f"Error en modelo_ode_fedbatch en t={t} con y={y}, params={params}: {e}")
+        st.error(f"Error in modelo_ode_fedbatch on t={t} with y={y}, params={params}: {e}")
         raise
 
 #--------------------------------------------------------------------------
@@ -182,7 +182,7 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
     # --- ¡n_params ahora será 6 si params_opt tiene 6 elementos! ---
     n_params = len(params_opt)
     if n_params != 6:
-         st.error(f"Error en Jacobiano: se esperaban 6 parámetros, se recibieron {n_params}")
+         st.error(f"Error in Jacobian: 6 parameters were expected, only {n_params} were received")
          return None # O manejar el error de otra forma
 
     n_times = len(t_exp)
@@ -198,11 +198,11 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
                                 t_eval=t_exp, atol=atol, rtol=rtol,
                                 method='LSODA')
         if sol_nominal.status != 0:
-             st.warning(f"Jacobiano: Solver nominal falló (status {sol_nominal.status}): {sol_nominal.message}")
+             st.warning(f"Jacobian: Nominal Solver Failed (status {sol_nominal.status}): {sol_nominal.message}")
              return np.full((n_times * n_vars_measured, n_params), np.nan)
         y_nominal_flat = sol_nominal.y[0:n_vars_measured, :].flatten()
     except Exception as e:
-         st.error(f"Error fatal en simulación nominal para Jacobiano: {e}")
+         st.error(f"Fatal error in nominal simulation for the Jacobian: {e}")
          st.text(traceback.format_exc())
          return np.full((n_times * n_vars_measured, n_params), np.nan)
 
@@ -224,14 +224,14 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
                                       t_eval=t_exp, atol=atol, rtol=rtol,
                                       method='LSODA')
             if sol_perturbed.status != 0:
-                st.warning(f"Jacobiano: Solver perturbado (param {i}, status {sol_perturbed.status}) falló: {sol_perturbed.message}")
+                st.warning(f"Jacobian: Perturbed solver (param {i}, status {sol_perturbed.status}) failed: {sol_perturbed.message}")
                 jac[:, i] = np.nan
                 continue
             y_perturbed_flat = sol_perturbed.y[0:n_vars_measured, :].flatten()
             derivative = (y_perturbed_flat - y_nominal_flat) / h
             jac[:, i] = derivative
         except Exception as e:
-            st.error(f"Error fatal en simulación perturbada (parámetro {i}) para Jacobiano: {e}")
+            st.error(f"Fatal error in perturbed simulation (parameter {i}) for the Jacobian: {e}")
             st.text(traceback.format_exc())
             jac[:, i] = np.nan
 
@@ -250,7 +250,7 @@ def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, r
     """
     # Validar número de parámetros recibidos podría ser útil aquí también
     if len(params) != 6:
-         st.warning(f"Función objetivo recibió {len(params)} parámetros, esperaba 6.")
+         st.warning(f"Objective function received {len(params)} parameters, it was expected to receive 6.")
          return 1e18 # Penalización muy alta
 
     try:
@@ -269,7 +269,7 @@ def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, r
         y_pred = sol.y[0:3, :]
         y_pred_stacked = y_pred.flatten()
         if y_exp_stacked.shape != y_pred_stacked.shape:
-             st.error(f"Discrepancia de formas en objetivo: Exp {y_exp_stacked.shape}, Pred {y_pred_stacked.shape}")
+             st.error(f"Shape discrepancy in objective: Exp {y_exp_stacked.shape}, Pred {y_pred_stacked.shape}")
              return 1e11
         mask = ~np.isnan(y_exp_stacked)
         if np.sum(mask) == 0:
@@ -297,7 +297,7 @@ def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, r
 # Página de Streamlit - ¡MODIFICADA!
 #--------------------------------------------------------------------------
 def ajuste_parametros_fedbatch_page():
-    st.header("🔧 Ajuste de Parámetros Cinéticos (Lote Alimentado con Inhibición por Sustrato)")
+    st.header("🔧 Adjustment of Kinetic Parameters (Fed-Batch with Substrate Inhibition)")
 
     # --- Inicialización del Estado de Sesión (igual que antes) ---
     if 'params_opt_fedbatch' not in st.session_state:
@@ -330,8 +330,8 @@ def ajuste_parametros_fedbatch_page():
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.subheader("📤 Cargar Datos Experimentales")
-        uploaded_file = st.file_uploader("Subir archivo Excel (.xlsx)", type=["xlsx"], key="fedbatch_uploader_inhib") # Cambiar key por si acaso
+        st.subheader("📤 Upload experimental data")
+        uploaded_file = st.file_uploader("Upload Excel file (.xlsx)", type=["xlsx"], key="fedbatch_uploader_inhib") # Cambiar key por si acaso
 
         # Procesamiento de archivo (igual que antes)
         if uploaded_file is not None:
@@ -340,29 +340,29 @@ def ajuste_parametros_fedbatch_page():
                  st.session_state.result_fedbatch = None
                  st.session_state.run_complete_fedbatch = False
                  st.session_state.last_uploaded_filename = uploaded_file.name
-                 st.info(f"Nuevo archivo '{uploaded_file.name}' cargado. Resultados anteriores reseteados.")
+                 st.info(f"New file '{uploaded_file.name}' uploaded. Previous results reset.")
             try:
                 df_exp = pd.read_excel(uploaded_file, engine='openpyxl')
                 # (Validación de columnas y procesamiento igual que antes)
-                required_cols = ['tiempo', 'biomasa', 'sustrato', 'producto']
+                required_cols = ['time', 'biomass', 'substrate', 'product']
                 if not all(col in df_exp.columns for col in required_cols):
-                    st.error(f"El archivo debe contener las columnas: {', '.join(required_cols)}")
+                    st.error(f"File must contain the column names: {', '.join(required_cols)}")
                     st.session_state.df_exp_fedbatch = None # Resetear
                     st.stop()
                 else:
-                    df_exp = df_exp.sort_values(by='tiempo').reset_index(drop=True)
-                    df_exp[['biomasa', 'sustrato', 'producto']] = df_exp[['biomasa', 'sustrato', 'producto']].apply(pd.to_numeric, errors='coerce')
+                    df_exp = df_exp.sort_values(by='time').reset_index(drop=True)
+                    df_exp[['biomass', 'substrate', 'product']] = df_exp[['biomass', 'substrate', 'product']].apply(pd.to_numeric, errors='coerce')
                     st.session_state.df_exp_fedbatch = df_exp
-                    st.session_state.t_exp_fedbatch = df_exp['tiempo'].values
-                    st.session_state.y_exp_fedbatch = df_exp[['biomasa', 'sustrato', 'producto']].values.T
+                    st.session_state.t_exp_fedbatch = df_exp['time'].values
+                    st.session_state.y_exp_fedbatch = df_exp[['biomass', 'substrate', 'product']].values.T
                     st.session_state.y_exp_stacked_fedbatch = st.session_state.y_exp_fedbatch.flatten()
                     st.dataframe(df_exp.head()) # Mostrar preview después de procesar
             except Exception as e:
-                st.error(f"Error al leer el archivo Excel: {e}")
+                st.error(f"Error reading the Excel file: {e}")
                 st.session_state.df_exp_fedbatch = None # Resetear
                 uploaded_file = None
         elif st.session_state.df_exp_fedbatch is not None:
-             st.info(f"Usando datos previamente cargados de '{st.session_state.last_uploaded_filename}'.")
+             st.info(f"Using the previously uploaded data from '{st.session_state.last_uploaded_filename}'.")
 
 
         # --- Configuración del Proceso (Solo si hay datos cargados) ---
@@ -370,46 +370,46 @@ def ajuste_parametros_fedbatch_page():
             df_exp = st.session_state.df_exp_fedbatch
             t_exp = st.session_state.t_exp_fedbatch
 
-            st.subheader("⚙️ Configuración del Proceso")
+            st.subheader("⚙️ Process Configuration")
 
             # Condiciones Iniciales (igual que antes)
-            st.markdown("##### Condiciones Iniciales del Reactor")
-            X0_default = df_exp['biomasa'].iloc[0] if pd.notna(df_exp['biomasa'].iloc[0]) else 0.1
-            S0_default = df_exp['sustrato'].iloc[0] if pd.notna(df_exp['sustrato'].iloc[0]) else 10.0
-            P0_default = df_exp['producto'].iloc[0] if pd.notna(df_exp['producto'].iloc[0]) else 0.0
+            st.markdown("##### Reactor Initial Conditions")
+            X0_default = df_exp['biomass'].iloc[0] if pd.notna(df_exp['biomass'].iloc[0]) else 0.1
+            S0_default = df_exp['substrate'].iloc[0] if pd.notna(df_exp['substrate'].iloc[0]) else 10.0
+            P0_default = df_exp['product'].iloc[0] if pd.notna(df_exp['product'].iloc[0]) else 0.0
             O0_default = 8.0
             V0_default = 1.0
-            X0_fit = st.number_input("Biomasa inicial (X0) [g/L]", min_value=0.0, value=float(X0_default), format="%.4f")
-            S0_fit = st.number_input("Sustrato inicial (S0) [g/L]", min_value=0.0, value=float(S0_default), format="%.4f")
-            P0_fit = st.number_input("Producto inicial (P0) [g/L]", min_value=0.0, value=float(P0_default), format="%.4f")
-            O0_fit = st.number_input("O2 inicial [mg/L]", min_value=0.0, max_value=20.0, value=float(O0_default), format="%.4f")
-            V0_fit = st.number_input("Volumen inicial (V0) [L]", min_value=1e-3, value=float(V0_default), format="%.4f")
+            X0_fit = st.number_input("Initial Biomass (X0) [g/L]", min_value=0.0, value=float(X0_default), format="%.4f")
+            S0_fit = st.number_input("Initial Substrate (S0) [g/L]", min_value=0.0, value=float(S0_default), format="%.4f")
+            P0_fit = st.number_input("Initial Product (P0) [g/L]", min_value=0.0, value=float(P0_default), format="%.4f")
+            O0_fit = st.number_input("Initial O2 [mg/L]", min_value=0.0, max_value=20.0, value=float(O0_default), format="%.4f")
+            V0_fit = st.number_input("Initial Volume (V0) [L]", min_value=1e-3, value=float(V0_default), format="%.4f")
             st.session_state.y0_fit_fedbatch = [X0_fit, S0_fit, P0_fit, O0_fit, V0_fit]
 
             # Parámetros de Alimentación (igual que antes)
-            st.markdown("##### Configuración de la Alimentación")
-            feed_strategy = st.selectbox("Estrategia de Alimentación",
-                                          ['Constante', 'Lineal', 'Exponencial (Simple)', 'Exponencial (mu constante)', 'Escalonada'],
+            st.markdown("##### Feeding Configuration")
+            feed_strategy = st.selectbox("Feeding Strategy",
+                                          ['Constant', 'Linear', 'Exponential (Simple)', 'Exponential (constant mu)', 'Step'],
                                           key="feed_strategy_inhib")
             t_max_exp = float(t_exp[-1]) if t_exp is not None and len(t_exp) > 0 else 100.0
             t_min_exp = float(t_exp[0]) if t_exp is not None and len(t_exp) > 0 else 0.0
-            t_start_feed = st.number_input("Tiempo Inicio Alimentación [h]", min_value=t_min_exp, max_value=t_max_exp, value=max(t_min_exp, 0.0), step = 0.1, format="%.2f")
+            t_start_feed = st.number_input("Start Feeding Time [h]", min_value=t_min_exp, max_value=t_max_exp, value=max(t_min_exp, 0.0), step = 0.1, format="%.2f")
             t_end_feed_default = max(float(t_start_feed), t_max_exp)
-            t_end_feed = st.number_input("Tiempo Fin Alimentación [h]", min_value=float(t_start_feed), max_value=t_max_exp + 1.0, value=t_end_feed_default, step = 0.1, format="%.2f")
-            F_min_feed = st.number_input("Flujo Mínimo (F_min) [L/h]", min_value=0.0, max_value=10.0, value=0.0, step=0.001, format="%.4f")
+            t_end_feed = st.number_input("End Feeding Time [h]", min_value=float(t_start_feed), max_value=t_max_exp + 1.0, value=t_end_feed_default, step = 0.1, format="%.2f")
+            F_min_feed = st.number_input("Minimum Flow (F_min) [L/h]", min_value=0.0, max_value=10.0, value=0.0, step=0.001, format="%.4f")
             F_max_default = max(float(F_min_feed), 0.1)
-            F_max_feed = st.number_input("Flujo Máximo (F_max) [L/h]", min_value=float(F_min_feed), max_value=10.0, value=F_max_default, step=0.001, format="%.4f")
-            Sf_feed = st.number_input("Concentración Sustrato Alimento (Sf) [g/L]", min_value=0.0, max_value=1000.0, value=100.0, format="%.2f")
-            Xf_feed = st.number_input("Concentración Biomasa Alimento (Xf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
-            Pf_feed = st.number_input("Concentración Producto Alimento (Pf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
+            F_max_feed = st.number_input("Maximum Flow (F_max) [L/h]", min_value=float(F_min_feed), max_value=10.0, value=F_max_default, step=0.001, format="%.4f")
+            Sf_feed = st.number_input("Substrate Feed Concentration (Sf) [g/L]", min_value=0.0, max_value=1000.0, value=100.0, format="%.2f")
+            Xf_feed = st.number_input("Biomass Feed Concentration (Xf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
+            Pf_feed = st.number_input("Product Feed Concentration (Pf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
 
             # Parámetros Específicos por Estrategia (igual que antes)
             step_data_input_list = None
             mu_set_feed = None
-            if feed_strategy == 'Escalonada':
+            if feed_strategy == 'Step':
                 # (Código de parseo de escalones igual que antes - omitido por brevedad)
-                st.write(f"Definir escalones (tiempo, flujo) dentro de [{t_start_feed:.2f}h - {t_end_feed:.2f}h]:")
-                step_data_input_str = st.text_area("Formato: un par 'tiempo, flujo' por línea.\nEj: 2, 0.05\\n5, 0.1\\n10, 0.08", height=100, key="step_data_text_inhib")
+                st.write(f"Define steps (time, flow) in [{t_start_feed:.2f}h - {t_end_feed:.2f}h]:")
+                step_data_input_str = st.text_area("Format: one 'time, flow' pair per line.\nEj: 2, 0.05\\n5, 0.1\\n10, 0.08", height=100, key="step_data_text_inhib")
                 step_data_input_list = []
                 if step_data_input_str:
                     lines = step_data_input_str.strip().split('\n')
@@ -427,12 +427,12 @@ def ajuste_parametros_fedbatch_page():
                              else: valid_steps = False; break
                          except ValueError: valid_steps = False; break
                     if valid_steps and step_data_input_list: step_data_input_list.sort(key=lambda x: x[0]); st.success(f"{len(step_data_input_list)} escalones válidos.")
-                    elif valid_steps and not step_data_input_list: st.info("No se definieron escalones válidos.")
-                    else: step_data_input_list = None; st.error("Error en formato de escalones.")
-                if not step_data_input_list: st.warning("Estrategia escalonada sin escalones válidos.")
+                    elif valid_steps and not step_data_input_list: st.info("No valid steps were defined.")
+                    else: step_data_input_list = None; st.error("Error en steps format.")
+                if not step_data_input_list: st.warning("Selected strategies without valid steps.")
 
-            elif feed_strategy == 'Exponencial (mu constante)':
-                mu_set_feed = st.number_input("Tasa Crec. Específica Deseada (μ_set) [1/h]", min_value=0.0, max_value=2.0, value=0.1, format="%.4f")
+            elif feed_strategy == 'Exponential (constant mu)':
+                mu_set_feed = st.number_input("Desired Specific Growth Rate (μ_set) [1/h]", min_value=0.0, max_value=2.0, value=0.1, format="%.4f")
 
             # Guardar feed_params (igual que antes)
             st.session_state.feed_params_fedbatch = {
@@ -443,10 +443,10 @@ def ajuste_parametros_fedbatch_page():
             }
 
             # --- Configuración del Ajuste - ¡MODIFICADA! ---
-            st.subheader("⚙️ Configuración del Ajuste")
+            st.subheader("⚙️ Adjustment Configuration")
 
             # Parámetros a ajustar (estimaciones iniciales) - ¡Añadido Ksi!
-            st.markdown("##### Parámetros Cinéticos a Optimizar (Estimaciones Iniciales)")
+            st.markdown("##### Kinetic Parameters to Optimize (Initial Estimates)")
             p_opt = st.session_state.params_opt_fedbatch # Puede tener 5 o 6 elementos de ejecuciones anteriores
             mumax_guess_val = float(p_opt[0]) if p_opt is not None and len(p_opt)>0 else 0.5
             Ks_guess_val = float(p_opt[1]) if p_opt is not None and len(p_opt)>1 else 0.2
@@ -462,32 +462,32 @@ def ajuste_parametros_fedbatch_page():
             Kd_guess = st.number_input("Kd [1/h]", 0.0, 1.0, Kd_guess_val, format="%.4f")
             Ypx_guess = st.number_input("Ypx [g/g]", 0.0, 10.0, Ypx_guess_val, format="%.4f")
             # --- INPUT PARA Ksi ---
-            Ksi_guess = st.number_input("Ksi (Inhib. Sustrato) [g/L]", 1.0, 1000.0, Ksi_guess_val, format="%.2f")
+            Ksi_guess = st.number_input("Ksi (Substrate Inhib.) [g/L]", 1.0, 1000.0, Ksi_guess_val, format="%.2f")
 
             # Límites estrictos para la optimización - ¡Añadido Ksi! (6 parámetros)
             bounds = [(1e-3, 5.0), (1e-4, 20.0), (0.01, 3.0), (0.0, 1.0), (0.0, 10.0), (1.0, 1000.0)]
 
             # Tolerancias del solver ODE (igual que antes)
-            st.markdown("##### Tolerancias del Solver ODE")
-            atol = st.number_input("Tolerancia absoluta (atol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
-            rtol = st.number_input("Tolerancia relativa (rtol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
+            st.markdown("##### ODE Solver Tolerances")
+            atol = st.number_input("Absolute tolerance (atol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
+            rtol = st.number_input("Relative tolerance (rtol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
 
             # Opciones de optimización (igual que antes)
-            st.markdown("##### Opciones de Optimización")
-            metodo = st.selectbox("Método de optimización",
+            st.markdown("##### Optimization Options")
+            metodo = st.selectbox("Optimization Methods",
                                   ['L-BFGS-B', 'Nelder-Mead', 'TNC', 'Powell', 'differential_evolution'],
                                   index=0, key="opt_method_fedbatch_inhib")
-            max_iter = st.number_input("Iteraciones máximas", 10, 10000, 500)
+            max_iter = st.number_input("Maximum iterations", 10, 10000, 500)
 
 
             # --- Botón de Ejecución - ¡MODIFICADO! ---
-            if st.button("🚀 Ejecutar Ajuste (con Inhib. Sustrato)", key="run_fedbatch_fit_inhib"):
+            if st.button("🚀 Run Adjustment (with Substrate Inhib.)", key="run_fedbatch_fit_inhib"):
                 if st.session_state.y_exp_stacked_fedbatch is None or st.session_state.t_exp_fedbatch is None:
-                    st.error("No se pueden ejecutar el ajuste. Faltan datos experimentales.")
+                    st.error("The adjustment cannot be executed. Experimental data are missing.")
                 elif feed_strategy == 'Escalonada' and not step_data_input_list:
-                     st.error("Estrategia escalonada seleccionada, pero no se definieron escalones válidos.")
+                     st.error("Step strategy selected, but no valid steps were defined.")
                 else:
-                    with st.spinner("Optimizando parámetros (modelo con inhibición)..."):
+                    with st.spinner("Optimizing parameters (model with inhibition)..."):
                         # --- ¡AHORA 6 PARÁMETROS INICIALES! ---
                         initial_guess = [mumax_guess, Ks_guess, Yxs_guess, Kd_guess, Ypx_guess, Ksi_guess]
 
@@ -530,17 +530,17 @@ def ajuste_parametros_fedbatch_page():
                                 st.session_state.params_opt_fedbatch = result.x # Guardará 6 parámetros
                                 st.session_state.result_fedbatch = result
                                 st.session_state.run_complete_fedbatch = True
-                                st.success(f"Optimización ({metodo}) completada con éxito.")
+                                st.success(f"Optimization ({metodo}) completed with success.")
                             elif result and hasattr(result, 'x'):
                                  st.session_state.params_opt_fedbatch = result.x # Guardará 6 parámetros
                                  st.session_state.result_fedbatch = result
                                  st.session_state.run_complete_fedbatch = True
-                                 st.warning(f"La optimización ({metodo}) finalizó pero reportó no éxito: {getattr(result, 'message', 'No message')}")
+                                 st.warning(f"The optimization ({metodo}) finished but it was unsuccessful: {getattr(result, 'message', 'No message')}")
                             else:
-                                 st.error(f"La optimización ({metodo}) falló o no retornó un resultado válido.")
+                                 st.error(f"The optimization ({metodo})  failed or did not return a valid result.")
 
                         except Exception as e:
-                            st.error(f"Error fatal durante la optimización ({metodo}): {e}")
+                            st.error(f"Fatal error during ({metodo}) optimization: {e}")
                             st.text(traceback.format_exc())
                             st.session_state.params_opt_fedbatch = None
                             st.session_state.result_fedbatch = None
@@ -550,13 +550,13 @@ def ajuste_parametros_fedbatch_page():
 
 
         elif st.session_state.df_exp_fedbatch is None:
-            st.warning("⏳ Por favor, suba un archivo de datos experimentales para comenzar.")
+            st.warning("⏳ Please, upload an experimental data file to get started.")
 
 
     # --- Columna Derecha: Resultados - ¡MODIFICADA! ---
     with col2:
         if st.session_state.run_complete_fedbatch and st.session_state.result_fedbatch is not None:
-            st.subheader("📊 Resultados del Ajuste (Modelo con Inhibición por Sustrato)")
+            st.subheader("📊 Adjustment Results (Model with Substrate Inhibition)")
 
             result = st.session_state.result_fedbatch
             params_opt = st.session_state.params_opt_fedbatch # Ahora debería tener 6 elementos
@@ -570,7 +570,7 @@ def ajuste_parametros_fedbatch_page():
 
             # Verificar si params_opt tiene 6 elementos
             if params_opt is None or len(params_opt) != 6:
-                 st.error("Los parámetros optimizados no están disponibles o no tienen la longitud esperada (6). No se pueden mostrar los resultados detallados.")
+                 st.error("Optimized parameters are not available or do not have the expected length (6). Detailed results cannot be shown.")
                  # Resetear estado problemático
                  st.session_state.params_opt_fedbatch = None
                  st.session_state.result_fedbatch = None
@@ -579,23 +579,23 @@ def ajuste_parametros_fedbatch_page():
 
             final_rmse = getattr(result, 'fun', np.nan)
             if pd.notna(final_rmse):
-                 st.write(f"**Función Objetivo Final (RMSE):** {final_rmse:.6f}")
+                 st.write(f"**Final Objective Function (RMSE):** {final_rmse:.6f}")
             else:
-                 st.write("**Función Objetivo Final (RMSE):** No disponible")
+                 st.write("**Final Objective Function (RMSE):** Not available")
 
             # --- Tabla de parámetros optimizados - ¡Añadido Ksi! ---
             param_names = ['μmax', 'Ks', 'Yxs', 'Kd', 'Ypx', 'Ksi'] # 6 nombres
             param_units = ['1/h', 'g/L', 'g/g', '1/h', 'g/g', 'g/L'] # 6 unidades
             parametros_df = pd.DataFrame({
-                'Parámetro': param_names,
-                'Valor Optimizado': params_opt, # params_opt tiene 6 elementos
-                'Unidades': param_units
+                'Parameter': param_names,
+                'Optimized Value': params_opt, # params_opt tiene 6 elementos
+                'Units': param_units
             })
-            st.dataframe(parametros_df.style.format({'Valor Optimizado': '{:.5f}'}))
+            st.dataframe(parametros_df.style.format({'Optimized Value': '{:.5f}'}))
             st.session_state.parametros_df_fedbatch = parametros_df # Guardar df con 6 params
 
             # --- Simulación Final y Métricas (Usa el nuevo modelo) ---
-            st.subheader("📈 Simulación Final y Métricas")
+            st.subheader("📈 Final Simulation and Metrics")
             try:
                 # solve_ivp llamará a modelo_ode_fedbatch que ahora incluye inhibición
                 sol = solve_ivp(modelo_ode_fedbatch, [t_exp_res[0], t_exp_res[-1]],
@@ -605,7 +605,7 @@ def ajuste_parametros_fedbatch_page():
                                 method='LSODA')
 
                 if sol.status != 0:
-                     st.error(f"La simulación final con parámetros optimizados falló (status {sol.status}): {sol.message}")
+                     st.error(f"The final simulation with the optimized parameters failed (status {sol.status}): {sol.message}")
                      st.session_state.sol_fedbatch = None
                 else:
                      st.session_state.sol_fedbatch = sol
@@ -613,7 +613,7 @@ def ajuste_parametros_fedbatch_page():
                      # Cálculo de métricas (igual que antes)
                      metricas_list = []
                      for i in range(3):
-                         variable_name = ['Biomasa', 'Sustrato', 'Producto'][i]
+                         variable_name = ['Biomass', 'Substrate', 'Product'][i]
                          exp_data = y_exp_res[i]; pred_data = y_pred_final[i]
                          valid_mask = ~np.isnan(exp_data)
                          if np.sum(valid_mask) > 1:
@@ -628,17 +628,17 @@ def ajuste_parametros_fedbatch_page():
                      st.dataframe(metricas_df.style.format({'R²': '{:.4f}', 'RMSE': '{:.4f}'}))
 
             except Exception as e:
-                 st.error(f"Error durante la simulación final: {e}")
+                 st.error(f"Error during final simulation: {e}")
                  st.text(traceback.format_exc())
                  st.session_state.sol_fedbatch = None
 
 
             # --- Gráficos Comparativos (igual que antes, pero con nueva simulación) ---
             if st.session_state.sol_fedbatch is not None:
-                st.subheader("📉 Gráficos Comparativos")
+                st.subheader("📉 Comparative Graphs")
                 sol = st.session_state.sol_fedbatch
                 fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
-                variables = ['Biomasa', 'Sustrato', 'Producto']
+                variables = ['Biomass', 'Substrate', 'Product']
                 unidades = ['g/L', 'g/L', 'g/L']
                 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
                 for i in range(3):
@@ -647,13 +647,13 @@ def ajuste_parametros_fedbatch_page():
                     axes[i].set_ylabel(f"{variables[i]} [{unidades[i]}]")
                     axes[i].legend()
                     axes[i].grid(True, linestyle='--', alpha=0.6)
-                axes[-1].set_xlabel("Tiempo [h]")
+                axes[-1].set_xlabel("Time [h]")
                 plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-                fig.suptitle("Comparación Modelo (Inhib. Sustrato) vs Datos Experimentales", fontsize=16)
+                fig.suptitle("Model Comparation (Substrate Inhibition) vs Experimental data", fontsize=16)
                 st.pyplot(fig)
 
                 # Gráfico Adicional: Volumen y Flujo (igual que antes)
-                st.subheader("💧 Volumen y Flujo de Alimentación")
+                st.subheader("💧 Volume and Feed Flow")
                 try:
                     interp_x = np.interp(sol.t, sol.t, sol.y[0])
                     interp_v = np.interp(sol.t, sol.t, sol.y[4])
@@ -664,25 +664,25 @@ def ajuste_parametros_fedbatch_page():
                                                          step_data=feed_params_res['step_data'], X_current=interp_x[idx],
                                                          V_current=interp_v[idx]) for idx, ti in enumerate(sol.t)])
                     fig_vol_feed, ax1 = plt.subplots(figsize=(10, 5))
-                    color_vol = 'tab:red'; ax1.set_xlabel('Tiempo [h]'); ax1.set_ylabel('Volumen [L]', color=color_vol)
-                    ax1.plot(sol.t, sol.y[4], color=color_vol, linestyle='-', linewidth=2, label='Volumen (Modelo)')
+                    color_vol = 'tab:red'; ax1.set_xlabel('Time [h]'); ax1.set_ylabel('Volume [L]', color=color_vol)
+                    ax1.plot(sol.t, sol.y[4], color=color_vol, linestyle='-', linewidth=2, label='Volume (Model)')
                     ax1.tick_params(axis='y', labelcolor=color_vol); ax1.grid(True, which='major', linestyle='--', alpha=0.7)
                     ax1.grid(True, which='minor', linestyle=':', alpha=0.4); ax1.minorticks_on(); ax1.legend(loc='upper left')
-                    ax2 = ax1.twinx(); color_feed = 'tab:blue'; ax2.set_ylabel('Flujo Alimentación [L/h]', color=color_feed)
-                    if feed_params_res['strategy'] in ['Constante', 'Escalonada']:
-                        ax2.step(sol.t, F_t, where='post', color=color_feed, linestyle='--', label=f'Flujo ({feed_params_res["strategy"]})')
+                    ax2 = ax1.twinx(); color_feed = 'tab:blue'; ax2.set_ylabel('Feed Flow [L/h]', color=color_feed)
+                    if feed_params_res['strategy'] in ['Constant', 'Step']:
+                        ax2.step(sol.t, F_t, where='post', color=color_feed, linestyle='--', label=f'Flow ({feed_params_res["strategy"]})')
                     else:
-                         ax2.plot(sol.t, F_t, color=color_feed, linestyle='--', label=f'Flujo ({feed_params_res["strategy"]})')
+                         ax2.plot(sol.t, F_t, color=color_feed, linestyle='--', label=f'Flow ({feed_params_res["strategy"]})')
                     ax2.tick_params(axis='y', labelcolor=color_feed); ax2.legend(loc='upper right')
                     ax2.set_ylim(bottom=max(-0.01, F_min_feed * 0.9), top=F_max_feed * 1.1 + 0.01)
-                    fig_vol_feed.tight_layout(); plt.title("Evolución del Volumen y Flujo de Alimentación"); st.pyplot(fig_vol_feed)
+                    fig_vol_feed.tight_layout(); plt.title("Volume and Feed Flow Evolution"); st.pyplot(fig_vol_feed)
                 except Exception as e:
-                    st.warning(f"No se pudo generar el gráfico de Volumen/Flujo: {e}")
+                    st.warning(f"Volume/Flow graph could not be generated: {e}")
 
 
                 # --- Análisis Estadístico - ¡MODIFICADO! (n_params = 6) ---
-                st.subheader("📈 Análisis Estadístico")
-                with st.spinner("Calculando intervalos de confianza..."):
+                st.subheader("📈 Statistical Analysis")
+                with st.spinner("Calculating confidence intervals..."):
                     try:
                         residuals = y_exp_res - y_pred_final
                         residuals_flat = residuals.flatten()
@@ -693,16 +693,16 @@ def ajuste_parametros_fedbatch_page():
                         dof = n_obs_clean - n_params # Grados de libertad ajustados
 
                         if dof <= 0:
-                             st.warning(f"No hay suficientes puntos de datos ({n_obs_clean}) para calcular IC (necesarios > {n_params}).")
-                             for col in ['Error Estándar', 'Intervalo ± (95%)', 'IC 95% Inferior', 'IC 95% Superior']:
+                             st.warning(f"Not enough data points ({n_obs_clean}) to calculate CI (needed > {n_params}).")
+                             for col in ['Standard Error', 'Interval ± (95%)', '95% CI Lower bound', '95% CI Upper bound']:
                                  if col not in parametros_df.columns: parametros_df[col] = np.nan
                         else:
                             # Jacobiano ahora tendrá 6 columnas
                             jac = compute_jacobian_fedbatch(params_opt, t_exp_res, y0_res, feed_params_res, atol_res, rtol_res)
 
                             if jac is None or np.isnan(jac).any() or np.isinf(jac).any():
-                                st.warning("Jacobiano inválido. No se pueden calcular los IC.")
-                                for col in ['Error Estándar', 'Intervalo ± (95%)', 'IC 95% Inferior', 'IC 95% Superior']:
+                                st.warning("Invalid Jacobian. CI cannot be calculated.")
+                                for col in ['Standard Error', 'Interval ± (95%)', '95% CI Lower bound', '95% CI Upper bound']:
                                     if col not in parametros_df.columns: parametros_df[col] = np.nan
                             else:
                                  # Cálculo de covarianza e IC (igual que antes, pero con jac de 6 cols)
@@ -714,63 +714,63 @@ def ajuste_parametros_fedbatch_page():
                                  valid_variance = diag_cov > 1e-15
                                  std_errors = np.full_like(diag_cov, np.nan)
                                  std_errors[valid_variance] = np.sqrt(diag_cov[valid_variance])
-                                 if np.any(~valid_variance): st.warning("Varianzas no positivas encontradas.")
+                                 if np.any(~valid_variance): st.warning("Non-positive variances found.")
                                  alpha = 0.05; t_val = t.ppf(1.0 - alpha / 2.0, df=dof)
                                  intervals = t_val * std_errors
-                                 parametros_df['Error Estándar'] = std_errors
-                                 parametros_df['Intervalo ± (95%)'] = intervals
-                                 parametros_df['IC 95% Inferior'] = np.where(np.isnan(intervals), np.nan, parametros_df['Valor Optimizado'] - intervals)
-                                 parametros_df['IC 95% Superior'] = np.where(np.isnan(intervals), np.nan, parametros_df['Valor Optimizado'] + intervals)
-                                 st.success("Intervalos de confianza calculados.")
+                                 parametros_df['Standard Error'] = std_errors
+                                 parametros_df['Interval ± (95%)'] = intervals
+                                 parametros_df['95% CI Lower bound'] = np.where(np.isnan(intervals), np.nan, parametros_df['Optimized Value'] - intervals)
+                                 parametros_df['95% CI Upper bound'] = np.where(np.isnan(intervals), np.nan, parametros_df['Optimized Value'] + intervals)
+                                 st.success("Confidence Intervals Calculated.")
 
                     except Exception as e:
-                        st.error(f"Error calculando intervalos de confianza: {e}")
+                        st.error(f"Error calculating Confidence Intervals: {e}")
                         st.text(traceback.format_exc())
-                        for col in ['Error Estándar', 'Intervalo ± (95%)', 'IC 95% Inferior', 'IC 95% Superior']:
+                        for col in ['Standard Error', 'Interval ± (95%)', '95% CI - Lower bound', '95% CI - Upper bound']:
                             if col not in parametros_df.columns: parametros_df[col] = np.nan
 
                     # Mostrar tabla de parámetros con IC (ahora con 6 filas)
-                    st.write("Parámetros Optimizados e Intervalos de Confianza (95%):")
+                    st.write("Optimized Parameters and Confidence Intervals (95%):")
                     st.dataframe(parametros_df.style.format({
-                       'Valor Optimizado': '{:.5f}', 'Error Estándar': '{:.5f}',
-                       'Intervalo ± (95%)': '{:.5f}', 'IC 95% Inferior': '{:.5f}',
-                       'IC 95% Superior': '{:.5f}'}, na_rep='N/A'))
+                       'Optimized Value': '{:.5f}', 'Standard Error': '{:.5f}',
+                       'Interval ± (95%)': '{:.5f}', '95% CI - Lower bound': '{:.5f}',
+                       '95% CI - Upper bound': '{:.5f}'}, na_rep='N/A'))
                     st.session_state.parametros_df_fedbatch = parametros_df
 
                     # Gráfico de IC (ahora con 6 barras)
-                    if 'Intervalo ± (95%)' in parametros_df.columns and parametros_df['Intervalo ± (95%)'].notna().any():
-                        st.subheader("📐 Intervalos de Confianza de Parámetros")
+                    if 'Interval ± (95%)' in parametros_df.columns and parametros_df['Interval ± (95%)'].notna().any():
+                        st.subheader("📐 Confidence Intervals for Parameters")
                         fig_ci, ax = plt.subplots(figsize=(10, max(4, len(parametros_df) * 0.6)))
-                        y_pos = np.arange(len(parametros_df)); errors_for_plot = parametros_df['Intervalo ± (95%)'].copy()
-                        mask_nan_interval = errors_for_plot.isna() & parametros_df['Error Estándar'].notna()
-                        errors_for_plot[mask_nan_interval] = 1.96 * parametros_df['Error Estándar'][mask_nan_interval]
+                        y_pos = np.arange(len(parametros_df)); errors_for_plot = parametros_df['Interval ± (95%)'].copy()
+                        mask_nan_interval = errors_for_plot.isna() & parametros_df['Standard Error'].notna()
+                        errors_for_plot[mask_nan_interval] = 1.96 * parametros_df['Standard Error'][mask_nan_interval]
                         errors_for_plot = errors_for_plot.fillna(0).values
-                        bars = ax.barh(y_pos, parametros_df['Valor Optimizado'].fillna(0), xerr=errors_for_plot,
+                        bars = ax.barh(y_pos, parametros_df['Optimized Value'].fillna(0), xerr=errors_for_plot,
                                 align='center', color='#1f77b4', ecolor='#ff7f0e', capsize=5, alpha=0.8)
-                        ax.set_yticks(y_pos); ax.set_yticklabels(parametros_df['Parámetro']) # Ahora incluye Ksi
-                        ax.invert_yaxis(); ax.set_xlabel('Valor del Parámetro')
-                        ax.set_title('Intervalos de Confianza al 95% (o ~1.96*SE si IC exacto falla)'); ax.grid(True, axis='x', linestyle='--', alpha=0.6)
+                        ax.set_yticks(y_pos); ax.set_yticklabels(parametros_df['Parameter']) # Ahora incluye Ksi
+                        ax.invert_yaxis(); ax.set_xlabel('Parameter')
+                        ax.set_title('95% Confidence Intervals(or ~1.96*SE if exact CI fails)'); ax.grid(True, axis='x', linestyle='--', alpha=0.6)
                         plt.tight_layout(); st.pyplot(fig_ci)
 
                     # Análisis de Residuales (igual que antes)
-                    st.subheader("📉 Análisis de Residuales")
+                    st.subheader("📉 Residuals Analysis")
                     fig_hist, axs = plt.subplots(1, 3, figsize=(15, 5))
-                    variables_res = ['Biomasa', 'Sustrato', 'Producto']; colors_res = ['#1f77b4', '#ff7f0e', '#2ca02c']
+                    variables_res = ['Biomass', 'Substrate', 'Product']; colors_res = ['#1f77b4', '#ff7f0e', '#2ca02c']
                     for i, (var, color) in enumerate(zip(variables_res, colors_res)):
                         res = y_exp_res[i] - y_pred_final[i]; res_clean = res[~np.isnan(res)]
                         if len(res_clean) > 1:
                             sns.histplot(res_clean, kde=True, color=color, ax=axs[i], bins='auto')
-                            axs[i].set_title(f'Residuales {var} (N={len(res_clean)})'); axs[i].set_xlabel('Error (Experimental - Modelo)')
-                            axs[i].set_ylabel('Frecuencia / Densidad'); axs[i].axvline(0, color='k', linestyle='--'); axs[i].grid(True, linestyle='--', alpha=0.3)
+                            axs[i].set_title(f'Residuals {var} (N={len(res_clean)})'); axs[i].set_xlabel('Error (Experimental - Model)')
+                            axs[i].set_ylabel('Frecuence / Density'); axs[i].axvline(0, color='k', linestyle='--'); axs[i].grid(True, linestyle='--', alpha=0.3)
                             mean_res = np.mean(res_clean); std_res = np.std(res_clean)
                             axs[i].text(0.05, 0.95, f'Mean={mean_res:.2f}\nStd={std_res:.2f}', transform=axs[i].transAxes, va='top', ha='left', fontsize=9, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.5))
                         else:
-                            axs[i].set_title(f'Residuales {var} (Datos insuficientes)'); axs[i].text(0.5, 0.5, 'No hay suficientes datos válidos', ha='center', va='center', transform=axs[i].transAxes)
+                            axs[i].set_title(f'Residuals {var} (Insufficient data)'); axs[i].text(0.5, 0.5, 'Not enough valid data', ha='center', va='center', transform=axs[i].transAxes)
                     plt.tight_layout(); st.pyplot(fig_hist)
 
                     # Matriz de Correlación (ahora 6x6)
                     if 'cov_matrix' in locals() and cov_matrix is not None and not np.isnan(cov_matrix).all():
-                        st.subheader("📌 Matriz de Correlación de Parámetros")
+                        st.subheader("📌 Parameter Correlation Matrix")
                         try:
                             std_devs = np.sqrt(np.diag(cov_matrix))
                             with np.errstate(divide='ignore', invalid='ignore'): corr_matrix_calc = cov_matrix / np.outer(std_devs, std_devs)
@@ -779,21 +779,21 @@ def ajuste_parametros_fedbatch_page():
                             corr_df = pd.DataFrame(corr_matrix_calc, index=param_names, columns=param_names) # Usa los 6 nombres
                             fig_corr, ax = plt.subplots(figsize=(8, 7)) # Ligeramente más grande
                             sns.heatmap(corr_df, annot=True, cmap='coolwarm', fmt=".2f", center=0, linewidths=.5, linecolor='black', ax=ax, vmin=-1, vmax=1, annot_kws={"size": 9}) # Letra más pequeña
-                            ax.set_title('Matriz de Correlación Estimada de Parámetros'); plt.xticks(rotation=45, ha='right'); plt.yticks(rotation=0)
+                            ax.set_title('Parameters Estimated Correlation Matrix'); plt.xticks(rotation=45, ha='right'); plt.yticks(rotation=0)
                             plt.tight_layout(); st.pyplot(fig_corr)
-                        except Exception as e: st.warning(f"No se pudo calcular/graficar la matriz de correlación: {e}")
-                    else: st.info("Matriz de correlación no disponible.")
+                        except Exception as e: st.warning(f"Correlation Matrix could not be plotted/calculated: {e}")
+                    else: st.info("Correlation Matrix not available.")
 
 
             else: # Si la simulación falló
-                st.info("Complete un ajuste exitoso y la simulación final para ver todos los análisis.")
+                st.info("Complete successfull adjustment and final simulation to see all the analysis")
 
         # Mensaje inicial
         elif not st.session_state.run_complete_fedbatch:
-             st.info("⬅️ Cargue datos, configure parámetros y ejecute el ajuste.")
+             st.info("⬅️ Upload data, set parameters and run adjustment.")
 
 
 # --- Ejecución Principal ---
 if __name__ == '__main__':
-    st.set_page_config(layout="wide", page_title="Ajuste Fed-Batch (Inhibición S)")
+    st.set_page_config(layout="wide", page_title="Fed-Batch Adjustment (S Inhibition)")
     ajuste_parametros_fedbatch_page()
