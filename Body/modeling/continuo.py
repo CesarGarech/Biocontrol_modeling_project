@@ -8,6 +8,7 @@ def continuo_page():
     st.header("Operation mode: Continuous (Chemostat)")
     st.sidebar.subheader("Model Parameters")
 
+    tipo_mu = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
     mumax = st.sidebar.slider("μmax", 0.1, 1.0, 0.3)
     Ks = st.sidebar.slider("Ks", 0.01, 1.0, 0.1)
     Yxs = st.sidebar.slider("Yxs", 0.1, 1.0, 0.5)
@@ -26,7 +27,6 @@ def continuo_page():
     P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
     O0 = st.sidebar.number_input("Initial dissolved O2 (mg/L)", 0.0, 10.0, 5.0)
 
-    tipo_mu = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
     n_sigmoidal = st.sidebar.slider("n value (Sigmoidal Monod)", 0.0, 5.0, 2.0)
 
     t_final = st.sidebar.slider("Final time (h)", 1, 100, 30)

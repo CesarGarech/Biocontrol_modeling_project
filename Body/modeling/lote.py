@@ -106,13 +106,13 @@ def lote_page():
         X, S, P, O2 = y
         if tipo_mu == "Simple Monod":
             mu = mu_monod(S, mumax, Ks)
-<<<<<<< HEAD
+#>>>>>>> HEAD
         elif tipo_mu == "Monod sigmoidal":
             if S<=0:
                 S=0
-=======
+#=======
         elif tipo_mu == "Sigmoidal Monod":
->>>>>>> origin/main
+#>>>>>>> origin/main
             mu = mu_sigmoidal(S, mumax, Ks, n=2)
             if S<=0:
                 S=0
