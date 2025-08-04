@@ -240,7 +240,7 @@ def ajuste_parametros_ferm_page():
                 t_exp_max_val = float(t_exp[-1]) if t_exp is not None and len(t_exp) > 0 else 100.0
                 t_exp_min_val = float(t_exp[0]) if t_exp is not None and len(t_exp) > 0 else 0.0
                 t_batch_max_val = t_exp_max_val; t_batch_min_val = t_exp_min_val
-                t_batch_default_val = max(t_batch_min_val, min(10.0, t_batch_max_val))
+                t_batch_default_val = max(t_batch_min_val, min(5.0, t_batch_max_val))
                 t_batch_inicial_fin_f = st.slider("End Initial Batch Phase [h]", float(t_batch_min_val), float(t_batch_max_val), float(t_batch_default_val), 0.5, key="t_batch_fin_f")
                 t_alim_ini_min_val = float(t_batch_inicial_fin_f); t_alim_ini_max_val = t_exp_max_val
                 t_alim_ini_default_val = max(t_alim_ini_min_val, min(t_alim_ini_min_val + 0.01, t_alim_ini_max_val))
