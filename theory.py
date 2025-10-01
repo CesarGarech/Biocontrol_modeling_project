@@ -1,28 +1,7 @@
-# home_page.py
+
 import streamlit as st
 
-
-def home_page():
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.image("images/Batch.png", use_container_width=True)
-        st.caption("**Figure 1:** Batch Reactor")
-    with col2:
-        st.image("images/fed_batch.png", use_container_width=True)
-        st.caption("**Figure 2:** Fed-Batch Reactor")
-    with col3:
-        st.image("images/continous.png", use_container_width=True)
-        st.caption("**Figure 3:** Continuous Reactor")
-
-    st.markdown("""
-        Welcome to the interactive simulator for bioprocess modeling and control. 
-        This tool allows you to explore different reactor operation modes, 
-        microbial growth kinetics and advanced control strategies.
-        """)
-
-    st.markdown("---") # Visual separator
-
-    # ========= NEW SECTION: IMPLEMENTED KINETIC MODELS =========
+def theory_page():
     st.header("🔬 Implemented kinetic models")
     st.markdown("""
         The heart of bioprocess modeling lies in mathematically describing the rates at which key biological 
@@ -236,25 +215,6 @@ def home_page():
         function $J$ subject to constraints. Apply only the first action and repeat.
         **Problem:** $\min_{\Delta U_k} J = \sum_{j=1}^{N_p} ||\hat{y}_{k+j|k} - y_{sp, k+j}||^2_Q + \sum_{j=0}^{N_c-1} ||\Delta u_{k+j|k}||^2_R$ subject to the dynamic model and constraints in $u, \Delta u, y$.
         """)
-
-
-# To be able to run this page individually if necessary
-if __name__ == "__main__":
-    import os
-    # (Code to create dummy images without changes)
-    if not os.path.exists("images"): os.makedirs("images")
-    dummy_files = ["images/Batch.png", "images/fed_batch.png", "images/continous.png"]
-    for f_path in dummy_files:
-        if not os.path.exists(f_path):
-            try:
-                with open(f_path, 'w') as fp: pass
-                print(f"Dummy file created: {f_path}")
-            except Exception as e:
-                print(f"Unable to create dummy file {f_path}: {e}")
-                try:
-                    from PIL import Image
-                    img = Image.new('RGB', (60, 30), color = 'red'); img.save(f_path)
-                    print(f"Placeholder image created: {f_path}")
-                except ImportError: print("PIL not found, unable to create image.")
-                except Exception as e_img: print(f"Error creating image {f_path}: {e_img}")
-    home_page()
+    
+if __name__ == '__main__':
+    theory_page()
