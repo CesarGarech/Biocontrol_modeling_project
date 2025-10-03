@@ -651,7 +651,7 @@ def fermentacion_alcoholica_page():
             img_stream = BytesIO()
             fig.savefig(img_stream, format='png')
             img_stream.seek(0)
-            worksheet.insert_image('E2', 'grafico.png', {'image_data': img_stream})
+            worksheet.insert_image('E2', 'graphic.png', {'image_data': img_stream})
 
         buffer.seek(0)
 
@@ -659,7 +659,7 @@ def fermentacion_alcoholica_page():
         st.download_button(
             label="Download Simulation Data as Excel",
             data=buffer,
-            file_name="dados_simulacao.xlsx",
+            file_name="Simulation_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
