@@ -657,7 +657,7 @@ def fermentacion_alcoholica_page():
 
 
         st.download_button(
-            label="Baixar arquivo Excel com gráfico",
+            label="Download Simulation Data as Excel",
             data=buffer,
             file_name="dados_simulacao.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
