@@ -1,70 +1,102 @@
 import streamlit as st
+import base64
 
-
+st.set_page_config(layout="wide")
 
 def local_css(file_name):
-    with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    try:
+        with open(file_name) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass
 
 local_css("style.css")
 
 # Definir la página inicial
 if "page" not in st.session_state:
     st.session_state.page = "Home"
-    
-    
 
-
+# Revisar query params para cambiar de página
+query_page = st.query_params.get("page")
+if query_page and query_page != st.session_state.page:
+    st.session_state.page = query_page
+    st.query_params.clear()
+    st.rerun()
+    
 # ----------------------
 # Diseño de la pantalla
 # ----------------------
 if st.session_state.page == "Home":
-    st.image("Images/LogoSemillero.png", width=300)
+    st.markdown("<h1 id='titulo'>Innovacoding</h1>", unsafe_allow_html=True)
+    col1, col2 = st.columns([2,1])
+    with col1:
+        st.markdown("""<div id='textoMenu'> Lorem ipsum dolor sit amet consectetur adipisicing elit. Ipsa, sequi laborum modi impedit tempora asperiores eligendi omnis id dignissimos molestias rem, optio sed aliquam. Id recusandae autem libero soluta ipsam?" \
+        "Lorem ipsum dolor sit amet consectetur adipisicing elit. Ipsa, sequi laborum modi impedit tempora asperiores eligendi omnis id dignissimos molestias rem, optio sed aliquam. Id recusandae autem libero soluta ipsam? </div>""", unsafe_allow_html=True)
+
+    with col2:
+        st.image("Images/LogoSemillero.png",width="stretch")
+        st.caption("**Figure 1:** InnovaCoding Logo")
     st.markdown("<div id='tituloMenu'>🏠 HOME</div>", unsafe_allow_html=True)
     st.markdown("""<div id='textoMenu'> Welcome to the interactive simulator for bioprocess modeling and control. 
         This tool allows you to explore different reactor operation modes, 
         microbial growth kinetics and advanced control strategies.</div>""", unsafe_allow_html=True)
 
+    # convertir imagen
+    def img_to_base64(path):
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        except FileNotFoundError:
+            return ""
+    # tarjeta con imagen para el menu
+    def image_card_button(img_path, label, target_page, key, text_color="#1e1e1e"):
+        img_b64 = img_to_base64(img_path)
+        
+        if not img_b64:
+            st.warning(f"Image not found: {img_path}")
+            return
+
+        st.markdown(
+            f"""
+            <a href="?page={target_page}" class="image-card {key}">
+                <img src="data:image/png;base64,{img_b64}" alt="{label}">
+                <div class="label">{label}</div>
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ----------------------
+    # Distribución en columnas
+    # ----------------------
     col1, col2, col3 = st.columns(3)
     col4, col5, col6 = st.columns(3)
 
     with col1:
-        st.image("Images/Modelos.png", width=120)
-        if st.button("Models", key="models_btn"):
-            st.session_state.page = "Models"
+        image_card_button("Images/Modelos.png", "Models", "Models", key="models")
 
     with col2:
-        st.image("Images/analisisSensibilidad.png", width=120)
-        if st.button("Sensitivity Analysis", key="sensitivity_btn"):
-            st.session_state.page = "Sensitivity Analysis"
-            
+        image_card_button("Images/analisisSensibilidad.png", "Sensitivity Analysis", "Sensitivity Analysis", key="analysis")
+
     with col3:
-        st.image("Images/ajusteParametros.png", width=120)
-        if st.button("Parameter Adjust", key="parameter_btn"):
-            st.session_state.page = "Parameter Adjust"
-            
+        image_card_button("Images/ajusteParametros.png", "Parameter Adjust", "Parameter Adjust", key="adjust")
+
     with col4:
-        st.image("Images/estimacionEstados.png", width=120)
-        if st.button("State Estimation", key="state_btn"):
-            st.session_state.page = "State Estimation"
-            
+        image_card_button("Images/estimacionEstados.png", "State Estimation", "State Estimation", key="estimation")
+
     with col5:
-        st.image("Images/control.png", width=120)
-        if st.button("Control", key="control_btn"):
-            st.session_state.page = "Control"
+        image_card_button("Images/control.png", "Control", "Control", key="control")
 
     with col6:
-        st.image("Images/teoria.png", width=120)
-        if st.button("Theory", key="config_btn"):
-            st.session_state.page = "Theory"
-
+        image_card_button("Images/teoria.png", "Theory", "Theory", key="theory")
 
 
 #Redirigiendo a las paginas seleccionadas
 
 #Pagina modelos
 elif st.session_state.page == "Models":
-    st.title("Availabre Models")
+    from Body.modeling import lote, lote_alimentado, continuo, ferm_alcohol
+    st.title("Available Models")
 
     modelo = st.selectbox(
         "Choose a model:",
@@ -73,20 +105,17 @@ elif st.session_state.page == "Models":
     )
 
     if modelo == "Batch":
-        from Body.modeling import lote
         lote.lote_page()
     elif modelo == "Fed-Batch":
-        from Body.modeling import lote_alimentado
         lote_alimentado.lote_alimentado_page()
     elif modelo == "Continuous":
-        from Body.modeling import continuo
         continuo.continuo_page()
     elif modelo == "Fermentation":
-        from Body.modeling import ferm_alcohol
         ferm_alcohol.fermentacion_alcoholica_page()
-    
+
     if st.button("⬅️ Back to Home"):
         st.session_state.page = "Home"
+        st.rerun()
 
 #Pagina analisis de sensibilidad
 elif st.session_state.page == "Sensitivity Analysis":
@@ -108,8 +137,8 @@ elif st.session_state.page == "Parameter Adjust":
         from Body.estimacion_parametros import ajuste_parametros_lote
         ajuste_parametros_lote.ajuste_parametros_page()
     elif ajuste == "Fed-Batch Parameter Adjustment":
-        from Body.estimacion_parametros import ajuste_parametros_lote_alimentado
-        ajuste_parametros_lote_alimentado.ajuste_parametros_lote_alimentado_page()
+        from Body.estimacion_parametros import ajuste_parametros_lote_alim
+        ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
     elif ajuste == "Fermentation Parameter Adjustment":
         from Body.estimacion_parametros import ajuste_parametros_ferm
         ajuste_parametros_ferm.ajuste_parametros_ferm_page()

@@ -1,29 +1,64 @@
 /* Estilo general */
-
-
-header[data-testid="stHeader"] {
-    display: none !important;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stVerticalBlock"], [data-testid="stMarkdownContainer"] {
+    font-family: Georgia, 'Times New Roman', Times, serif !important;
 }
-
+.stMarkdown h1 {
+    text-align: center;
+    font-family: Georgia, 'Times New Roman';
+    color: #043474;
+    font-size: 64px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
 .stMarkdown #tituloMenu {
     text-align: center;
-    color: #dce0e6 !important;
+    color: #069c9c !important;
     font-size: 48px;
     font-weight: bold;
-    margin-bottom: 40px;
+    margin-bottom: 4px;
 }
 
 .stMarkdown #textoMenu {
     text-align: justify;
-    color: #dce0e6 !important;
     font-size: 20px;
-    font-weight: bold;
-    margin-bottom: 20px;
+    margin-bottom: 2px;
 }
+
+.image-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 90%;
+    cursor: pointer;
+    text-decoration: none;
+    margin: 0 auto;
+}
+
+.image-card img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 20px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.image-card:hover img {
+    transform: scale(1.02);
+    box-shadow: 0 5px 18px #069c9c;
+}
+
+.image-card .label {
+    margin-top: 10px;
+    font-weight: 600;
+    color: #000000;
+    font-size: 18px;
+}
+
 
 /* Botón personalizado */
 .stButton>button {
-    background-color: #567EBB;
+    background-color: #043474;
     text-align: center;
     font-weight: bold;
     color: white;
@@ -35,6 +70,7 @@ header[data-testid="stHeader"] {
 }
 
 .stButton>button:hover {
-    background-color: #606D80;
+    background-color: #042c60;
+    transform: scale(1.02);
     color: white;
 }
