@@ -179,44 +179,44 @@ def ekf_page():
         fig1_ekf, axs1_ekf = plt.subplots(3, 2, figsize=(12, 10), sharex=True)
         fig1_ekf.suptitle('Estimation of States and Measurements (EKF)', fontsize=14)
 
-        # Biomasa
+        # Biomasa        
         axs1_ekf[0, 0].plot(time_vec_ekf, x_real_hist[0, :], 'b-', label='X real')
-        axs1_ekf[0, 0].plot(time_vec_ekf, x_est_hist[0, :], 'r--', label='X estimada')
+        axs1_ekf[0, 0].plot(time_vec_ekf, x_est_hist[0, :], 'r--', label='X estimated')
         axs1_ekf[0, 0].set_ylabel('Biomass (g/L)')
         axs1_ekf[0, 0].legend()
         axs1_ekf[0, 0].grid(True)
 
-        # Medición OD
-        axs1_ekf[0, 1].plot(time_vec_ekf, z_meas_hist[0, :], 'k.-', markersize=3, linewidth=1, label='OD medido')
+        # OD Measurement
+        axs1_ekf[0, 1].plot(time_vec_ekf, z_meas_hist[0, :], 'k.-', markersize=3, linewidth=1, label='OD measured')
         axs1_ekf[0, 1].set_ylabel('DO (mg/L)')
         axs1_ekf[0, 1].set_title('DO measurement')
         axs1_ekf[0, 1].legend()
         axs1_ekf[0, 1].grid(True)
 
-        # Sustrato
+        # Substrate
         axs1_ekf[1, 0].plot(time_vec_ekf, x_real_hist[1, :], 'b-', label='S real')
-        axs1_ekf[1, 0].plot(time_vec_ekf, x_est_hist[1, :], 'r--', label='S estimada')
+        axs1_ekf[1, 0].plot(time_vec_ekf, x_est_hist[1, :], 'r--', label='S estimated')
         axs1_ekf[1, 0].set_ylabel('Substrate (g/L)')
         axs1_ekf[1, 0].legend()
         axs1_ekf[1, 0].grid(True)
 
-        # Medición pH
-        axs1_ekf[1, 1].plot(time_vec_ekf, z_meas_hist[1, :], 'k.-', markersize=3, linewidth=1, label='pH medido')
+        # pH Measurement
+        axs1_ekf[1, 1].plot(time_vec_ekf, z_meas_hist[1, :], 'k.-', markersize=3, linewidth=1, label='pH measured')
         axs1_ekf[1, 1].set_ylabel('pH')
         axs1_ekf[1, 1].set_title('pH measurement')
         axs1_ekf[1, 1].legend()
         axs1_ekf[1, 1].grid(True)
 
-        # Producto
+        # Product
         axs1_ekf[2, 0].plot(time_vec_ekf, x_real_hist[2, :], 'b-', label='P real')
-        axs1_ekf[2, 0].plot(time_vec_ekf, x_est_hist[2, :], 'r--', label='P estimada')
+        axs1_ekf[2, 0].plot(time_vec_ekf, x_est_hist[2, :], 'r--', label='P estimated')
         axs1_ekf[2, 0].set_xlabel('Time (h)')
         axs1_ekf[2, 0].set_ylabel('Product (g/L)')
         axs1_ekf[2, 0].legend()
         axs1_ekf[2, 0].grid(True)
 
-        # Medición Temperatura
-        axs1_ekf[2, 1].plot(time_vec_ekf, z_meas_hist[2, :], 'k.-', markersize=3, linewidth=1, label='T medida')
+        # Temperature Measurement
+        axs1_ekf[2, 1].plot(time_vec_ekf, z_meas_hist[2, :], 'k.-', markersize=3, linewidth=1, label='T measured')
         axs1_ekf[2, 1].set_xlabel('Time (h)')
         axs1_ekf[2, 1].set_ylabel('Temperature (°C)')
         axs1_ekf[2, 1].set_title('Temperature Measurement')
@@ -227,20 +227,20 @@ def ekf_page():
         st.pyplot(fig1_ekf)
 
 
-        # Figura 2: Parámetros Estimados
+        # Figure 2: Estimated Parameters
         fig2_ekf, axs2_ekf = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
         fig2_ekf.suptitle('Parameter Estimation (EKF)', fontsize=14)
 
         # mu_max
         axs2_ekf[0].plot(time_vec_ekf, x_real_hist[3, :], 'b-', label=r'$\mu_{max}$ real')
-        axs2_ekf[0].plot(time_vec_ekf, x_est_hist[3, :], 'r--', label=r'$\mu_{max}$ estimada')
+        axs2_ekf[0].plot(time_vec_ekf, x_est_hist[3, :], 'r--', label=r'$\mu_{max}$ estimated')
         axs2_ekf[0].set_ylabel(r'$\mu_{max}$ (1/h)')
         axs2_ekf[0].legend()
         axs2_ekf[0].grid(True)
 
         # Yxs
         axs2_ekf[1].plot(time_vec_ekf, x_real_hist[4, :], 'b-', label=r'$Y_{X/S}$ real')
-        axs2_ekf[1].plot(time_vec_ekf, x_est_hist[4, :], 'r--', label=r'$Y_{X/S}$ estimada')
+        axs2_ekf[1].plot(time_vec_ekf, x_est_hist[4, :], 'r--', label=r'$Y_{X/S}$ estimated')
         axs2_ekf[1].set_xlabel('Time (h)')
         axs2_ekf[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)')
         axs2_ekf[1].legend()
