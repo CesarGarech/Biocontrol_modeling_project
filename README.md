@@ -55,9 +55,12 @@ This project was primarily developed by César Augusto García Echeverry at the 
 
 -**César Augusto García Echeverry - Lead Developer - [cesar.garech@gmail.com]**
 
--**[Contributor 1 Name] - [Role]**
+-**Andres Mateo Franco Reyes - Developer - [anfrancor@unal.edu.co]**
 
--**[Contributor 2 Name] - [Role]**
+-**Juan Pablo Velez Orjuela - Developer - [jvelezor@unal.edu.co]**
+
+-**Carolina del Mar Gámez Herazo - Developer - [carolina.gamez@eia.edu.co]**
+
 
 We welcome contributions! Please refer to the contribution guidelines (if available) or open an issue/pull request.
 
