@@ -24,7 +24,7 @@ menu_structure = {
     # La clave "State Estimation" ahora contiene una lista para crear un submenú
     "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
-        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "On-Off Feeding"],
+        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
         "Advanced": ["RTO", "RTO Ferm", "NMPC"]
     }
 }
@@ -138,6 +138,9 @@ def main():
         elif selected_page == "Oxygen":
             from Body.control.regulatorio import reg_oxigeno
             reg_oxigeno.regulatorio_oxigeno_page()
+        elif selected_page == "Cascade-Oxygen": # Nombre exacto que usarás en el menú
+             from Body.control.regulatorio import reg_cascade_oxigen
+             reg_cascade_oxigen.regulatorio_cascade_oxigen_page()
         elif selected_page == "On-Off Feeding":
             from Body.control.regulatorio import reg_feed_onoff
             reg_feed_onoff.regulatorio_feed_onoff_page()
