@@ -239,7 +239,7 @@ print("[INFO] Optimizador NMPC ('ipopt') configurado.")
 # ====================================================
 # 6) NMPC simulation loop
 # ====================================================
-# Historial para guardar resultados
+# History to save results
 t_history = [t_batch]
 x_history = [x_start_nmpc]
 u_history = [] # Guardará el control aplicado en cada paso

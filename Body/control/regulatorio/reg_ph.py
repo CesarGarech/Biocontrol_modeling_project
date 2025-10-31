@@ -140,7 +140,7 @@ def regulatorio_ph_page():
             y_combined[0] = sp_initial_ph + y0_offset
 
             for i in range(1, len(t)):
-                # Error basado en el pH combinado del paso anterior
+                # Error based on combined pH from previous step
                 error_ph = setpoint[i] - y_combined[i-1]
 
                 # Decisión de gama partida

@@ -469,7 +469,7 @@ def fermentacion_alcoholica_page():
         # 1. Vazão e Volume (Posição 1: Linha 1, Coluna 1)
         # Usa plt.subplot(2, 3, 1) para o novo layout
         ax1 = plt.subplot(2, 3, 1) # Label 'ax1' removido, não é mais necessário para a legenda
-        color = 'tab:red'; ax1.plot(t, flujo_sim, color=color) # Label 'Vazão de Alimentação' removido
+        color = 'tab:red'; ax1.plot(t, flujo_sim, color=color) # Label 'Feed Flow Rate' removed
         ax1.set_ylabel('Flow [L/h]', color=color) # Traduzido de 'Flujo'
         ax1.tick_params(axis='y', labelcolor=color)
         ax1b = ax1.twinx(); color = 'tab:blue'; ax1b.plot(t, V, color=color, linestyle='-') # Label 'Volumen' removido
@@ -538,7 +538,7 @@ def fermentacion_alcoholica_page():
             # Determine phase based on current time vs t_batch_inicial_fin
             fase_i = "inicial_batch" if ti < params.get("t_batch_inicial_fin", float('inf')) else "fed_or_final_batch"
             mu_i = 0.0
-            # Calcula mu_i baseado no tipo definido em params
+            # Calculate mu_i based on type defined in params
             # (Lógica original mantida)
             if params["tipo_mu"] == "Fermentation":
                 mu_i = mu_fermentacion(si, pi, o2i, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"], params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params["n_p"], params["KO_inhib_anaerob"])

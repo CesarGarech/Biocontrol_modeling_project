@@ -235,7 +235,7 @@ t_rto_intervals = np.linspace(t_batch, t_total, n_fb_intervals + 1)
 # Guardamos F_opt y los tiempos donde cambia (t_profile es el inicio de cada intervalo donde F_opt[k] aplica)
 rto_original_output = {'t_profile': t_rto_intervals[:-1], 'F_S_profile': np.array(F_opt)}
 
-# --- INICIO: Modificaciones para guardar en carpeta "Output" ---
+# --- START: Modifications to save in "Output" folder ---
 output_dir = "Output"
 file_name = "rto_original_feed_profile.npz"
 # Construir la ruta completa al archivo

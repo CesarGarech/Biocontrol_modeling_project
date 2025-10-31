@@ -25,18 +25,18 @@ def ekf_page():
     mu_max_real = 0.4     # (1/h)
     Yxs_real    = 0.5     # (gX/gS)
     Ks          = 0.1     # (g/L)
-    alpha       = 0.1     # (gP/gX) - Relacionado con Ypx
+    alpha       = 0.1     # (gP/gX) - Related to Ypx
     OD_sat      = 8.0     # mg/L
     k_OUR       = 0.5     # mgO2/(L*gX)
     pH0         = 7.0
-    P0_meas_ref = 0.0     # P de referencia para cálculo de pH
+    P0_meas_ref = 0.0     # Reference P for pH calculation
     k_acid      = 0.2
     Tset        = 30      # (°C)
     k_Temp      = 0.02
 
     # --- User Adjustable Parameters ---
     t_final_ekf = st.sidebar.slider("Final time (h)", 5, 50, 20, key="ekf_tf")
-    dt_ekf      = 0.1 # Fijo para esta simulación EKF
+    dt_ekf      = 0.1 # Fixed for this EKF simulation
 
     st.sidebar.markdown("**EKF Initial Conditions**")
     X0_est  = st.sidebar.number_input("Estimated initial X (g/L)", 0.01, 5.0, 0.05, format="%.2f", key="ekf_x0e")
@@ -64,10 +64,10 @@ def ekf_page():
     r_pH = st.sidebar.number_input("R - pH", 1e-4, 1.0, 0.02, format="%.4f", key="ekf_rph")
     r_T  = st.sidebar.number_input("R - Temp", 1e-2, 5.0, 0.5, format="%.2f", key="ekf_rtemp")
 
-    # Botón para ejecutar la simulación
+    # Button to run the simulation
     run_ekf = st.sidebar.button("Run EKF Simulation")
 
-    # --- Definiciones CasADi (Fuera del botón para no redefinir) ---
+    # --- CasADi Definitions (Outside button to avoid redefinition) ---
     n_states_ekf = 5
     n_meas_ekf   = 3
     x_sym_ekf = ca.SX.sym('x', n_states_ekf)
@@ -98,15 +98,15 @@ def ekf_page():
     if run_ekf:
         st.subheader("EKF Estimation Results")
 
-        # --- Preparación basada en Inputs del Usuario ---
+        # --- Preparation based on User Inputs ---
         time_vec_ekf = np.arange(0, t_final_ekf + dt_ekf, dt_ekf)
         N_ekf = len(time_vec_ekf)
 
-        # Covarianzas de ruido desde sliders
+        # Noise covariances from sliders
         Q_ekf = np.diag([q_X, q_S, q_P, q_mu, q_yxs])
         R_ekf = np.diag([r_OD, r_pH, r_T])
 
-        # Initial conditions "reales" (fijas en este ejemplo)
+        # "Real" initial conditions (fixed in this example)
         X0_real = 0.1
         S0_real = 5.0
         P0_real = 0.0
@@ -116,7 +116,7 @@ def ekf_page():
         x_est_ekf = np.array([[X0_est], [S0_est], [P0_est], [mu0_est], [yxs0_est]])
         P_est_ekf = np.diag([p0_X, p0_S, p0_P, p0_mu, p0_yxs])
 
-        # Arrays para guardar resultados
+        # Arrays to store results
         x_real_hist = np.zeros((n_states_ekf, N_ekf))
         x_est_hist  = np.zeros((n_states_ekf, N_ekf))
         z_meas_hist = np.zeros((n_meas_ekf, N_ekf))
@@ -155,9 +155,9 @@ def ekf_page():
 
                 # Actualizar
                 x_est_ekf = x_upd
-                 # Forzar no-negatividad en estados estimados si se desea
+                 # Force non-negativity on estimated states if desired
                 x_est_ekf[0:3] = np.maximum(x_est_ekf[0:3], 0)
-                # Forzar positividad en parámetros estimados si se desea (cuidado con mu_max=0)
+                # Force positivity on estimated parameters if desired (be careful with mu_max=0)
                 x_est_ekf[3:] = np.maximum(x_est_ekf[3:], 1e-6)
 
                 P_est_ekf = P_upd
@@ -172,7 +172,7 @@ def ekf_page():
 
 
         # --- EKF Results Plots ---
-        # (Usando los arrays x_real_hist, x_est_hist, z_meas_hist)
+        # (Using the arrays x_real_hist, x_est_hist, z_meas_hist)
         plt.style.use('seaborn-v0_8-whitegrid')
 
         # Figura 1: Estados y Mediciones

@@ -29,7 +29,7 @@ except ImportError:
 #==========================================================================
 # MODELO ODE FERMENTACION
 #==========================================================================
-# (Sin cambios respecto a la versión anterior - usa Kla fijo)
+# (No changes from previous version - uses fixed Kla)
 def modelo_fermentacion(t, y, params):
     """ ODE Fermentation Model. Uses fixed Kla parameters. """
     X, S, P, O2, V = y
@@ -160,7 +160,7 @@ def compute_jacobian_ferm(params_opt_trial, param_names_opt, t_exp, y0_fit, fixe
 # --- Función auxiliar para calcular flujo post-simulación ---
 # (Sin cambios respecto a la versión anterior)
 def calcular_flujo_post_sim(t, fixed_params):
-    """ Calcula F(t) usando los parámetros fijos guardados """
+    """ Calculate F(t) using stored fixed parameters """
     t_alim_inicio = fixed_params.get("t_alim_inicio", 10.1); t_alim_fin = fixed_params.get("t_alim_fin", 34.1)
     estrategia = fixed_params.get("estrategia", "Constant"); F_base = fixed_params.get("F_base", 0.1)
     F_lineal_fin_val = fixed_params.get("F_lineal_fin", F_base * 2); k_exp_val = fixed_params.get("k_exp", 0.1)
@@ -378,7 +378,7 @@ def parameter_fitting_ferm_page():
             fixed_params_res = st.session_state.fixed_params_ferm; y0_res = st.session_state.y0_fit_ferm
             df_exp_res = st.session_state.df_exp_ferm; t_exp_res = st.session_state.t_exp_ferm
             y_exp_res = st.session_state.y_exp_ferm
-            # Usar tolerancias actuales de los widgets (idealmente se guardarían las usadas)
+            # Use current tolerances from widgets (ideally would save the ones used)
             atol_res = atol_solver; rtol_res = rtol_solver
 
             if params_opt is not None and len(params_opt) == len(param_names_res):

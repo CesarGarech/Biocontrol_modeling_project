@@ -6,27 +6,27 @@ from scipy.optimize import minimize, differential_evolution
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
-import openpyxl # Necessary para leer el input
+import openpyxl # Necessary to read input
 import seaborn as sns
-# import io # Ya no es necesario sin descarga
-import traceback # Para imprimir stack trace en errores
+# import io # No longer necessary without download
+import traceback # To print stack trace on errors
 
 #--------------------------------------------------------------------------
-# Funciones Auxiliares para Estrategias de Alimentación
-# (Sin cambios en esta sección)
+# Auxiliary Functions for Feeding Strategies
+# (No changes in this section)
 #--------------------------------------------------------------------------
 def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_set=None, Xs_f_ratio=None, Sf=None, step_data=None, X_current=None, V_current=None):
     """
-    Calcula el flujo de alimentación F(t) basado en la estrategia seleccionada.
-    (Código idéntico a la versión anterior - omitido por brevedad)
+    Calculate the feed flow rate F(t) based on the selected strategy.
+    (Code identical to previous version - omitted for brevity)
     """
-    # Ensure que los tiempos sean flotantes para comparación segura
+    # Ensure that times are floats for safe comparison
     t = float(t)
     t_start = float(t_start)
     t_end = float(t_end)
 
-    # Condición inicial: fuera del intervalo de alimentación
-    # Usar una pequeña tolerancia numérica por si acaso
+    # Initial condition: outside the feeding interval
+    # Use a small numerical tolerance just in case
     if t < t_start - 1e-9 or t > t_end + 1e-9:
         return 0.0
 
@@ -114,7 +114,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
              raise ValueError(f"6 parameters were expected [mumax, Ks, Yxs, Kd, Ypx, Ksi], but only {len(params)} were received")
         mumax, Ks, Yxs, Kd, Ypx, Ksi = params
 
-        # Extraer parámetros de alimentación
+        # Extract feeding parameters
         strategy = feed_params['strategy']
         t_start = feed_params['t_start']
         t_end = feed_params['t_end']
@@ -133,13 +133,13 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
                                 V0=V0, mu_set=mu_set, Xs_f_ratio=Yxs_param_for_F, Sf=Sf,
                                 step_data=step_data, X_current=X, V_current=V)
 
-        # Valores seguros para cálculos
+        # Safe values for calculations
         X_safe = max(X, 0.0)
         S_safe = max(S, 0.0)
         V_safe = max(V, 1e-9)
-        D = F / V_safe # Tasa de dilución
+        D = F / V_safe # Dilution rate
 
-        # Parameters cinéticos seguros
+        # Safe kinetic parameters
         Ks_safe = max(Ks, 1e-9)
         Yxs_safe = max(Yxs, 1e-9)
         Kd_safe = max(Kd, 0.0)
@@ -174,7 +174,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
 #--------------------------------------------------------------------------
 def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol):
     """
-    Calcula el Jacobiano numéricamente para el modelo fed-batch.
+    Numerically calculate the Jacobian for the fed-batch model.
     Ahora opera sobre 6 parámetros [mumax, Ks, Yxs, Kd, Ypx, Ksi].
     La salida del Jacobiano es (n_puntos_tiempo * n_variables_medidas) x 6.
     """

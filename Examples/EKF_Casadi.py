@@ -84,7 +84,7 @@ x_real = np.array([[X0], [S0], [P0_real], [mu_max_real], [Yxs_real]])
 x_est = np.array([[0.05], [4.5], [0.0], [0.4], [0.5]]) # Conjetura inicial
 P_est = np.diag([0.01, 0.01, 0.01, 0.01, 0.01])      # Covarianza inicial
 
-# Arreglos para guardar la evolución (usando listas de Python para facilidad)
+# Arrays to save evolution (using Python lists for convenience)
 X_real_list  = []
 S_real_list  = []
 P_real_list  = []

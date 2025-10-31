@@ -8,7 +8,7 @@ from scipy.integrate import solve_ivp
 # ---------------------------------------------------
 def get_bioreactor_model():
     """Define el modelo simbólico del biorreactor usando CasADi."""
-    # Parameters del modelo (ejemplo - ¡ajusta a tu sistema!)
+    # Model parameters (example - adjust to your system!)
     params = {
         'mu_max': 0.4,     # Tasa máx crecimiento (1/h)
         'K_S': 0.05,       # Constante de Monod (g/L)
@@ -501,7 +501,7 @@ if __name__ == "__main__":
     }
     current_setpoint = np.array([1.5, 305.0]) # Setpoint inicial
 
-    # Historial para guardar resultados
+    # History to save results
     t_history = np.linspace(0, t_final, n_steps + 1)
     x_history = np.zeros((nx, n_steps + 1))
     u_history = np.zeros((nu, n_steps)) # Guardará [F_S, Q_j/3600]
@@ -547,7 +547,7 @@ if __name__ == "__main__":
         # 2. Simular la planta
         x_next = simulate_plant(x_current, u_apply, dt_nmpc, model_ode)
 
-        # 3. Actualizar estado y guardar historial
+        # 3. Update state and save history
         x_current = x_next
         u_previous = u_apply # Actualizar entrada anterior
 

@@ -80,7 +80,7 @@ def get_unified_model(use_oxygen_dynamics=True):
         OUR = q_O * X                          # Consumo O2
         dO_dt = OTR - OUR + D * (params['O_in'] - O)
     else:
-        # Opción simplificada para RTO si se desea mantener O constante
+        # Simplified option for RTO if desired to keep O constant
         dO_dt = 0.0
 
     # Balance de Volumen (Fed-batch)

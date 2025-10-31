@@ -212,7 +212,7 @@ class NMPCBioreactorUnified:
         self.w0 = np.zeros(ca.vertcat(*self.w).shape[0])
 
     def _prepare_indices(self):
-        """Calcula los índices de inicio para U, Xc, X en w."""
+        """Calculate start indices for U, Xc, X in w."""
         self.indices = {'U': [], 'Xc': [], 'X': []}
         offset = 0
         for k in range(self.N):
@@ -384,7 +384,7 @@ if __name__ == "__main__":
     # Entrada inicial u = [F_S, Q_j]
     u_previous = np.array([0.0, 0.0]) # Empezar con cero
 
-    # Setpoint de Temperatura (ejemplo: constante)
+    # Temperature Setpoint (example: constant)
     T_setpoint_const = 308.0 # K
 
     # Historial
@@ -436,7 +436,7 @@ if __name__ == "__main__":
         # 4. Simular la planta con u_apply = [F_S_cmd, Q_j]
         x_next = simulate_plant_unified(x_current, u_apply, dt_nmpc, ode_func)
 
-        # 5. Actualizar estado y guardar historial
+        # 5. Update state and save history
         x_current = x_next
         u_previous = u_apply # Actualizar entrada anterior para delta_u
 

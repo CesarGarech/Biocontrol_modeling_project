@@ -77,7 +77,7 @@ x_real = np.array([[X0], [S0], [P0_real], [mu_max_real], [Yxs_real]])
 x_est = np.array([[0.05], [4.5], [0.0], [0.4], [0.5]])
 P_est = np.diag([0.01, 0.01, 0.01, 0.01, 0.01])
 
-# Arreglos para guardar la evolución
+# Arrays to save evolution
 X_real_list, S_real_list, P_real_list, mu_real_list, Yxs_real_list = [], [], [], [], []
 X_est_list, S_est_list, P_est_list, mu_est_list, Yxs_est_list = [], [], [], [], []
 OD_meas_list, pH_meas_list, Temp_meas_list = [], [], []

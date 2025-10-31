@@ -77,7 +77,7 @@ def nmpc_page():
         initial_FS = st.number_input("Initial Substrate Flow (F_S,0) [L/h]", value=0.1, key="Fs0")
         initial_Qj = st.number_input("Initial Thermal Load (Q_j,0) [W]", value=0.0, key="Qj0")
 
-        # Setpoints Escalonados (Ejemplo fijo en el tiempo, valores configurables)
+        # Stepped Setpoints (Fixed example in time, configurable values)
         t_sp1 = 5.0
         t_sp2 = 12.0
         st.markdown(f"**Setpoints in t={t_sp1}h:**")
@@ -322,7 +322,7 @@ def nmpc_page():
             self._prepare_indices()
 
         def _prepare_indices(self):
-            """Calcula los índices de inicio para cada tipo de variable en w."""
+            """Calculate start indices for each variable type in w."""
             self.indices = {'X': [], 'U': [], 'Xc': []}
             offset = 0
             # X0 NO está en w (es parámetro)
@@ -548,7 +548,7 @@ def nmpc_page():
                 # 1. Restringir delta_u
                 delta_u_applied = u_apply - u_previous
                 delta_u_applied = np.clip(delta_u_applied, lbdu_nmpc, ubdu_nmpc)
-                # 2. Calcular u_apply basado en delta_u restringido
+                # 2. Calculate u_apply based on constrained delta_u
                 u_apply = u_previous + delta_u_applied
                 # 3. Restringir u_apply a sus límites absolutos
                 u_apply = np.clip(u_apply, lbu_nmpc, ubu_nmpc)
