@@ -90,8 +90,11 @@ outputs/
 # data/
 # datasets/
 # input/
-# output/
 # results/
+
+# Output directory - ignore generated files but keep the directory structure
+Output/*
+!Output/.gitkeep
 
 # Optional: ignore notebooks (if only for local experiments)
 *.ipynb

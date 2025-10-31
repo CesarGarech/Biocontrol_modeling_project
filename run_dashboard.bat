@@ -25,7 +25,6 @@ IF EXIST "requirements.txt" (
 )
 
 :: Ejecutar la aplicación
-@REM streamlit run St_CABBIO03.py
 streamlit run main.py
 
 pause
