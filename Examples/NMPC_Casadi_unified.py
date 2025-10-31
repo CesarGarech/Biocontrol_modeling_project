@@ -230,8 +230,8 @@ class NMPCBioreactorUnified:
 
 
     def solve(self, x_current, sp_trajectory, u_previous):
-        """Resuelve el NMPC para un estado y setpoints dados."""
-        # Preparar parámetros p = [x0, vec(sp_traj), uprev]
+        """Solve NMPC for given state and setpoints."""
+        # Prepare parameters p = [x0, vec(sp_traj), uprev]
         p_val = np.concatenate([x_current, sp_trajectory.flatten('F'), u_previous])
 
         # Estimación inicial w0 (usa solución anterior o heurística simple)

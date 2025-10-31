@@ -247,9 +247,9 @@ except RuntimeError as e:
 # ====================================================
 # 10) Reconstruir y graficar trayectoria RTO (si tuvo éxito)
 # ====================================================
-if 'sol' in locals(): # Verify si la solución existe
-    # ... (Código de simulación y ploteo sin cambios)...
-    # a) Simulación Batch (más puntos para gráfico)
+if 'sol' in locals(): # Verify if solution exists
+    # ... (Simulation and plotting code unchanged)...
+    # a) Batch Simulation (more points for plot)
     N_batch_plot = 50
     t_batch_plot = np.linspace(0, t_batch, N_batch_plot)
     dt_b = t_batch / (N_batch_plot - 1)

@@ -95,8 +95,8 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
 #--------------------------------------------------------------------------
 def modelo_ode_fedbatch(t, y, params, feed_params):
     """
-    Define las ecuaciones diferenciales para el modelo de bioproceso en lote alimentado,
-    INCLUYENDO INHIBICIÓN POR SUSTRATO.
+    Define differential equations for the fed-batch bioprocess model,
+    INCLUDING SUBSTRATE INHIBITION.
 
     Args:
         t (float): Tiempo actual.
