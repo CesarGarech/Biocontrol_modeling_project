@@ -6,7 +6,7 @@ from scipy.optimize import minimize, differential_evolution
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
-import openpyxl # Necesario para leer el input
+import openpyxl # Necessary para leer el input
 import seaborn as sns
 # import io # Ya no es necesario sin descarga
 import traceback # Para imprimir stack trace en errores
@@ -20,7 +20,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
     Calcula el flujo de alimentación F(t) basado en la estrategia seleccionada.
     (Código idéntico a la versión anterior - omitido por brevedad)
     """
-    # Asegurar que los tiempos sean flotantes para comparación segura
+    # Ensure que los tiempos sean flotantes para comparación segura
     t = float(t)
     t_start = float(t_start)
     t_end = float(t_end)
@@ -30,7 +30,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
     if t < t_start - 1e-9 or t > t_end + 1e-9:
         return 0.0
 
-    # Asegurar que F_min y F_max sean flotantes
+    # Ensure que F_min y F_max sean flotantes
     F_min = float(F_min)
     F_max = float(F_max)
 
@@ -91,7 +91,7 @@ def calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max, V0=None, mu_s
         return 0.0
 
 #--------------------------------------------------------------------------
-# Modelo ODE para Lote Alimentado - ¡MODIFICADO!
+# Model ODE para Lote Alimentado - ¡MODIFICADO!
 #--------------------------------------------------------------------------
 def modelo_ode_fedbatch(t, y, params, feed_params):
     """
@@ -128,7 +128,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
         V0 = feed_params.get('V0', None)
         Yxs_param_for_F = max(Yxs, 1e-9)
 
-        # Calcular F(t)
+        # Calculate F(t)
         F = calculate_feed_rate(t, strategy, t_start, t_end, F_min, F_max,
                                 V0=V0, mu_set=mu_set, Xs_f_ratio=Yxs_param_for_F, Sf=Sf,
                                 step_data=step_data, X_current=X, V_current=V)
@@ -139,7 +139,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
         V_safe = max(V, 1e-9)
         D = F / V_safe # Tasa de dilución
 
-        # Parámetros cinéticos seguros
+        # Parameters cinéticos seguros
         Ks_safe = max(Ks, 1e-9)
         Yxs_safe = max(Yxs, 1e-9)
         Kd_safe = max(Kd, 0.0)
@@ -153,13 +153,13 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
             mu = 0.0
         else:
             mu = mumax_safe * S_safe / denominator
-        mu = max(mu, 0.0) # Asegurar que mu no sea negativo
+        mu = max(mu, 0.0) # Ensure que mu no sea negativo
 
         # Ecuaciones diferenciales Fed-Batch (iguales, pero mu es diferente)
         dXdt = mu * X_safe - Kd_safe * X_safe - D * X + D * Xf
         dSdt = - (mu / Yxs_safe) * X_safe + D * (Sf - S)
         dPdt = Ypx_safe * mu * X_safe - D * P + D * Pf
-        dO2dt = 0 # Simplificado
+        dO2dt = 0 # Simplified
         dVdt = F
 
         return [dXdt, dSdt, dPdt, dO2dt, dVdt]
@@ -169,7 +169,7 @@ def modelo_ode_fedbatch(t, y, params, feed_params):
         raise
 
 #--------------------------------------------------------------------------
-# Función para calcular Jacobiano (Adaptada para Fed-Batch)
+# Function para calcular Jacobiano (Adaptada para Fed-Batch)
 # (Sin cambios en la lógica, pero operará sobre 6 parámetros)
 #--------------------------------------------------------------------------
 def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol):
@@ -190,7 +190,7 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
 
     y_nominal_flat = np.zeros(n_times * n_vars_measured)
 
-    # Simulación Nominal
+    # Simulation Nominal
     try:
         sol_nominal = solve_ivp(modelo_ode_fedbatch, [t_exp[0], t_exp[-1]],
                                 y0_fit,
@@ -206,7 +206,7 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
          st.text(traceback.format_exc())
          return np.full((n_times * n_vars_measured, n_params), np.nan)
 
-    # Cálculo de Derivadas Numéricas
+    # Calculation de Derivadas Numéricas
     jac = np.zeros((n_times * n_vars_measured, n_params))
 
     for i in range(n_params): # El bucle ahora itera de 0 a 5
@@ -239,7 +239,7 @@ def compute_jacobian_fedbatch(params_opt, t_exp, y0_fit, feed_params, atol, rtol
 
 
 #--------------------------------------------------------------------------
-# Función Objetivo (Adaptada para Fed-Batch)
+# Function Objetivo (Adaptada para Fed-Batch)
 # (Sin cambios en la lógica, pero recibirá 6 parámetros)
 #--------------------------------------------------------------------------
 def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, rtol):
@@ -265,7 +265,7 @@ def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, r
         if sol.status != 0:
              return 1e6 + np.sum(np.abs(params))
 
-        # Cálculo del Error (igual que antes)
+        # Calculation del Error (igual que antes)
         y_pred = sol.y[0:3, :]
         y_pred_stacked = y_pred.flatten()
         if y_exp_stacked.shape != y_pred_stacked.shape:
@@ -296,7 +296,7 @@ def objetivo_fedbatch(params, t_exp, y_exp_stacked, y0_fit, feed_params, atol, r
 #--------------------------------------------------------------------------
 # Página de Streamlit - ¡MODIFICADA!
 #--------------------------------------------------------------------------
-def ajuste_parametros_fedbatch_page():
+def parameter_fitting_fedbatch_page():
     st.header("🔧 Adjustment of Kinetic Parameters (Fed-Batch with Substrate Inhibition)")
 
     # --- Inicialización del Estado de Sesión (igual que antes) ---
@@ -356,7 +356,7 @@ def ajuste_parametros_fedbatch_page():
                     st.session_state.t_exp_fedbatch = df_exp['time'].values
                     st.session_state.y_exp_fedbatch = df_exp[['biomass', 'substrate', 'product']].values.T
                     st.session_state.y_exp_stacked_fedbatch = st.session_state.y_exp_fedbatch.flatten()
-                    st.dataframe(df_exp.head()) # Mostrar preview después de procesar
+                    st.dataframe(df_exp.head()) # Show preview después de procesar
             except Exception as e:
                 st.error(f"Error reading the Excel file: {e}")
                 st.session_state.df_exp_fedbatch = None # Resetear
@@ -386,7 +386,7 @@ def ajuste_parametros_fedbatch_page():
             V0_fit = st.number_input("Initial Volume (V0) [L]", min_value=1e-3, value=float(V0_default), format="%.4f")
             st.session_state.y0_fit_fedbatch = [X0_fit, S0_fit, P0_fit, O0_fit, V0_fit]
 
-            # Parámetros de Alimentación (igual que antes)
+            # Parameters de Alimentación (igual que antes)
             st.markdown("##### Feeding Configuration")
             feed_strategy = st.selectbox("Feeding Strategy",
                                           ['Constant', 'Linear', 'Exponential (Simple)', 'Exponential (constant mu)', 'Step'],
@@ -403,7 +403,7 @@ def ajuste_parametros_fedbatch_page():
             Xf_feed = st.number_input("Biomass Feed Concentration (Xf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
             Pf_feed = st.number_input("Product Feed Concentration (Pf) [g/L]", min_value=0.0, max_value=50.0, value=0.0, format="%.2f")
 
-            # Parámetros Específicos por Estrategia (igual que antes)
+            # Parameters Específicos por Estrategia (igual que antes)
             step_data_input_list = None
             mu_set_feed = None
             if feed_strategy == 'Step':
@@ -445,7 +445,7 @@ def ajuste_parametros_fedbatch_page():
             # --- Configuración del Ajuste - ¡MODIFICADA! ---
             st.subheader("⚙️ Adjustment Configuration")
 
-            # Parámetros a ajustar (estimaciones iniciales) - ¡Añadido Ksi!
+            # Parameters a ajustar (estimaciones iniciales) - ¡Añadido Ksi!
             st.markdown("##### Kinetic Parameters to Optimize (Initial Estimates)")
             p_opt = st.session_state.params_opt_fedbatch # Puede tener 5 o 6 elementos de ejecuciones anteriores
             mumax_guess_val = float(p_opt[0]) if p_opt is not None and len(p_opt)>0 else 0.5
@@ -467,12 +467,12 @@ def ajuste_parametros_fedbatch_page():
             # Límites estrictos para la optimización - ¡Añadido Ksi! (6 parámetros)
             bounds = [(1e-3, 5.0), (1e-4, 20.0), (0.01, 3.0), (0.0, 1.0), (0.0, 10.0), (1.0, 1000.0)]
 
-            # Tolerancias del solver ODE (igual que antes)
+            # Tolerances del solver ODE (igual que antes)
             st.markdown("##### ODE Solver Tolerances")
             atol = st.number_input("Absolute tolerance (atol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
             rtol = st.number_input("Relative tolerance (rtol)", min_value=1e-12, max_value=1e-3, value=1e-8, format="%e")
 
-            # Opciones de optimización (igual que antes)
+            # Options de optimización (igual que antes)
             st.markdown("##### Optimization Options")
             metodo = st.selectbox("Optimization Methods",
                                   ['L-BFGS-B', 'Nelder-Mead', 'TNC', 'Powell', 'differential_evolution'],
@@ -568,7 +568,7 @@ def ajuste_parametros_fedbatch_page():
             atol_res = atol # Usar valor actual del widget
             rtol_res = rtol # Usar valor actual del widget
 
-            # Verificar si params_opt tiene 6 elementos
+            # Verify si params_opt tiene 6 elementos
             if params_opt is None or len(params_opt) != 6:
                  st.error("Optimized parameters are not available or do not have the expected length (6). Detailed results cannot be shown.")
                  # Resetear estado problemático
@@ -610,7 +610,7 @@ def ajuste_parametros_fedbatch_page():
                 else:
                      st.session_state.sol_fedbatch = sol
                      y_pred_final = sol.y[0:3, :]
-                     # Cálculo de métricas (igual que antes)
+                     # Calculation de métricas (igual que antes)
                      metricas_list = []
                      for i in range(3):
                          variable_name = ['Biomass', 'Substrate', 'Product'][i]
@@ -652,7 +652,7 @@ def ajuste_parametros_fedbatch_page():
                 fig.suptitle("Model Comparation (Substrate Inhibition) vs Experimental data", fontsize=16)
                 st.pyplot(fig)
 
-                # Gráfico Adicional: Volumen y Flujo (igual que antes)
+                # Plot Adicional: Volumen y Flujo (igual que antes)
                 st.subheader("💧 Volume and Feed Flow")
                 try:
                     interp_x = np.interp(sol.t, sol.t, sol.y[0])
@@ -697,7 +697,7 @@ def ajuste_parametros_fedbatch_page():
                              for col in ['Standard Error', 'Interval ± (95%)', '95% CI Lower bound', '95% CI Upper bound']:
                                  if col not in parametros_df.columns: parametros_df[col] = np.nan
                         else:
-                            # Jacobiano ahora tendrá 6 columnas
+                            # Jacobian ahora tendrá 6 columnas
                             jac = compute_jacobian_fedbatch(params_opt, t_exp_res, y0_res, feed_params_res, atol_res, rtol_res)
 
                             if jac is None or np.isnan(jac).any() or np.isinf(jac).any():
@@ -705,7 +705,7 @@ def ajuste_parametros_fedbatch_page():
                                 for col in ['Standard Error', 'Interval ± (95%)', '95% CI Lower bound', '95% CI Upper bound']:
                                     if col not in parametros_df.columns: parametros_df[col] = np.nan
                             else:
-                                 # Cálculo de covarianza e IC (igual que antes, pero con jac de 6 cols)
+                                 # Calculation de covarianza e IC (igual que antes, pero con jac de 6 cols)
                                  mse = np.sum(residuals_flat_clean**2) / dof
                                  jtj = jac.T @ jac
                                  try: cov_matrix = np.linalg.pinv(jtj) * mse
@@ -729,7 +729,7 @@ def ajuste_parametros_fedbatch_page():
                         for col in ['Standard Error', 'Interval ± (95%)', '95% CI - Lower bound', '95% CI - Upper bound']:
                             if col not in parametros_df.columns: parametros_df[col] = np.nan
 
-                    # Mostrar tabla de parámetros con IC (ahora con 6 filas)
+                    # Show tabla de parámetros con IC (ahora con 6 filas)
                     st.write("Optimized Parameters and Confidence Intervals (95%):")
                     st.dataframe(parametros_df.style.format({
                        'Optimized Value': '{:.5f}', 'Standard Error': '{:.5f}',
@@ -737,7 +737,7 @@ def ajuste_parametros_fedbatch_page():
                        '95% CI - Upper bound': '{:.5f}'}, na_rep='N/A'))
                     st.session_state.parametros_df_fedbatch = parametros_df
 
-                    # Gráfico de IC (ahora con 6 barras)
+                    # Plot de IC (ahora con 6 barras)
                     if 'Interval ± (95%)' in parametros_df.columns and parametros_df['Interval ± (95%)'].notna().any():
                         st.subheader("📐 Confidence Intervals for Parameters")
                         fig_ci, ax = plt.subplots(figsize=(10, max(4, len(parametros_df) * 0.6)))
@@ -752,7 +752,7 @@ def ajuste_parametros_fedbatch_page():
                         ax.set_title('95% Confidence Intervals(or ~1.96*SE if exact CI fails)'); ax.grid(True, axis='x', linestyle='--', alpha=0.6)
                         plt.tight_layout(); st.pyplot(fig_ci)
 
-                    # Análisis de Residuales (igual que antes)
+                    # Analysis de Residuales (igual que antes)
                     st.subheader("📉 Residuals Analysis")
                     fig_hist, axs = plt.subplots(1, 3, figsize=(15, 5))
                     variables_res = ['Biomass', 'Substrate', 'Product']; colors_res = ['#1f77b4', '#ff7f0e', '#2ca02c']

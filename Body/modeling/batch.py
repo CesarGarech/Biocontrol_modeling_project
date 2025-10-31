@@ -5,12 +5,12 @@ from scipy.integrate import solve_ivp
 from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa  # Import kinetic functions
 
 
-def lote_page():
+def batch_page():
     st.header("Operation mode: Batch")
     st.sidebar.subheader("Model Parameters")
-    # Tipo de cinética
-    tipo_mu = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
-    if tipo_mu == "Simple Monod":
+    # Kinetic type
+    kinetic_type = st.sidebar.selectbox("Kinetic model", ["Simple Monod", "Sigmoidal Monod", "Monod with restrictions"])
+    if kinetic_type == "Simple Monod":
         st.markdown(""" 
         ## Simple Monod Kinetics
         The Simple Monod model describes the relationship between the specific 
@@ -30,7 +30,7 @@ def lote_page():
             - $K_s$ is the saturation constant (g/L)
             """)
                 
-    elif tipo_mu == "Sigmoidal Monod":
+    elif kinetic_type == "Sigmoidal Monod":
         st.markdown(""" 
         ## Sigmoidal Monod Kinetics
         The sigmoidal Monod model is an extension of the simple Monod model, 
@@ -50,7 +50,7 @@ def lote_page():
             - $K_s$ is the saturation constant (g/L)
             - $n$ is the Hill coefficient
             """)
-    elif tipo_mu == "Monod with restrictions":
+    elif kinetic_type == "Monod with restrictions":
         st.markdown(""" 
         ## Monod Kinetics with Restrictions
         The Monod model with restrictions considers the effect of product (P) 
@@ -72,7 +72,7 @@ def lote_page():
             - $O_2$ is the dissolved oxygen concentration (mg/L)
             - $K_O$ is the oxygen inhibition constant (mg/L)
             """)
-    # Parámetros generales
+    # General parameters
     
     mumax = st.sidebar.slider(r"$\mu_{\mathrm{max}}$", 0.1, 1.0, 0.3)
     Ks = st.sidebar.slider(r"$\ K_{\mathrm{s}}$", 0.01, 1.0, 0.1)
@@ -86,7 +86,7 @@ def lote_page():
     Kd = st.sidebar.slider("Decay (Kd)", 0.0, 0.5, 0.005)
     mo = st.sidebar.slider("O2 Maintenance (mo)", 0.0, 0.5, 0.05)
 
-    # Iniciales
+    # Initial conditions
     X0 = st.sidebar.number_input("Initial Biomass (g/L)", 0.1, 10.0, 0.5)
     S0 = st.sidebar.number_input("Initial Substrate (g/L)", 0.1, 100.0, 20.0)
     P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
@@ -94,29 +94,23 @@ def lote_page():
 
     
 
-    # Tiempo de simulación
+    # Simulation time
     t_final = st.sidebar.slider("Final time (h)", 1, 100, 30)
     t_eval = np.linspace(0, t_final, 300)
 
-    # Tolerancias
+    # Tolerances
     atol = st.sidebar.number_input("Absolute tolerance (atol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
     rtol = st.sidebar.number_input("Relative tolerance (rtol)", min_value=1e-10, max_value=1e-2, value=1e-6, format="%e")
 
-    def modelo_lote(t, y):
+    def batch_model(t, y):
         X, S, P, O2 = y
-        if tipo_mu == "Simple Monod":
+        if kinetic_type == "Simple Monod":
             mu = mu_monod(S, mumax, Ks)
-#>>>>>>> HEAD
-        elif tipo_mu == "Monod sigmoidal":
-            if S<=0:
-                S=0
-#=======
-        elif tipo_mu == "Sigmoidal Monod":
-#>>>>>>> origin/main
+        elif kinetic_type == "Sigmoidal Monod":
             mu = mu_sigmoidal(S, mumax, Ks, n=2)
             if S<=0:
                 S=0
-        elif tipo_mu == "Monod with restrictions":
+        elif kinetic_type == "Monod with restrictions":
             mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
         dXdt = mu * X - Kd * X
         dSdt = -1/Yxs * mu * X - ms * X
@@ -127,9 +121,9 @@ def lote_page():
         return [dXdt, dSdt, dPdt, dOdt]
 
     y0 = [X0, S0, P0, O0]
-    sol = solve_ivp(modelo_lote, [0, t_final], y0, t_eval=t_eval, atol=atol, rtol=rtol)
+    sol = solve_ivp(batch_model, [0, t_final], y0, t_eval=t_eval, atol=atol, rtol=rtol)
 
-    # Gráficas
+    # Plots
     st.subheader("Simulation Results")
     st.markdown("""
         The following graphs show the evolution of the concentrations of biomass (X), substrate (S), product (P), and dissolved oxygen (O2) over time.
@@ -146,4 +140,4 @@ def lote_page():
     st.pyplot(fig)
 
 if __name__ == '__main__':
-    lote_page()
+    batch_page()

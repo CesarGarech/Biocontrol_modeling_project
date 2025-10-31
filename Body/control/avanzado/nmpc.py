@@ -197,7 +197,7 @@ def nmpc_page():
 
         def _build_nlp(self):
             """Construye el problema NLP de optimización."""
-            # Función de colocación para un paso
+            # Function de colocación para un paso
             Xk_step = ca.MX.sym('Xk_step', self.nx)
             Xc_step = ca.MX.sym('Xc_step', self.nx, self.m)
             Uk_step = ca.MX.sym('Uk_step', self.nu)
@@ -226,13 +226,13 @@ def nmpc_page():
             self.lbg = []
             self.ubg = []
 
-            # Parámetros del NLP
+            # Parameters del NLP
             self.x0_sym = ca.MX.sym('x0', self.nx)
             self.sp_sym = ca.MX.sym('sp', self.nc, self.N) # Trayectoria de SP para N pasos
             self.uprev_sym = ca.MX.sym('uprev', self.nu)
             p_nlp = ca.vertcat(self.x0_sym, ca.vec(self.sp_sym), self.uprev_sym)
 
-            J = 0 # Función de costo
+            J = 0 # Function de costo
             Uk_prev = self.uprev_sym
             Xk_iter = self.x0_sym # Estado inicial es parámetro
 
@@ -282,7 +282,7 @@ def nmpc_page():
                 self.lbg.extend([-1e-9] * self.nx)
                 self.ubg.extend([+1e-9] * self.nx)
 
-                # Calcular costo del paso k+1
+                # Calculate costo del paso k+1
                 Ck_next = self.output_func(Xk_next) # Salida predicha en k+1
                 sp_k = self.sp_sym[:, k]           # Setpoint en el paso k (para el estado k+1)
                 # Penalizar desviación de salida respecto al setpoint
@@ -310,7 +310,7 @@ def nmpc_page():
                 'ipopt.tol': 1e-6,
                 'ipopt.acceptable_tol': 1e-5,
                 'ipopt.warm_start_init_point': 'yes',
-                # Ajustes opcionales para robustez / velocidad
+                # Adjustments opcionales para robustez / velocidad
                 'ipopt.warm_start_bound_push': 1e-9,
                 'ipopt.warm_start_mult_bound_push': 1e-9,
                 # 'ipopt.mu_strategy': 'adaptive',
@@ -370,7 +370,7 @@ def nmpc_page():
                         pass
 
                     w0_guess.extend(np.clip(x_guess, self.lbx, self.ubx)) # X_{k+1} (clip)
-                # Asegurarse de que la dimensión sea correcta
+                # Ensurese de que la dimensión sea correcta
                 if len(w0_guess) == self.dim_w:
                     current_w0 = np.array(w0_guess)
                 else:
@@ -391,7 +391,7 @@ def nmpc_page():
                 w_opt = sol['x'].full().flatten()
                 sol_stats = self.solver.stats()
 
-                # Verificar éxito del solver
+                # Verify éxito del solver
                 if not sol_stats['success']:
                     st.warning(f"NMPC Solver did not converged! Status: {sol_stats.get('return_status', 'Unknown')}")
                     # No actualizar w0 si falló, reusar el anterior o resetear
@@ -420,7 +420,7 @@ def nmpc_page():
                 return u_previous, {'success': False, 'return_status': 'SolverError'}, None, None
 
     # ---------------------------------------------------
-    # 3. Simulación del Sistema (Planta) - Función separada
+    # 3. System (Plant) Simulation - Separate function
     # ---------------------------------------------------
     # @st.cache_data # No cachear si depende de u que cambia
     def simulate_plant_step(x_current, u_applied, dt_sim, model_ode_func):
@@ -486,7 +486,7 @@ def nmpc_page():
         dt_sim = dt_nmpc_input # Usar el mismo dt para simulación y NMPC
         n_steps = int(t_final / dt_sim)
 
-        # Condiciones iniciales
+        # Initial conditions
         x_current = np.array([initial_X, initial_S, initial_T])
         u_previous = np.array([initial_FS, initial_Qj]) # [F_S (L/h), Q_j (W)]
 
@@ -619,14 +619,14 @@ def nmpc_page():
         axes[1, 1].legend()
         axes[1, 1].grid(True)
 
-        # Gráfico vacío para alinear
+        # Plot vacío para alinear
         axes[2, 1].axis('off')
         axes[2, 1].set_xlabel('Time (h)')
 
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Ajustar para el supertítulo
 
-        # Mostrar la figura en Streamlit
+        # Show la figura en Streamlit
         st.pyplot(fig)
 
 # --- Ejecutar la aplicación ---

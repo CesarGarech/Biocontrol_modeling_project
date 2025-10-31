@@ -11,7 +11,7 @@ def odefun(x, u):
     Ecuaciones diferenciales Fed-Batch con O=constante.
     - Divisiones con fmax(V, epsilon) para evitar 1/0.
     """
-    # Parámetros (iguales al RTO)
+    # Parameters (iguales al RTO)
     mu_max = 0.6
     Ks     = 0.2
     Ko     = 0.01
@@ -55,12 +55,12 @@ def odefun(x, u):
 # ====================================================
 # 2) Parámetros del proceso y NMPC
 # ====================================================
-# Tiempos del proceso original
+# Times del proceso original
 t_batch = 5.0
 t_total = 24.0
 tf_fb = t_total - t_batch # Duración de la fase fed-batch
 
-# Condiciones iniciales (iguales al RTO)
+# Initial conditions (iguales al RTO)
 X0, S0, P0, O0, V0 = 1.0, 20.0, 0.0, 0.08, 0.2
 x0_np = np.array([X0, S0, P0, O0, V0])
 
@@ -72,8 +72,8 @@ V_max = 2.0
 nx = 5 # Número de estados
 nu = 1 # Número de controles (F)
 
-# Parámetros del NMPC
-T_nmpc = 0.25 # Tiempo de muestreo del NMPC (h) - ¡Más corto que dt_fb del RTO!
+# Parameters del NMPC
+T_nmpc = 0.25 # Time de muestreo del NMPC (h) - ¡Más corto que dt_fb del RTO!
 N_p = 10      # Horizonte de predicción (número de pasos de T_nmpc)
 N_sim_steps = int(tf_fb / T_nmpc) # Número de pasos de simulación NMPC
 
@@ -104,7 +104,7 @@ print(f"[INFO] Estado tras fase batch (inicio NMPC en t={t_batch}): {x_start_nmp
 # ====================================================
 try:
     rto_data = np.load("rto_original_feed_profile.npz")
-    t_rto_profile = rto_data['t_profile'] # Tiempos donde F cambia
+    t_rto_profile = rto_data['t_profile'] # Times donde F cambia
     F_rto_profile = rto_data['F_S_profile'] # Valores de F óptimos
     print("[INFO] Perfil de referencia RTO cargado desde 'rto_original_feed_profile.npz'")
 
@@ -122,7 +122,7 @@ try:
     )
     # Crear perfil de F completo para la simulación fina
     # Necesitamos un valor de F para cada dt_fine_sim
-    t_sim_ref = np.arange(t_batch, t_total + dt_fine_sim/2, dt_fine_sim) # Tiempos finos
+    t_sim_ref = np.arange(t_batch, t_total + dt_fine_sim/2, dt_fine_sim) # Times finos
     F_sim_ref_func = interp1d(t_rto_profile, F_rto_profile, kind='previous', # 'previous' para mantener F constante en el intervalo
                               bounds_error=False, fill_value=(F_rto_profile[0], F_rto_profile[-1]))
     F_sim_ref = F_sim_ref_func(t_sim_ref)
@@ -291,7 +291,7 @@ for i in range(N_sim_steps):
         # Preparar guesses para la siguiente iteración (shift para array 1D)
         u_guess_1d = np.roll(u_optimal_sequence, -1) # Shift en 1D
         u_guess_1d[-1] = u_optimal_sequence[-1]     # Repetir el último elemento
-        # Asegurar que u_guess tenga la forma (nu, N_p) para set_initial
+        # Ensure que u_guess tenga la forma (nu, N_p) para set_initial
         u_guess = u_guess_1d.reshape(nu, N_p)
         x_guess = np.roll(x_predicted_sequence, -1, axis=1)
         x_guess[:, -1] = x_predicted_sequence[:, -1] # Repetir el último
@@ -311,7 +311,7 @@ for i in range(N_sim_steps):
         x_guess[:, -1] = x_guess[:, -2]
         # Se podría intentar resolver de nuevo con otro guess o parar
 
-    # Asegurar que el control aplicado respete V_max en el estado ACTUAL
+    # Ensure que el control aplicado respete V_max en el estado ACTUAL
     if x_current[4] >= V_max:
         u_apply = 0.0
 
@@ -344,7 +344,7 @@ t_control_history = t_history[:-1]
 print("[INFO] Generando gráficas comparativas...")
 
 # Recrear la trayectoria de referencia completa (batch + fed-batch) para comparación
-t_ref_full = t_sim_ref # Tiempos de la simulación de referencia (ya incluye t_batch)
+t_ref_full = t_sim_ref # Times de la simulación de referencia (ya incluye t_batch)
 x_ref_full = x_ref_traj # Estados de la simulación de referencia
 F_ref_full = interp_F_ref(t_ref_full) # Control de la simulación de referencia
 
@@ -365,7 +365,7 @@ xbatch_traj_plot = np.array(xbatch_traj_plot)
 t_plot_nmpc = np.concatenate([t_batch_plot, t_history[1:]]) # t_history[0] es t_batch
 x_plot_nmpc = np.vstack([xbatch_traj_plot, x_history[1:,:]]) # x_history[0] es x_start_nmpc
 u_plot_nmpc = np.concatenate([np.zeros(len(t_batch_plot)), u_history]) # F=0 en batch
-t_u_plot_nmpc = np.concatenate([t_batch_plot, t_control_history]) # Tiempos para F
+t_u_plot_nmpc = np.concatenate([t_batch_plot, t_control_history]) # Times para F
 
 # Graficas
 fig, axs = plt.subplots(3, 2, figsize=(14, 10), sharex=True)
@@ -431,7 +431,7 @@ axs[5].grid(True)
 plt.tight_layout()
 plt.show()
 
-# Calcular producto final
+# Calculate producto final
 PV_final_rto = PV_ref[-1]
 PV_final_nmpc = PV_nmpc[-1]
 print(f"\nProducto Total Final (P*V):")

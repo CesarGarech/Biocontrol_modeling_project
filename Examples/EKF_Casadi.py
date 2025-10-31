@@ -5,13 +5,13 @@ import casadi as ca
 # Para asegurar reproducibilidad del ruido (opcional)
 # np.random.seed(42)
 
-# === 1. Parámetros del modelo "real" ===
+# === 1. "Real" model parameters ===
 mu_max_real = 0.4     # (1/h)   Tasa max de crecimiento (valor real)
 Yxs_real    = 0.5     # (gX/gS) Rendimiento biomasa/sustrato (valor real)
 Ks          = 0.1     # (g/L)   Constante de semisaturación
 alpha       = 0.1     # (gP/gX) Formación de producto asociada al crecimiento
 
-# Parámetros "extra" para la medición
+# Parameters "extra" para la medición
 OD_sat      = 8.0     # mg/L   (Ejemplo saturación O2)
 k_OUR       = 0.5     # mgO2/(L*gX) Factor de consumo O2
 pH0         = 7.0     # Valor base de pH
@@ -20,7 +20,7 @@ k_acid      = 0.2     # Ajusta cómo el P afecta al pH
 Tset        = 30      # (°C)   Temperatura base
 k_Temp      = 0.02    # Ajusta la contribución exotérmica (X*S)
 
-# === 2. Parámetros de simulación ===
+# === 2. Simulation parameters ===
 dt        = 0.1   # h   Paso de integración
 t_final   = 20    # h   Tiempo total
 time_vec  = np.arange(0, t_final + dt, dt)
@@ -34,10 +34,10 @@ R = np.diag([0.05, 0.02, 0.5])               # Ruido de medición (OD, pH, T)
 
 # === 3. Definición Simbólica con CasADi ===
 
-# Variables simbólicas
+# Symbolic variables
 x_sym = ca.SX.sym('x', n_states) # Vector de estado simbólico [X, S, P, mu_max, Yxs]
 
-# Desempaquetar estados simbólicos para claridad
+# Unpack estados simbólicos para claridad
 X_sym, S_sym, P_sym, mu_max_sym, Yxs_sym = ca.vertsplit(x_sym)
 
 # --- Función de Actualización de Estado (f) ---
@@ -46,13 +46,13 @@ mu_sym = mu_max_sym * (S_sym / (Ks + S_sym))
 dX = mu_sym * X_sym
 dS = - (1 / Yxs_sym) * dX
 dP = alpha * dX
-dMu_max = 0 # Modelo asume constante
-dYxs = 0    # Modelo asume constante
+dMu_max = 0 # Model asume constante
+dYxs = 0    # Model asume constante
 
 # Discretización Euler explícito
 x_next_sym = x_sym + dt * ca.vertcat(dX, dS, dP, dMu_max, dYxs)
 
-# Crear función CasADi para f(x)
+# Create CasADi function for f(x)
 f_func = ca.Function('f', [x_sym], [x_next_sym], ['x_k'], ['x_k_plus_1'])
 
 # --- Función de Medición (h) ---
@@ -62,14 +62,14 @@ T_val_sym  = Tset + k_Temp * (X_sym * S_sym)
 
 z_sym = ca.vertcat(OD_val_sym, pH_val_sym, T_val_sym)
 
-# Crear función CasADi para h(x)
+# Create CasADi function for h(x)
 h_func = ca.Function('h', [x_sym], [z_sym], ['x'], ['z'])
 
 # --- Jacobianos (Calculados automáticamente por CasADi) ---
 F_sym = ca.jacobian(x_next_sym, x_sym)
 H_sym = ca.jacobian(z_sym, x_sym)
 
-# Crear funciones CasADi para los Jacobianos
+# Create CasADi functions for the Jacobians
 F_func = ca.Function('F', [x_sym], [F_sym], ['x'], ['Fk'])
 H_func = ca.Function('H', [x_sym], [H_sym], ['x'], ['Hk'])
 
@@ -101,7 +101,7 @@ OD_meas_list   = []
 pH_meas_list   = []
 Temp_meas_list = []
 
-# === 5. Bucle de simulación ===
+# === 5. Simulation loop ===
 for k in range(N):
     # --- Guardar valores actuales ---
     X_real_list.append(x_real[0, 0])
@@ -130,7 +130,7 @@ for k in range(N):
     pH_meas_list.append(z_k[1, 0])
     Temp_meas_list.append(z_k[2, 0])
 
-    if k < N - 1: # Evitar calcular predicción/corrección en el último paso
+    if k < N - 1: # Avoid calcular predicción/corrección en el último paso
         # --- (B) EKF: Predicción ---
         # (1) f(x_est) -> Predicción del estado (Usando la función CasADi)
         x_pred_dm = f_func(x_est)
@@ -154,7 +154,7 @@ for k in range(N):
         Kk = P_pred @ Hk.T @ np.linalg.pinv(Sk)
 
         # (6) Corrección de la estimación
-        # Calcular la predicción de la medición h(x_pred)
+        # Calculate la predicción de la medición h(x_pred)
         h_pred_dm = h_func(x_pred)
         h_pred = h_pred_dm.full()
         # Innovación (residuo)
@@ -170,7 +170,7 @@ for k in range(N):
         P_est = P_upd
 
         # --- (D) Avance del "proceso real" ---
-        # Calcular siguiente estado real (sin ruido primero)
+        # Calculate siguiente estado real (sin ruido primero)
         x_real_next_no_noise_dm = f_func(x_real)
         x_real_next_no_noise = x_real_next_no_noise_dm.full()
         # Agregar ruido de proceso

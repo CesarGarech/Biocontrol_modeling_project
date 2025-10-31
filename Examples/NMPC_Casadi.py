@@ -8,7 +8,7 @@ from scipy.integrate import solve_ivp
 # ---------------------------------------------------
 def get_bioreactor_model():
     """Define el modelo simbólico del biorreactor usando CasADi."""
-    # Parámetros del modelo (ejemplo - ¡ajusta a tu sistema!)
+    # Parameters del modelo (ejemplo - ¡ajusta a tu sistema!)
     params = {
         'mu_max': 0.4,     # Tasa máx crecimiento (1/h)
         'K_S': 0.05,       # Constante de Monod (g/L)
@@ -28,7 +28,7 @@ def get_bioreactor_model():
     T = ca.MX.sym('T')  # Temperatura del reactor (K)
     x = ca.vertcat(X, S, T) # x es puramente simbólico (vertcat de MX.sym)
 
-    # Definir 'u' como un símbolo base de 2 elementos
+    # Define 'u' as a base symbol of 2 elements
     u = ca.MX.sym('u', 2)
     # u[0] representará F_S (L/h)
     # u[1] representará Q_j / 3600.0 (Carga térmica en J/h) - ¡Comentario indica J/h pero división sugiere Watts!
@@ -58,10 +58,10 @@ def get_bioreactor_model():
     # Vector de derivadas
     dx = ca.vertcat(dX_dt, dS_dt, dT_dt)
 
-    # Variables controladas (salidas)
+    # Controlled variables (outputs)
     c = ca.vertcat(X, T)
 
-    # Crear funciones CasADi
+    # Create CasADi functions
     # Ahora los inputs [x, u] son ambos símbolos base o vertcat de símbolos base.
     model_ode = ca.Function('model_ode', [x, u], [dx], ['x', 'u'], ['dx'])
     output_func = ca.Function('output_func', [x], [c], ['x'], ['c'])
@@ -96,7 +96,7 @@ class NMPCBioreactor:
         self.dt = dt
         self.N = N
         self.M = M
-        self.Q = np.diag(Q) # Asegurar que sean matrices diagonales
+        self.Q = np.diag(Q) # Ensure que sean matrices diagonales
         self.W = np.diag(W)
         self.model_ode = model_ode
         self.output_func = output_func
@@ -128,7 +128,7 @@ class NMPCBioreactor:
             p = np.poly1d([1])
             for r in range(self.m + 1):
                 if r != j:
-                    p *= np.poly1d([1, -self.tau_root[r]]) / (self.tau_root[j] - self.tau_root[r] + 1e-10) # Evitar div por cero
+                    p *= np.poly1d([1, -self.tau_root[r]]) / (self.tau_root[j] - self.tau_root[r] + 1e-10) # Avoid div por cero
 
             # Evaluar la derivada del polinomio en los puntos tau
             p_der = np.polyder(p)
@@ -144,16 +144,16 @@ class NMPCBioreactor:
 
     def _build_nlp(self):
         """Construye el problema NLP de optimización."""
-        # Crear una instancia de la función de colocación una vez
-        # Variables simbólicas para un paso de integración
+        # Create an instance of the collocation function once
+        # Symbolic variables for an integration step
         Xk_step = ca.MX.sym('Xk_step', self.nx)
         Xc_step = ca.MX.sym('Xc_step', self.nx, self.m) # Estados en puntos interiores k,1...k,m
         Uk_step = ca.MX.sym('Uk_step', self.nu)
 
-        # Calcular ecuaciones de colocación y estado final para un paso
+        # Calculate ecuaciones de colocación y estado final para un paso
         X_all_coll_step = ca.horzcat(Xk_step, Xc_step) # Estados en k,0(=Xk_step), k,1, ..., k,m
         ode_at_coll_step = []
-        for j in range(1, self.m + 1): # Calcular ODE en puntos interiores 1..m
+        for j in range(1, self.m + 1): # Calculate ODE en puntos interiores 1..m
             ode_at_coll_step.append(self.model_ode(X_all_coll_step[:, j], Uk_step))
         # ode_at_coll_step es ahora una lista de m vectores columna [nx x 1]
 
@@ -173,12 +173,12 @@ class NMPCBioreactor:
         for j in range(1, self.m + 1): # Sumar contribuciones de los puntos interiores
             Xk_end_step += self.dt * self.D[j] * ode_at_coll_step[j-1]
 
-        # Crear la función CasADi para un paso
+        # Create the CasADi function for one step
         self.F_coll = ca.Function('F_coll', [Xk_step, Xc_step, Uk_step],
                                     [Xk_end_step, ca.vertcat(*coll_eqs_step)],
                                     ['Xk_step', 'Xc_step', 'Uk_step'], ['Xk_end', 'coll_eqs'])
 
-        # --- Variables de decisión del NMPC ---
+        # --- NMPC decision variables ---
         self.w = []        # Vector de variables de decisión
         self.w0_init = [] # Estimación inicial (basada en parámetros)
         self.lbw = []      # Límite inferior
@@ -188,22 +188,22 @@ class NMPCBioreactor:
         self.lbg = []      # Límite inferior
         self.ubg = []      # Límite superior
 
-        # Parámetros del NLP (estado inicial, setpoints, entrada anterior)
+        # Parameters del NLP (estado inicial, setpoints, entrada anterior)
         self.x0_sym = ca.MX.sym('x0', self.nx)
         self.sp_sym = ca.MX.sym('sp', self.nc, self.N)
         self.uprev_sym = ca.MX.sym('uprev', self.nu)
         p_nlp = ca.vertcat(self.x0_sym, ca.vec(self.sp_sym), self.uprev_sym)
 
-        # Función de costo
+        # Function de costo
         J = 0
         Uk_prev = self.uprev_sym # Entrada anterior para calcular delta_u
 
         # El estado al inicio del primer intervalo es el PARÁMETRO x0_sym
         Xk_iter = self.x0_sym
 
-        # Bucle sobre el horizonte de predicción N
+        # Loop over prediction horizon N
         for k in range(self.N):
-            # Variables de entrada Uk
+            # Input variables Uk
             Uk_k = ca.MX.sym(f'U_{k}', self.nu)
             self.w.append(Uk_k)
             # Inicializar entradas con u_previous
@@ -223,7 +223,7 @@ class NMPCBioreactor:
                 self.lbg.extend([-1e-9] * self.nu) # Permitir tolerancia numérica
                 self.ubg.extend([+1e-9] * self.nu)
 
-            # Variables de estado de colocación Xc_k (solo puntos interiores 1..m)
+            # Collocation state variables Xc_k (only interior points 1..m)
             Xc_k = ca.MX.sym(f'Xc_{k}', self.nx, self.m)
             self.w.append(ca.vec(Xc_k)) # Vectorizar para añadir a w
             # Inicializar estados de colocación con x0_sym
@@ -252,7 +252,7 @@ class NMPCBioreactor:
             self.lbg.extend([-1e-9] * self.nx) # Permitir pequeña tolerancia numérica
             self.ubg.extend([+1e-9] * self.nx)
 
-            # Calcular costo del paso k
+            # Calculate costo del paso k
             Ck = self.output_func(Xk_next) # Salida al final del intervalo k+1
             sp_k = self.sp_sym[:, k]      # Setpoint en el paso k
             J += (Ck - sp_k).T @ self.Q @ (Ck - sp_k) # Costo de salida
@@ -264,15 +264,15 @@ class NMPCBioreactor:
             if k == self.M - 1:
                 Uk_prev_control_horizon = Uk_k # Guardar la última entrada del horizonte M
 
-        # --- Crear el solver NLP ---
+        # --- Create the NLP solver ---
         nlp_dict = {
             'f': J,
             'x': ca.vertcat(*self.w), # Variables: U0, Xc0, X1, U1, Xc1, X2, ...
             'g': ca.vertcat(*self.g), # Restricciones
-            'p': p_nlp                 # Parámetros: x0, sp, uprev
+            'p': p_nlp                 # Parameters: x0, sp, uprev
         }
 
-        # Opciones del solver (IPOPT)
+        # Options del solver (IPOPT)
         opts = {
             'ipopt.print_level': 0,
             'print_time': 0,
@@ -396,7 +396,7 @@ class NMPCBioreactor:
         w_opt = sol['x'].full().flatten()
         sol_stats = self.solver.stats()
 
-        # Verificar éxito del solver
+        # Verify éxito del solver
         if not sol_stats['success']:
             # Imprimir más detalles si está disponible
             print(f"¡ADVERTENCIA: El solver NMPC no convergió! Estado: {sol_stats.get('return_status', 'Desconocido')}")
@@ -432,7 +432,7 @@ class NMPCBioreactor:
 # ---------------------------------------------------
 def simulate_plant(x0, u, dt, model_ode):
     """Simula un paso de la planta real (integrando el modelo)."""
-    # Asegurar que u esté en formato correcto para la EDO
+    # Ensure que u esté en formato correcto para la EDO
     # u[0] es F_S (L/h), u[1] es Q_j/3600.0 (J/h)
     u_val = u
 
@@ -449,12 +449,12 @@ def simulate_plant(x0, u, dt, model_ode):
     return sol.y[:, -1]
 
 # ---------------------------------------------------
-# 4. Bucle Principal de Simulación
+# 4. Main Simulation Loop
 # ---------------------------------------------------
 if __name__ == "__main__":
-    # --- Configuración ---
-    t_final = 24.0      # Tiempo final de simulación (h)
-    dt_nmpc = 0.1       # Tiempo de muestreo del NMPC (h)
+    # --- Configuration ---
+    t_final = 24.0      # Time final de simulación (h)
+    dt_nmpc = 0.1       # Time de muestreo del NMPC (h)
     n_steps = int(t_final / dt_nmpc)
 
     # Obtener modelo
@@ -463,7 +463,7 @@ if __name__ == "__main__":
     nu = u_sym.shape[0]
     nc = c_sym.shape[0]
 
-    # Parámetros NMPC
+    # Parameters NMPC
     N = 10          # Horizonte de predicción
     M = 4           # Horizonte de control
     # Pesos (¡AJUSTAR ESTOS!) - Mayor Q[0] penaliza error en X, Mayor Q[1] error en T
@@ -516,7 +516,7 @@ if __name__ == "__main__":
     for k in range(n_steps):
         t_current = k * dt_nmpc
 
-        # Verificar si hay un cambio de setpoint en el tiempo actual
+        # Verify si hay un cambio de setpoint en el tiempo actual
         for time, new_sp in setpoint_changes.items():
             if abs(t_current - time) < 1e-9 or (t_current < time and abs((k + 1) * dt_nmpc - time) < 1e-9):
                 print(f"-> Cambio de setpoint en t={time} h a: {new_sp}")

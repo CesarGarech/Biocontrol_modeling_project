@@ -92,7 +92,7 @@ def get_unified_model(use_oxygen_dynamics=True):
     Q_flow = F_S * params['rho'] * params['Cp'] * (params['T_in'] - T) # Calor por flujo entrada (J/h)
     # Q_j es la entrada manipulada (J/h)
 
-    # Corrección: El denominador es rho*Cp*V, no solo rho*Cp
+    # Correction: El denominador es rho*Cp*V, no solo rho*Cp
     dT_dt = (Q_flow + Q_gen - Q_j) / (params['rho'] * params['Cp'] * V_safe + params['epsilon']) # (K/h)
 
     # Vector de derivadas

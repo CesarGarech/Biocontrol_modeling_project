@@ -2,20 +2,20 @@ import streamlit as st
 import os
 import sys
 
-# --- Añadir carpetas relevantes al path (Ajusta según tu estructura) ---
+# --- Add relevant folders to path (Adjust according to your structure) ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 # sys.path.append(os.path.dirname(script_dir))
 # sys.path.append(os.path.join(script_dir, 'Body'))
 # sys.path.append(os.path.join(script_dir, 'Utils'))
 
-# --- Asumiendo que Utils.kinetics está accesible ---
+# --- Assuming that Utils.kinetics is accessible ---
 try:
     from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion
 except ImportError:
     pass
 
-# 1. Define la NUEVA estructura del menú jerárquico
-# --- MODIFICACIÓN AQUÍ ---
+# 1. Define the NEW hierarchical menu structure
+# --- MODIFICATION HERE ---
 menu_structure = {
     "🏠 Home": None,
     "🔬 Models": ["Batch", "Fed-Batch", "Continuous", "Fermentation"],
@@ -32,7 +32,7 @@ menu_structure = {
 def main():
     st.set_page_config(page_title="Bioprocess Modeling", layout="wide")
 
-    # --- Navegación en la Barra Lateral (sin cambios necesarios aquí) ---
+    # --- Navigation in the Sidebar (no changes needed here) ---
     st.sidebar.title("Main Navigation")
 
     # Widget para seleccionar la categoría principal
@@ -74,24 +74,24 @@ def main():
             )
             selected_page = sub_level2_selection
 
-    # --- Fin Navegación ---
+    # --- End Navigation ---
 
 
-    # --- Carga de la Página Seleccionada (AÑADIR NUEVAS PÁGINAS DE CONTROL) ---
+    # --- Loading Selected Page (ADD NEW CONTROL PAGES) ---
     st.subheader(f"Selected Page: {selected_page}")
     st.markdown("---")
 
-    # --- Carga dinámica de módulos ---
+    # --- Dynamic module loading ---
     try:
         if selected_page == "🏠 Home":
             from Body import home
             home.home_page()
         elif selected_page == "Batch":
-            from Body.modeling import lote
-            lote.lote_page()
+            from Body.modeling import batch
+            batch.batch_page()
         elif selected_page == "Fed-Batch":
-            from Body.modeling import lote_alimentado
-            lote_alimentado.lote_alimentado_page()
+            from Body.modeling import fed_batch
+            fed_batch.fed_batch_page()
         elif selected_page == "Continuous":
             from Body.modeling import continuo
             continuo.continuo_page()
@@ -102,30 +102,30 @@ def main():
             from Body import analysis
             analysis.analysis_page()
         elif selected_page == "Batch Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_lote
-            ajuste_parametros_lote.ajuste_parametros_page()
+            from Body.parameter_estimation import parameter_fitting_batch
+            parameter_fitting_batch.parameter_fitting_page()
         elif selected_page == "Fed-Batch Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_lote_alim
-            ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
+            from Body.parameter_estimation import parameter_fitting_fed_batch
+            parameter_fitting_fed_batch.parameter_fitting_fedbatch_page()
         elif selected_page == "Fermentation Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_ferm
-            ajuste_parametros_ferm.ajuste_parametros_ferm_page()
+            from Body.parameter_estimation import parameter_fitting_fermentation
+            parameter_fitting_fermentation.parameter_fitting_ferm_page()
 
-        # --- MODIFICACIÓN EN LA LÓGICA DE CARGA ---
-        # Se elimina la condición anterior para "State Estimation" y se reemplaza por las siguientes dos.
+        # --- MODIFICATION IN LOADING LOGIC ---
+        # The previous condition for "State Estimation" is removed and replaced by the following two.
         
         elif selected_page == "EKF":
-            # Asumimos que la página EKF está en Body/estimation/ekf.py con una función ekf_page()
+            # We assume the EKF page is in Body/estimation/ekf.py with an ekf_page() function
             from Body.estimation import ekf
             ekf.ekf_page()
 
         elif selected_page == "ANN":
-            # Asumimos que la nueva página ANN estará en Body/estimation/ann.py con una función ann_page()
-            # Este es el módulo que crearemos a continuación.
+            # We assume the new ANN page will be in Body/estimation/ann.py with an ann_page() function
+            # This is the module we will create next.
             from Body.estimation import ann
             ann.ann_page()
 
-        # --- PÁGINAS DE CONTROL REGULATORIO ---
+        # --- REGULATORY CONTROL PAGES ---
         elif selected_page == "Identification (pH)":
             from Body.control.regulatorio import reg_ident
             reg_ident.ph_identification_page()
@@ -136,16 +136,16 @@ def main():
             from Body.control.regulatorio import reg_ph
             reg_ph.regulatorio_ph_page()
         elif selected_page == "Oxygen":
-            from Body.control.regulatorio import reg_oxigeno
-            reg_oxigeno.regulatorio_oxigeno_page()
-        elif selected_page == "Cascade-Oxygen": # Nombre exacto que usarás en el menú
+            from Body.control.regulatorio import reg_oxygen
+            reg_oxygen.regulatorio_oxigeno_page()
+        elif selected_page == "Cascade-Oxygen": # Exact name to use in the menu
              from Body.control.regulatorio import reg_cascade_oxigen
              reg_cascade_oxigen.regulatorio_cascade_oxigen_page()
         elif selected_page == "On-Off Feeding":
             from Body.control.regulatorio import reg_feed_onoff
             reg_feed_onoff.regulatorio_feed_onoff_page()
 
-        # --- PÁGINAS DE CONTROL AVANZADO (YA EXISTENTES) ---
+        # --- ADVANCED CONTROL PAGES (ALREADY EXISTING) ---
         elif selected_page == "RTO":
             from Body.control.avanzado import rto
             rto.rto_page()

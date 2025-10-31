@@ -14,10 +14,10 @@ import xlsxwriter
 # --- INICIO: Definiciones dummy de funciones cinéticas (si no tienes Utils.kinetics) ---
 # Reemplaza esto con tus importaciones reales si están disponibles
 def mu_monod(S, mumax, Ks):
-    # Asegurar S no negativo y evitar división por cero
+    # Ensure S no negativo y evitar división por cero
     S = max(0.0, S)
     Ks = max(1e-9, Ks)
-    # Evitar división por cero en el denominador
+    # Avoid división por cero en el denominador
     den = Ks + S
     if den < 1e-9: return 0.0
     return mumax * S / den
@@ -25,7 +25,7 @@ def mu_monod(S, mumax, Ks):
 def mu_sigmoidal(S, mumax, Ks, n):
     S = max(0.0, S)
     Ks = max(1e-9, Ks)
-    n = max(1e-6, n) # Evitar n=0
+    n = max(1e-6, n) # Avoid n=0
     try:
         S_n = S**n
         Ks_n = Ks**n
@@ -46,14 +46,14 @@ def mu_completa(S, O2, P, mumax, Ks, KO, KP_gen):
 
     term_S = S / (Ks + S)
     term_O2 = O2_mgL / (KO_mgL + O2_mgL) # KO y O2 ambos en mg/L
-    term_P = KP_gen / (KP_gen + P) # Asumiendo inhibición tipo no competitivo
+    term_P = KP_gen / (KP_gen + P) # Assuming inhibición tipo no competitivo
 
     mu = mumax * term_S * term_O2 * term_P
     return max(0.0, mu)
 
 
 def mu_fermentacion(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob, Ks_anaerob, KiS_anaerob, KP_anaerob, n_p, KO_inhib_anaerob, considerar_O2=None):
-    # Asegurar valores no negativos y evitar división por cero
+    # Ensure valores no negativos y evitar división por cero
     S = max(0.0, S)
     P = max(0.0, P)
     O2_mgL = max(0.0, O2) # O2 en mg/L
@@ -76,7 +76,7 @@ def mu_fermentacion(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob, Ks
     den_S_an = Ks_anaerob + S + (S**2 / KiS_anaerob)
     term_S_an = S / max(1e-9, den_S_an)
 
-    # Asegurar que la base de la potencia no sea negativa
+    # Ensure que la base de la potencia no sea negativa
     term_P_base = max(0.0, 1.0 - (P / KP_anaerob))
     term_P_an = term_P_base**n_p
 
@@ -111,7 +111,7 @@ def fermentacion_alcoholica_page():
 
         Ks = st.slider("Base Ks [g/L]", 0.01, 10.0, 1.0, 0.1)
 
-        # --- Parámetros específicos de cada modelo cinético ---
+        # --- Specific parameters for each kinetic model ---
         if tipo_mu == "Simple Monod":
             mumax = st.slider("μmax [1/h]", 0.1, 1.0, 0.4, 0.05)
         elif tipo_mu == "Sigmoidal Monod":
@@ -215,7 +215,7 @@ def fermentacion_alcoholica_page():
         "tipo_mu": tipo_mu, "Ks": Ks, "Yxs": Yxs, "Yps": Yps, "Yxo": Yxo,
         "alpha_lp": alpha_lp, "beta_lp": beta_lp, "ms": ms, "mo": mo, "Kd": Kd,
         "Kla": Kla, "Cs": Cs, "Sin": Sin,
-        "t_batch_inicial_fin": t_batch_inicial_fin, # Tiempo crítico
+        "t_batch_inicial_fin": t_batch_inicial_fin, # Critical time
         "KO_inhib_prod": KO_inhib_prod, # Se mantiene por si se usa en otro lado, pero no en rate_P
     }
     if tipo_mu == "Simple Monod": params["mumax"] = mumax
@@ -239,7 +239,7 @@ def fermentacion_alcoholica_page():
     # ------- Modelo ODE -------
     def modelo_fermentacion(t, y, params):
         X, S, P, O2, V = y
-        # Asegurar valores no negativos y evitar división por cero
+        # Ensure valores no negativos y evitar división por cero
         X = max(1e-9, X); S = max(0, S); P = max(0, P); O2 = max(0, O2); V = max(1e-6, V)
 
         es_lote_inicial = (t < params["t_batch_inicial_fin"])
@@ -250,7 +250,7 @@ def fermentacion_alcoholica_page():
         mu_anaer = 0.0
 
         if params["tipo_mu"] == "Fermentation":
-            # Calcular ambos componentes por separado
+            # Calculate ambos componentes por separado
             mu_aer = mu_fermentacion(S, P, O2, params["mumax_aerob"], params["Ks_aerob"], params["KO_aerob"], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
             mu_anaer = mu_fermentacion(S, P, O2, 0, 1, float('inf'), params["mumax_anaerob"], params["Ks_anaerob"], params["KiS_anaerob"], params["KP_anaerob"], params.get("n_p", 1.0), params["KO_inhib_anaerob"], considerar_O2=False)
             mu = mu_aer + mu_anaer # mu total es la suma
@@ -287,7 +287,7 @@ def fermentacion_alcoholica_page():
         # Tasa específica de producción de Etanol (Luedeking-Piret)
         # Usar SOLO mu_anaer para el término asociado a crecimiento
         qP = params["alpha_lp"] * mu_anaer + params["beta_lp"]
-        qP = max(0.0, qP) # Asegurar no negatividad
+        qP = max(0.0, qP) # Ensure no negatividad
 
         # Tasa volumétrica de producción de Etanol (SIN inhibición por O2)
         rate_P = qP * X
@@ -314,7 +314,7 @@ def fermentacion_alcoholica_page():
 
         # --- Cálculo de dOdt (sin cambios en la lógica de fase) ---
         if es_lote_inicial:
-            dOdt = 0.0 # Mantiene O2 constante en la fase inicial
+            dOdt = 0.0 # Keeps O2 constant in the initial phase
         else:
             OTR = params["Kla"] * (params["Cs"] - O2) # [mg O2 / L / h]
             # <<< CORRECCIÓN SYNTAX ERROR (anterior) >>>
@@ -322,7 +322,7 @@ def fermentacion_alcoholica_page():
 
         return [dXdt, dSdt, dPdt, dOdt, dVdt]
 
-    # ------- Simulación y Resultados -------
+    # ------- Simulation and Results -------
     y0 = [X0, S0, P0, O0, V0]
     t_span = [0, t_final]
     num_puntos = max(500, int(t_final * 25) + 1)
@@ -346,7 +346,7 @@ def fermentacion_alcoholica_page():
 
         flujo_sim = np.array([calcular_flujo(ti) for ti in t])
 
-        # --- Recalcular Tasas Específicas y Volumétricas Post-Simulación ---
+        # --- Recalculate Post-Simulation Specific and Volumetric Rates ---
         mu_sim = []
         mu_aer_sim = [] # Guardar mu_aer para recálculo
         mu_anaer_sim = [] # Guardar mu_anaer para recálculo
@@ -454,7 +454,7 @@ def fermentacion_alcoholica_page():
         # Usa st.subheader do código original, traduzido
         st.subheader("Simulation results")
 
-        # Ajuste o figsize para o layout 2x3 (largura, altura) - pode precisar ajustar
+        # Adjustment o figsize para o layout 2x3 (largura, altura) - pode precisar ajustar
         fig = plt.figure(figsize=(15, 10)) # Ex: 15 de largura, 10 de altura
 
         # --- Função auxiliar para adicionar linhas de fase (sem labels para legenda) ---
@@ -535,7 +535,7 @@ def fermentacion_alcoholica_page():
 
         for i in range(min_len): # Itera até o comprimento mínimo para evitar IndexError
             ti, xi, si, pi, o2i, vi = t[i], X[i], S[i], P[i], O2[i], V[i]
-            # Determina a fase baseado no tempo atual vs t_batch_inicial_fin
+            # Determine phase based on current time vs t_batch_inicial_fin
             fase_i = "inicial_batch" if ti < params.get("t_batch_inicial_fin", float('inf')) else "fed_or_final_batch"
             mu_i = 0.0
             # Calcula mu_i baseado no tipo definido em params

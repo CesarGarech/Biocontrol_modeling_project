@@ -3,19 +3,19 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 try:
-    # Intenta importar la librería control
+    # Try to import the control library
     import control # Python Control Systems Library (necesita: pip install control)
 except ImportError:
-    # Muestra un error y detiene si la librería no está instalada
+    # Display an error and stop if the library is not installed
     st.error("The 'python-control'library is not installed. Please, install it by running: pip install control")
-    st.stop() # Detiene la ejecución del script de esta página
-import pandas as pd # Opcional: para mostrar parámetros o resultados en tabla
-import traceback # Para mostrar errores detallados si ocurren
+    st.stop() # Stops the execution of this page's script
+import pandas as pd # Optional: to display parameters or results in a table
+import traceback # To display detailed errors if they occur
 
-# --- Función Principal de la Página de Streamlit ---
+# --- Main Function of the Streamlit Page ---
 def regulatorio_oxigeno_page():
     """
-    Página de Streamlit para simular control regulatorio de Oxígeno Disuelto (OD).
+    Streamlit page to simulate Dissolved Oxygen (DO) regulatory control.
     """
     st.header("💨 Dissolved Oxygen Regulatory Control Simulation")
     st.markdown("""
@@ -35,7 +35,7 @@ def regulatorio_oxigeno_page():
     """)
     st.markdown("---")
 
-    # --- Explicación de Funciones de Transferencia ---
+    # --- Explanation of Transfer Functions ---
     st.subheader("System Transfer Functions")
     col1, col2 = st.columns(2)
     with col1:
@@ -105,7 +105,7 @@ def regulatorio_oxigeno_page():
             # 3. Calcular lazo cerrado
             T_cerrado = control.feedback(C_pid * G_open, 1) # Coincide con MATLAB
 
-            # Mostrar FTs (opcional)
+            # Show FTs (opcional)
             with st.expander("View Transfer Functions Used"):
                 st.text(f"G_proc(s): {G_proc}")
                 st.text(f"G_valv(s): {G_valv}")
@@ -135,7 +135,7 @@ def regulatorio_oxigeno_page():
             ax.set_title('Dissolved Oxygen PID Control Response')
             ax.legend(loc='best')
             ax.grid(True)
-            # Ajuste dinámico de límites Y
+            # Adjustment dinámico de límites Y
             min_y_plot = min(0, sp_initial_o2, sp_final_o2, np.min(yout) if len(yout)>0 else 0)
             max_y_plot = max(100, sp_initial_o2, sp_final_o2, np.max(yout) if len(yout)>0 else 100)
             range_y_plot = max(5, max_y_plot - min_y_plot) # Mínimo rango de 5%
@@ -155,7 +155,7 @@ def regulatorio_oxigeno_page():
 
         except Exception as e:
             st.error(f"An error occurred during the DO simulation:")
-            st.exception(e) # Muestra traceback en Streamlit
+            st.exception(e) # Display traceback in Streamlit
 
     else:
         st.info("Set the parameters in the sidebar and click on 'Simulate DO Control'.")

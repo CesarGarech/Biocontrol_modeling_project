@@ -11,7 +11,7 @@ def odefun(x, u):
     Ecuaciones diferenciales Fed-Batch con O=constante.
     - Divisiones con fmax(V, epsilon) para evitar 1/0.
     """
-    # Parámetros
+    # Parameters
     mu_max = 0.6
     Ks      = 0.2
     Ko      = 0.01
@@ -188,7 +188,7 @@ opti.minimize(- (P_final*V_final))
 for k in range(n_fb_intervals):
     opti.set_initial(F_col[k], 0.1)   # Try a constant initial guess
     for j in range(d+1):
-        # Si no es el primer "parameter"
+        # If not es el primer "parameter"
         if not (k==0 and j==0):
             # Como guess, usemos el estado final de batch (o algo similar)
             opti.set_initial(X_col[k][j], x_after_batch)
@@ -211,7 +211,7 @@ try:
 except RuntimeError as e:
     print("[ERROR] No se encontró solución:", e)
     try:
-        # Mostrar infeasibilidades
+        # Show infeasibilidades
         opti.debug.show_infeasibilities()
     except:
         pass

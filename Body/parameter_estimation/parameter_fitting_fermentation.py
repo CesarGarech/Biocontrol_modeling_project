@@ -1,4 +1,4 @@
-# ajuste_parametros_ferm.py
+# adjustment_parametros_ferm.py
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -180,7 +180,7 @@ def calcular_flujo_post_sim(t, fixed_params):
 #==========================================================================
 # PÁGINA STREAMLIT PARA AJUSTE (¡MODIFICADA!)
 #==========================================================================
-def ajuste_parametros_ferm_page():
+def parameter_fitting_ferm_page():
     st.header("🔧 Parameter Adjustment - Alcoholic Fermentation Model")
 
     # --- Inicialización del Estado de Sesión ---
@@ -327,12 +327,12 @@ def ajuste_parametros_ferm_page():
             st.markdown("##### Weights for Objetive Function (Scaled)")
             st.caption("Higher weight = More importance to adjust that variable.")
             cols_w = st.columns(4)
-            w_X = cols_w[0].number_input("Biomass Weight (w_X)", 0.1, 100.0, value=1.0, step=0.5, key="w_x") # Aumentado max y step
+            w_X = cols_w[0].number_input("Biomass Weight (w_X)", 0.1, 100.0, value=1.0, step=0.5, key="w_x") # Increased max y step
             w_S = cols_w[1].number_input("Substrate Weight (w_S)", 0.1, 100.0, value=1.0, step=0.5, key="w_s")
             w_P = cols_w[2].number_input("Product Weight (w_P)", 0.1, 100.0, value=1.0, step=0.5, key="w_p")
             w_O2 = cols_w[3].number_input("Oxygen Weight (w_O2)", 0.1, 100.0, value=1.0, step=0.5, key="w_o2")
             weights_run = [w_X, w_S, w_P, w_O2] # Lista para pasar a la función objetivo
-            # Tolerancias Solver
+            # Tolerances Solver
             atol_solver = st.number_input("Absolute Tolerance Solver (atol)", 1e-9, 1e-3, 1e-6, format="%e", key="atol_ferm")
             rtol_solver = st.number_input("Relative Tolerance Solver (rtol)", 1e-9, 1e-3, 1e-6, format="%e", key="rtol_ferm")
 

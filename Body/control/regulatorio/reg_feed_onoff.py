@@ -14,8 +14,8 @@ def sustrato_onoff_fedbatch_py(t, y, mu_max, Ks, Y_XS, Sin, V0, Fmax, S_min, S_m
     Define las ecuaciones diferenciales para Fed-Batch con control On-Off.
     El control On-Off solo está activo entre t_onoff_start y t_onoff_end.
     """
-    X, S, V = y # Desempaquetar las 3 variables de estado
-    X = max(1e-9, X); S = max(0.0, S); V = max(1e-6, V) # Evitar división por cero en D
+    X, S, V = y # Unpack las 3 variables de estado
+    X = max(1e-9, X); S = max(0.0, S); V = max(1e-6, V) # Avoid división por cero en D
     mu = mu_max * (S / (Ks + S)) if (Ks + S) > 1e-9 else 0; mu = max(0, mu)
 
     # --- Lógica de Control On-Off CON VENTANA DE TIEMPO ---
@@ -28,7 +28,7 @@ def sustrato_onoff_fedbatch_py(t, y, mu_max, Ks, Y_XS, Sin, V0, Fmax, S_min, S_m
     # Fuera de la ventana (t < t_onoff_start o t >= t_onoff_end), F siempre será 0
     # Si estamos dentro de la ventana pero S > S_min, F también será 0
     # ------------------------------------------------------
-    F = max(0, F) # Asegurar F no negativo
+    F = max(0, F) # Ensure F no negativo
 
     D = F / V # Tasa de Dilución
     dXdt = mu * X - D * X
@@ -69,7 +69,7 @@ def regulatorio_feed_onoff_page():
              Y_XS = st.number_input("Y_XS [gX/gS]", 0.1, 1.0, 0.5, format="%.2f", key="onoff_yxs")
              Sin = st.number_input("Sin [g/L]", 1.0, 100.0, 10.0, format="%.1f", key="onoff_sin")
         with st.expander("2. Operational", expanded=True):
-             Fmax = st.number_input("Fmax [L/h]", 0.01, 1.0, 0.2, format="%.3f", key="onoff_fmax") # Ajustado a 0.2?
+             Fmax = st.number_input("Fmax [L/h]", 0.01, 1.0, 0.2, format="%.3f", key="onoff_fmax") # Adjusted a 0.2?
 
         # --- MODIFICADO: Control On-Off con Ventana ---
         with st.expander("3. On-Off Control", expanded=True):
@@ -87,7 +87,7 @@ def regulatorio_feed_onoff_page():
             # Quitar la advertencia sobre S0 vs S_min ya que el control ahora tiene ventana
             # if S0 <= S_min: st.warning(f"S0 ({S0:.2f}) <= S_min ({S_min:.2f}). Alimentación empezará ON.")
             t_final_onoff = st.number_input("Final Time Simulation [h]", 10.0, 200.0, 40.0, step=10.0, key="onoff_tfinal")
-            # Opciones Solver
+            # Options Solver
             rtol_sim = st.number_input("rtol Solver", 1e-7, 1e-3, 1e-5, format="%e", key="onoff_rtol")
             atol_sim = st.number_input("atol Solver", 1e-10, 1e-5, 1e-8, format="%e", key="onoff_atol")
 

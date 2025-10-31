@@ -20,7 +20,7 @@ def ekf_page():
 
     st.sidebar.subheader("EKF Parameters and Simulation")
 
-    # --- Parámetros Fijos del Modelo "Real" (No ajustables por usuario aquí) ---
+    # --- Fixed "Real" Model Parameters (Not adjustable by user here) ---
     #     (Podrían ponerse en un expander si se quiere verlos)
     mu_max_real = 0.4     # (1/h)
     Yxs_real    = 0.5     # (gX/gS)
@@ -34,7 +34,7 @@ def ekf_page():
     Tset        = 30      # (°C)
     k_Temp      = 0.02
 
-    # --- Parámetros Ajustables por el Usuario ---
+    # --- User Adjustable Parameters ---
     t_final_ekf = st.sidebar.slider("Final time (h)", 5, 50, 20, key="ekf_tf")
     dt_ekf      = 0.1 # Fijo para esta simulación EKF
 
@@ -106,13 +106,13 @@ def ekf_page():
         Q_ekf = np.diag([q_X, q_S, q_P, q_mu, q_yxs])
         R_ekf = np.diag([r_OD, r_pH, r_T])
 
-        # Condiciones iniciales "reales" (fijas en este ejemplo)
+        # Initial conditions "reales" (fijas en este ejemplo)
         X0_real = 0.1
         S0_real = 5.0
         P0_real = 0.0
         x_real_ekf = np.array([[X0_real], [S0_real], [P0_real], [mu_max_real], [Yxs_real]])
 
-        # Estimación inicial EKF desde sliders
+        # Initial EKF estimation from sliders
         x_est_ekf = np.array([[X0_est], [S0_est], [P0_est], [mu0_est], [yxs0_est]])
         P_est_ekf = np.diag([p0_X, p0_S, p0_P, p0_mu, p0_yxs])
 
@@ -121,7 +121,7 @@ def ekf_page():
         x_est_hist  = np.zeros((n_states_ekf, N_ekf))
         z_meas_hist = np.zeros((n_meas_ekf, N_ekf))
 
-        # --- Bucle de Simulación EKF ---
+        # --- EKF Simulation Loop ---
         for k in range(N_ekf):
             # Guardar valores actuales
             x_real_hist[:, k] = x_real_ekf.flatten()
@@ -171,7 +171,7 @@ def ekf_page():
                 x_real_ekf[0:3] = np.maximum(x_real_ekf[0:3], 0)
 
 
-        # --- Gráficas de Resultados EKF ---
+        # --- EKF Results Plots ---
         # (Usando los arrays x_real_hist, x_est_hist, z_meas_hist)
         plt.style.use('seaborn-v0_8-whitegrid')
 

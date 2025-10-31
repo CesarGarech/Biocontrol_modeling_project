@@ -17,13 +17,13 @@ from sklearn.preprocessing import StandardScaler
 np.random.seed(42)
 tf.random.set_seed(42)
 
-# === 1. Parámetros del modelo "real" ===
+# === 1. "Real" model parameters ===
 mu_max_real = 0.4      # (1/h)   Tasa max de crecimiento (valor real)
 Yxs_real    = 0.5      # (gX/gS) Rendimiento biomasa/sustrato (valor real)
 Ks          = 0.1      # (g/L)   Constante de semisaturación
 alpha       = 0.1      # (gP/gX) Formación de producto asociada al crecimiento
 
-# Parámetros "extra" para la medición
+# Parameters "extra" para la medición
 OD_sat      = 8.0      # mg/L   (Ejemplo saturación O2)
 k_OUR       = 0.5      # mgO2/(L*gX) Factor de consumo O2
 pH0         = 7.0      # Valor base de pH
@@ -32,7 +32,7 @@ k_acid      = 0.2      # Ajusta cómo el P afecta al pH
 Tset        = 30       # (°C)   Temperatura base
 k_Temp      = 0.02     # Ajusta la contribución exotérmica (X*S)
 
-# === 2. Parámetros de simulación ===
+# === 2. Simulation parameters ===
 dt        = 0.1   # h   Paso de integración
 t_final   = 20    # h   Tiempo total
 time_vec  = np.arange(0, t_final + dt, dt)
@@ -82,7 +82,7 @@ X_real_list, S_real_list, P_real_list, mu_real_list, Yxs_real_list = [], [], [],
 X_est_list, S_est_list, P_est_list, mu_est_list, Yxs_est_list = [], [], [], [], []
 OD_meas_list, pH_meas_list, Temp_meas_list = [], [], []
 
-# === 5. Bucle de simulación ===
+# === 5. Simulation loop ===
 for k in range(N):
     X_real_list.append(x_real[0, 0]); S_real_list.append(x_real[1, 0]); P_real_list.append(x_real[2, 0])
     mu_real_list.append(x_real[3, 0]); Yxs_real_list.append(x_real[4, 0])
@@ -181,7 +181,7 @@ Y_pred_scaled = ann_model.predict(X_scaled)
 # Revertir el escalado para obtener los valores en sus unidades originales
 Y_pred_ann = scaler_Y.inverse_transform(Y_pred_scaled)
 
-# Desempaquetar las predicciones para graficar
+# Unpack las predicciones para graficar
 X_ann_pred = Y_pred_ann[:, 0]
 S_ann_pred = Y_pred_ann[:, 1]
 P_ann_pred = Y_pred_ann[:, 2]

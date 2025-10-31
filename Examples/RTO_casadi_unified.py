@@ -121,7 +121,7 @@ for k in range(n_fb_intervals):
     Xk_matrix = ca.horzcat(*X_col[k]) # Matriz [nx x (d+1)]
 
     for j in range(1, d + 1):
-        # Derivada estimada usando coeficientes C
+        # Derivative estimada usando coeficientes C
         xp_j = Xk_matrix @ C_radau[:, j - 1]
         # Evaluar f(Xk_j, Fk)
         fkj = ode_rto_func(X_col[k][j], F_col[k])
@@ -195,7 +195,7 @@ s_opts = {
     "tol": 1e-6, # Un poco más relajado
     "acceptable_tol": 1e-5, # Un poco más relajado
     "warm_start_init_point": "yes",
-    # Opciones adicionales que a veces ayudan con Restoration Failed:
+    # Options adicionales que a veces ayudan con Restoration Failed:
     "required_infeasibility_reduction": 0.8, # Exigir menos reducción por iteración
     "max_resto_iter": 100 # Permitir más iteraciones en restauración
 }
@@ -247,7 +247,7 @@ except RuntimeError as e:
 # ====================================================
 # 10) Reconstruir y graficar trayectoria RTO (si tuvo éxito)
 # ====================================================
-if 'sol' in locals(): # Verificar si la solución existe
+if 'sol' in locals(): # Verify si la solución existe
     # ... (Código de simulación y ploteo sin cambios)...
     # a) Simulación Batch (más puntos para gráfico)
     N_batch_plot = 50
@@ -285,7 +285,7 @@ if 'sol' in locals(): # Verificar si la solución existe
         t_current = t_batch + i * dt_fb_plot
         # Encontrar el intervalo RTO k correspondiente
         k_rto = int((t_current - t_batch) / dt_fb)
-        k_rto = min(k_rto, n_fb_intervals - 1) # Asegurar que esté en rango
+        k_rto = min(k_rto, n_fb_intervals - 1) # Ensure que esté en rango
         F_now = F_opt_values[k_rto]
 
         # *** APLICAR LÓGICA Vmax AQUÍ, POST-OPTIMIZACIÓN ***
@@ -313,7 +313,7 @@ if 'sol' in locals(): # Verificar si la solución existe
 
     # Unir trayectorias
     t_full = np.concatenate([t_batch_plot, t_fb_plot])
-    # Asegurar que xfb_traj tenga datos antes de vstack
+    # Ensure que xfb_traj tenga datos antes de vstack
     if len(xfb_traj)>0:
         x_full = np.vstack([xbatch_traj, xfb_traj])
     else: # Si la simulación fb falló inmediatamente
@@ -347,7 +347,7 @@ if 'sol' in locals(): # Verificar si la solución existe
 
     # S(t)
     axs[3].plot(t_full, x_full[:, x_names.index('S')])
-    # axs[3].axhline(S_max, color='r', linestyle='--', label="S_max (Relajado)") # Mostrar si se relajó S_max
+    # axs[3].axhline(S_max, color='r', linestyle='--', label="S_max (Relajado)") # Show si se relajó S_max
     axs[3].set_ylabel("Sustrato S (g/L)"); axs[3].grid(True); axs[3].legend(); axs[3].set_title("Sustrato")
 
     # P(t)

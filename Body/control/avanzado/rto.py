@@ -68,7 +68,7 @@ def rto_page():
                 Ecuaciones diferenciales Fed-Batch con O=constante.
                 - Divisiones con fmax(V, epsilon) para evitar 1/0.
                 """
-                # Parámetros
+                # Parameters
                 mu_max_local = mu_max
                 Ks_local = Ks
                 Ko_local = Ko
@@ -206,7 +206,7 @@ def rto_page():
             V_final = X_final[4]
 
             # ====================================================
-            # 7) Función objetivo => maximizar (P_final*V_final)
+            # 7) Objective function => maximize (P_final*V_final)
             # ====================================================
             opti.minimize(-(P_final * V_final))
 
@@ -216,7 +216,7 @@ def rto_page():
             for k in range(n_fb_intervals):
                 opti.set_initial(F_col[k], 0.1)
                 for j in range(d + 1):
-                    # Si no es el primer "parameter"
+                    # If not es el primer "parameter"
                     if not (k == 0 and j == 0):
                         # Como guess, usemos el estado final de batch (o algo similar)
                         opti.set_initial(X_col[k][j], x_after_batch)
@@ -239,7 +239,7 @@ def rto_page():
             except RuntimeError as e:
                 st.error(f"[ERROR] No solution found: {e}")
                 try:
-                    # Mostrar infeasibilidades
+                    # Show infeasibilidades
                     opti.debug.show_infeasibilities()
                 except:
                     pass

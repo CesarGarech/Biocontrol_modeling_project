@@ -3,19 +3,19 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 try:
-    # Intenta importar la librería control
+    # Try to import the control library
     import control # Python Control Systems Library (necesita: pip install control)
 except ImportError:
-    # Muestra un error y detiene si la librería no está instalada
+    # Display an error and stop if the library is not installed
     st.error("The 'python-control'library is not installed. Please, install it by running: pip install control")
-    st.stop() # Detiene la ejecución del script de esta página
-import pandas as pd # Opcional: para mostrar parámetros o resultados en tabla
-import traceback # Para mostrar errores detallados si ocurren
+    st.stop() # Stops the execution of this page's script
+import pandas as pd # Optional: to display parameters or results in a table
+import traceback # To display detailed errors if they occur
 
-# --- Función Principal de la Página de Streamlit ---
+# --- Main Function of the Streamlit Page ---
 def regulatorio_ph_page():
     """
-    Página de Streamlit para simular control regulatorio de pH con gama partida.
+    Streamlit page to simulate pH regulatory control with split range.
     """
     st.header("💧 pH Regulatory Control Simulation (Split-Range)")
     st.markdown("""
@@ -35,7 +35,7 @@ def regulatorio_ph_page():
     """)
     st.markdown("---")
 
-    # --- Explicación de Funciones de Transferencia ---
+    # --- Explanation of Transfer Functions ---
     st.subheader("System Transfer Functions")
     col1, col2 = st.columns(2)
     with col1:
@@ -88,7 +88,7 @@ def regulatorio_ph_page():
             st.markdown("Setpoint Configuration (Step Input)")
             sp_initial_ph = st.number_input("Initial Setpoint Value [pH]", min_value=0.0, max_value=14.0, value=8.1, step=0.1, format="%.1f", key="sp_initial_ph")
             sp_final_ph = st.number_input("Final Setpoint Value [pH]", min_value=0.0, max_value=14.0, value=4.5, step=0.1, format="%.1f", key="sp_final_ph")
-            # Asegurar que t_step no sea mayor que t_final
+            # Ensure que t_step no sea mayor que t_final
             t_step_ph_value = st.number_input("Setpoint Change Time [s]", min_value=0.0, max_value=float(t_final_ph), value=450.0, step=10.0, key="t_step_ph")
             # Offset inicial para decidir la primera acción de control
             y0_offset = st.number_input("Initial Offset pH (vs initial SP)", value=0.1, step=0.05, format="%.2f", help="Offset on initial SP to decide initial pump (positive activates base, negative activates acid).", key="y0_offset")
@@ -115,7 +115,7 @@ def regulatorio_ph_page():
             G_open_acid = G_proc * G_acid * G_sensor
             G_open_base = G_proc * G_base * G_sensor
 
-            # Calcular FTs en lazo cerrado para cada acción
+            # Calculate FTs en lazo cerrado para cada acción
             G_closed_acid = control.feedback(C_pid * G_open_acid, 1)
             G_closed_base = control.feedback(C_pid * G_open_base, 1)
 
@@ -161,22 +161,22 @@ def regulatorio_ph_page():
             st.subheader("System Response with Split-Range")
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-            # Gráfico 1: pH
+            # Plot 1: pH
             ax1.plot(t, setpoint, 'r--', linewidth=1.5, label='pH Setpoint')
             ax1.plot(t, y_combined, 'b-', linewidth=1.5, label='Controlled pH (Simulated)')
             ax1.set_ylabel('pH')
             ax1.set_title('System Response: pH')
             ax1.legend(loc='best')
             ax1.grid(True)
-            # Ajuste dinámico de límites del eje Y para pH
+            # Adjustment dinámico de límites del eje Y para pH
             min_ph_plot = min(0, sp_initial_ph, sp_final_ph, np.min(y_combined) if len(y_combined)>0 else 0)
             max_ph_plot = max(14, sp_initial_ph, sp_final_ph, np.max(y_combined) if len(y_combined)>0 else 14)
-            range_ph_plot = max(1, max_ph_plot - min_ph_plot) # Evitar rango cero
+            range_ph_plot = max(1, max_ph_plot - min_ph_plot) # Avoid rango cero
             ax1.set_ylim(bottom=max(0, min_ph_plot - range_ph_plot * 0.1),
                          top=min(14, max_ph_plot + range_ph_plot * 0.1))
 
 
-            # Gráfico 2: Indicador de Bomba Activa
+            # Plot 2: Indicador de Bomba Activa
             acid_signal = np.where(pump_active == -1, 1, 0) # 1 si ácido activo
             base_signal = np.where(pump_active == 1, 1, 0) # 1 si base activo
             ax2.plot(t, acid_signal, 'g-', drawstyle='steps-post', linewidth=1.5, label='Active Acid Pump')
@@ -189,7 +189,7 @@ def regulatorio_ph_page():
             ax2.set_yticks([0, 1])
             ax2.set_yticklabels(['Inactive', 'Active'])
             ax2.set_ylim(-0.1, 1.1)
-            ax2.set_xlim(0, t_final_ph) # Asegurar límite X correcto
+            ax2.set_xlim(0, t_final_ph) # Ensure límite X correcto
 
             plt.tight_layout() # Ajustar espaciado
             st.pyplot(fig)
@@ -210,7 +210,7 @@ def regulatorio_ph_page():
 
         except Exception as e:
             st.error(f"An error occurred during the pH simulation:")
-            # Muestra el traceback completo en la página de Streamlit para depuración
+            # Display the complete traceback on the Streamlit page for debugging
             st.exception(e)
 
     else:

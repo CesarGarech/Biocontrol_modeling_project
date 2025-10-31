@@ -46,7 +46,7 @@ class NMPCBioreactorUnified:
         self.dt = dt
         self.N = N
         self.M = M
-        # Asegurar Q y W sean matrices numpy (si vienen como listas)
+        # Ensure Q y W sean matrices numpy (si vienen como listas)
         self.Q = np.diag(np.array(Q)) if isinstance(Q, (list, tuple)) else np.array(Q)
         self.W = np.diag(np.array(W)) if isinstance(W, (list, tuple)) else np.array(W)
         if self.Q.shape != (nc, nc): raise ValueError(f"Q debe ser {nc}x{nc}")
@@ -99,11 +99,11 @@ class NMPCBioreactorUnified:
 
         coll_eqs_step = []
         for j in range(1, self.m + 1):
-            xp_coll_j = ca.mtimes(X_all_coll_step, self.C[:, j]) # Derivada estimada
+            xp_coll_j = ca.mtimes(X_all_coll_step, self.C[:, j]) # Derivative estimada
             coll_eqs_step.append(xp_coll_j - (self.dt * ode_at_coll_step[j-1])) # Restricción
 
         # Estado al final del intervalo usando coeficientes D y ODEs evaluadas
-        Xk_end_step = ca.mtimes(X_all_coll_step, self.D) # Método directo con D
+        Xk_end_step = ca.mtimes(X_all_coll_step, self.D) # Method directo con D
 
         self.F_coll = ca.Function('F_coll', [Xk_step, Xc_step, Uk_step],
                                     [Xk_end_step, ca.vertcat(*coll_eqs_step)],
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     # --- Configuración Simulación ---
     t_start_nmpc = 5.0 # Empezar NMPC después de la fase batch RTO
     t_final = 24.0
-    dt_nmpc = 0.05      # Tiempo de muestreo NMPC (h)
+    dt_nmpc = 0.05      # Time de muestreo NMPC (h)
     n_steps = int((t_final - t_start_nmpc) / dt_nmpc)
 
     # --- Cargar Perfil RTO ---
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     sp_history = np.zeros((nc, n_steps + 1)) # Guarda [F_S_ref, T_ref]
 
     x_history[:, 0] = x_current
-    # Calcular salida inicial c = h(x0, u_prev)
+    # Calculate salida inicial c = h(x0, u_prev)
     c_initial = output_func_nmpc(x_current, u_previous).full().flatten()
     c_history[:, 0] = c_initial
     # SP inicial
@@ -415,7 +415,7 @@ if __name__ == "__main__":
             sp_traj[1, i] = T_setpoint_const       # T_ref constante
 
         # Guardar el primer SP para graficar
-        if k == 0: sp_history[:, 1] = sp_traj[:, 0] # Corrección índice
+        if k == 0: sp_history[:, 1] = sp_traj[:, 0] # Correction índice
 
         # 2. Resolver NMPC
         u_optimal, stats, x_pred_opt, u_pred_opt = nmpc.solve(x_current, sp_traj, u_previous)
@@ -442,7 +442,7 @@ if __name__ == "__main__":
 
         x_history[:, k+1] = x_current
         u_history[:, k] = u_apply
-        # Calcular salida medida c = h(x_k+1, u_k)
+        # Calculate salida medida c = h(x_k+1, u_k)
         c_measured = output_func_nmpc(x_current, u_apply).full().flatten()
         c_history[:, k+1] = c_measured
         # Guardar SP del siguiente paso (primer elemento de la trayectoria usada)

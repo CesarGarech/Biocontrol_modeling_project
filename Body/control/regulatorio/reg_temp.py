@@ -7,13 +7,13 @@ try:
 except ImportError:
     st.error("The 'python-control'library is not installed. Please, install it by running: pip install control")
     st.stop() # Detener si falta la librería
-import pandas as pd # Opcional: para mostrar parámetros o resultados en tabla
-import traceback # Para mostrar errores detallados
+import pandas as pd # Optional: to display parameters or results in a table
+import traceback # To display detailed errors
 
-# --- Función Principal de la Página ---
+# --- Main Function of the Page ---
 def regulatorio_temperatura_page():
     """
-    Página de Streamlit para simular el control de temperatura de un biorreactor.
+    Streamlit page to simulate bioreactor temperature control.
     """
     st.header("🌡️ Temperature Regulatory Control Simulation")
     st.markdown("""
@@ -30,7 +30,7 @@ def regulatorio_temperatura_page():
     """)
     st.markdown("---")
 
-    # --- Explicación de Funciones de Transferencia ---
+    # --- Explanation of Transfer Functions ---
     st.subheader("System Transfer Functions")
     col1, col2 = st.columns(2)
     with col1:
@@ -100,7 +100,7 @@ def regulatorio_temperatura_page():
                  C_pid = Kp_pid # Si es solo P, es una ganancia simple
 
             st.write("Controller C(s):")
-            st.text(str(C_pid)) # Mostrar la FT del controlador
+            st.text(str(C_pid)) # Show la FT del controlador
 
             # 3. Calcular lazo cerrado
             T_cerrado = control.feedback(C_pid * G_total, 1)
@@ -131,8 +131,8 @@ def regulatorio_temperatura_page():
             ax.grid(True)
             min_y = min(sp_initial, sp_final, np.min(yout) if len(yout)>0 else 0)
             max_y = max(sp_initial, sp_final, np.max(yout) if len(yout)>0 else 30)
-            range_y = max(1, max_y - min_y) # Evitar rango cero
-            ax.set_ylim(bottom=min_y - range_y*0.1, top=max_y + range_y*0.1) # Ajuste dinámico de ylim
+            range_y = max(1, max_y - min_y) # Avoid rango cero
+            ax.set_ylim(bottom=min_y - range_y*0.1, top=max_y + range_y*0.1) # Adjustment dinámico de ylim
             ax.set_xlim(0, t_final)
             st.pyplot(fig)
 

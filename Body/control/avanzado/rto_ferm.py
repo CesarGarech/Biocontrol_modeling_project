@@ -46,7 +46,7 @@ def mu_fermentacion_ca(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob,
     # --- Combinación de tasas ---
     if isinstance(considerar_O2, (ca.MX, ca.SX)): # Para optimización conmutada
         mu = ca.if_else(considerar_O2 > 0.5, mu_aer, mu_anaer)
-    elif considerar_O2 is None: # Modelo mixto (suma)
+    elif considerar_O2 is None: # Model mixto (suma)
         mu = mu_aer + mu_anaer
     elif considerar_O2: # Solo aerobio
         mu = mu_aer
@@ -55,7 +55,7 @@ def mu_fermentacion_ca(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob,
     return ca.fmax(mu, 0.0)
 
 # ====================================================
-# --- Página de Streamlit ---
+# --- Streamlit Page ---
 # ====================================================
 def rto_fermentation_page():
      st.header("🧠 RTO Control - Alcoholic Fermentation")
@@ -158,7 +158,7 @@ def rto_fermentation_page():
      # (Sin cambios)
      X_scale = max(1.0, cond_iniciales['X0'] * 10, 50.0); S_scale = max(1.0, cond_iniciales['S0'], params_reactor['Sin'], params_rto['Smax_constraint']); P_scale = max(1.0, params_rto.get('Pmax_constraint', 100.0)); O2_scale = max(1e-5, params_transfer['Cs']); V_scale = max(0.1, params_reactor['Vmax'], cond_iniciales['V0']); F_scale = max(1e-3, params_rto['Fmax']) if params_rto['Fmax'] > 0 else 0.1; x_scales = ca.vertcat(X_scale, S_scale, P_scale, O2_scale, V_scale); u_scale = F_scale
 
-     # --- Función DAE/ODE ESCALADO (para usar con Colocación) ---
+     # --- SCALED DAE/ODE Function (for use with Collocation) ---
      def create_ode_function_scaled(params, scales):
           # Define variables simbólicas
           nx = 5
@@ -166,7 +166,7 @@ def rto_fermentation_page():
           u_scaled_sym = ca.MX.sym("u_scaled")
           Kla_sym = ca.MX.sym("Kla_phase")
           considerar_O2_sym = ca.MX.sym("considerar_O2_flag") # Siempre presente, valdrá 0 si no es conmutado
-          p_ode_sym = ca.vertcat(Kla_sym, considerar_O2_sym) # Parámetros para la ODE
+          p_ode_sym = ca.vertcat(Kla_sym, considerar_O2_sym) # Parameters para la ODE
 
           # Desescalar
           x_sc = scales['x']; u_sc = scales['u']
@@ -183,7 +183,7 @@ def rto_fermentation_page():
           mu_anaer = 0.0
           tipo = params['tipo_mu']
 
-          # Calcular componentes aerobio y anaerobio si el modelo los usa
+          # Calculate componentes aerobio y anaerobio si el modelo los usa
           if tipo in ["Fermentation", "Switched Fermentation"]:
                # Componente Aerobio
                mu_aer = mu_fermentacion_ca(safe_S, safe_P, safe_O2, params['mumax_aerob'], params['Ks_aerob'], params['KO_aerob'], 0, 1, float('inf'), float('inf'), 1, float('inf'), considerar_O2=True)
@@ -195,7 +195,7 @@ def rto_fermentation_page():
                elif tipo == "Switched Fermentation":
                     # El flag p_ode_sym[1] decide cuál usar
                     mu = ca.if_else(p_ode_sym[1] > 0.5, mu_aer, mu_anaer)
-                    # Asegurar que mu_aer o mu_anaer sea cero si no es la fase activa
+                    # Ensure que mu_aer o mu_anaer sea cero si no es la fase activa
                     # (Importante para los balances corregidos)
                     mu_aer = ca.if_else(p_ode_sym[1] > 0.5, mu_aer, 0.0)
                     mu_anaer = ca.if_else(p_ode_sym[1] < 0.5, mu_anaer, 0.0)
@@ -220,7 +220,7 @@ def rto_fermentation_page():
           # <<< CORRECCIÓN qP: Usar SOLO mu_anaer para el término asociado a crecimiento >>>
           # <<< CORRECCIÓN qP: Eliminar inhibición por O2 (KO_inhib_prod) >>>
           qP = params["alpha_lp"] * mu_anaer + params["beta_lp"]
-          qP = ca.fmax(0.0, qP) # Asegurar no negatividad
+          qP = ca.fmax(0.0, qP) # Ensure no negatividad
 
           # --- Calcular Tasa Específica de Consumo de Sustrato (qS) ---
           # <<< CORRECCIÓN dSdt: Usar SOLO mu_aer para el consumo por crecimiento >>>
@@ -237,17 +237,17 @@ def rto_fermentation_page():
           qO = consumo_O2_X + consumo_O2_maint
           qO = ca.fmax(0.0, qO)
 
-          # Calcular Tasas Volumétricas
+          # Calculate Tasas Volumétricas
           Rate_X = mu_net * safe_X
           Rate_S = -qS * safe_X
           Rate_P = qP * safe_X # rate_P corregido
           OUR = qO * safe_X # OUR corregido
 
-          # Calcular Tasa de Transferencia de Oxígeno (OTR)
+          # Calculate Tasa de Transferencia de Oxígeno (OTR)
           current_Kla = p_ode_sym[0] # Usa Kla del parámetro
           OTR = current_Kla * (params['Cs'] - safe_O2)
 
-          # Calcular Tasa Neta de Cambio de Oxígeno Disuelto
+          # Calculate Tasa Neta de Cambio de Oxígeno Disuelto
           Rate_O2 = OTR - OUR
 
           # --- Ecuaciones Diferenciales (Balances de Masa) ---
@@ -286,14 +286,14 @@ def rto_fermentation_page():
           h_interval = T_feed_duration / n_intervals # Duración de cada intervalo finito
           if u_scale <= 1e-9: st.warning(f"F_scale bajo ({u_scale:.2e}). Usando 1.0."); u_scale = 1.0
 
-          # --- Crear Función ODE Escalada ---
+          # --- Create Scaled ODE Function ---
           try:
                ode_func_scaled = create_ode_function_scaled(all_params, {'x': x_scales, 'u': u_scale})
                st.success("Scaled ODE function for created collocation.")
           except Exception as e: st.error(f"Error creating ODE function: {e}"); st.error(traceback.format_exc()); st.stop()
 
           # --- Definir Parámetros (p) para cada Fase ---
-          # Parámetros para la función ODE [Kla, considerar_O2_flag]
+          # Parameters para la función ODE [Kla, considerar_O2_flag]
           p_list_phase1_ode = [all_params['Kla1']]
           p_list_phase2_ode = [all_params['Kla2']]
           p_list_phase3_ode = [all_params['Kla2']]
@@ -434,12 +434,12 @@ def rto_fermentation_page():
                opti.subject_to(X_final_total_scaled[3] >= -slack_O2_f3)
           else:
                X_final_total_scaled = X_end_feed_scaled
-               # Asegurar que la restricción de holgura se aplique incluso si no hay Fase 3
+               # Ensure que la restricción de holgura se aplique incluso si no hay Fase 3
                opti.subject_to(X_final_total_scaled[1] >= -slack_S_f3)
                opti.subject_to(X_final_total_scaled[3] >= -slack_O2_f3)
 
 
-          # --- Función Objetivo ---
+          # --- Objective Function ---
           P_final_unsc = X_final_total_scaled[2] * P_scale
           V_final_unsc = X_final_total_scaled[4] * V_scale
           objective_PV = -(P_final_unsc * V_final_unsc)
@@ -500,7 +500,7 @@ def rto_fermentation_page():
                col1, col2, col3 = st.columns(3); col1.metric("Final Ethanol Conc.", f"{P_final_opt:.3f} g/L"); col2.metric("Final Volume", f"{V_final_opt:.3f} L"); col3.metric("Final O2", f"{O2_final_opt_mgL:.4f} mg/L")
                try: Smax_penalty_value=sol.value(penalty_smax_total); col1.metric("Smax Penalty", f"{Smax_penalty_value:.4g}")
                except: col1.metric("Smax Penalty", "N/A")
-               # Mostrar valores de las penalizaciones de slack
+               # Show valores de las penalizaciones de slack
                try:
                     o2_slack_penalty_value = sol.value(penalty_o2_slack)
                     s_slack_penalty_value = sol.value(penalty_s_slack) # Penalización slack S
@@ -535,7 +535,7 @@ def rto_fermentation_page():
                     except Exception as e_f:
                          st.write(f"  Scaled Flows (Fk_scaled): Error getting value - {e_f}")
                     st.write(f"  Scaled Total Final State (X_final_total_scaled): {[f'{v:.4g}' for v in opti.debug.value(X_final_total_scaled)]}")
-                    # Mostrar valores de los slacks
+                    # Show valores de los slacks
                     try:
                          st.write(f"  Slack O2 Phase 2 (max): {np.max(opti.debug.value(Slack_O2_phase2)):.4g}")
                          st.write(f"  Slack O2 Phase 3: {opti.debug.value(slack_O2_f3):.4g}")
@@ -684,7 +684,7 @@ def rto_fermentation_page():
                # --- Graficação RTO (PT-BR, Layout 3x3, Fonte 22, Sem Legenda) ---
                st.subheader("📊 Detailes RTO graphs") # Traduzido
 
-               # Ajuste o figsize para o layout 3x3 (largura, altura) - pode precisar ajustar
+               # Adjustment o figsize para o layout 3x3 (largura, altura) - pode precisar ajustar
                fig = plt.figure(figsize=(15, 10)) # Ex: 18x18 para 3x3 com fontes grandes
 
                # --- Função auxiliar para adicionar linhas de fase ---
@@ -905,7 +905,7 @@ def rto_fermentation_page():
 if __name__ == '__main__':
     st.set_page_config(layout="wide", page_title="RTO Detailed Fermentation")
     try:
-        # Ejecutar la función principal de la página Streamlit
+        # Execute la función principal de la página Streamlit
         rto_fermentation_page()
     except Exception as main_e:
         # Capturar errores inesperados a nivel global
