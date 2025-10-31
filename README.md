@@ -34,32 +34,41 @@ pip install -r requirements.txt
 ```text
 Biocontrol_modeling_project/
 ├── Body/                   # Core modules: modeling, analysis, estimation, control
-│   ├── modeling/           # Bioreactor simulation modes (batch, fed-batch, etc.)
+│   ├── __init__.py
+│   ├── modeling/           # Bioreactor simulation modes (batch, fed-batch, continuous, fermentation)
 │   ├── analysis.py         # Sensitivity analysis code
 │   ├── estimacion_parametros/ # Parameter estimation modules
-│   ├── estimation/         # State estimation (EKF) code
-│   └── control/            # Regulatory and advanced control modules
+│   ├── estimation/         # State estimation (EKF, ANN)
+│   ├── control/            # Process control modules
+│   │   ├── regulatorio/    # Regulatory control (PID, cascade, on-off)
+│   │   └── avanzado/       # Advanced control (RTO, NMPC)
+│   └── home.py             # Home page content
 ├── Utils/                  # Utility functions
+│   ├── __init__.py
 │   └── kinetics.py         # Kinetic model definitions
 ├── Data/                   # Example experimental datasets (.xlsx)
 ├── Examples/               # Standalone examples (EKF, RTO, NMPC CasADi scripts)
-├── LICENSE                 # License information (Add your license file here)
+├── images/                 # Images for the UI
+├── Output/                 # Directory for generated output files
+├── Installation Manual.pdf # Installation guide
+├── LICENSE                 # License information (CC BY 4.0)
 ├── main.py                 # Main Streamlit application entry point
 ├── README.md               # Project documentation (this file)
-└── requirements.txt        # Python dependencies list
+├── requirements.txt        # Python dependencies list
+└── run_dashboard.bat       # Windows batch script to run the application
 ```
 
 ## ✏️ Authors & Contributors
 
 This project was primarily developed by César Augusto García Echeverry at the Laboratory of Software Development for Process Control and Optimization (LADES) - COPPE/UFRJ.
 
--**César Augusto García Echeverry - Lead Developer - [cesar.garech@gmail.com]**
+- **César Augusto García Echeverry - Lead Developer - [cesar.garech@gmail.com]**
 
--**Andres Mateo Franco Reyes - Developer - [anfrancor@unal.edu.co]**
+- **Andres Mateo Franco Reyes - Developer - [anfrancor@unal.edu.co]**
 
--**Juan Pablo Velez Orjuela - Developer - [jvelezor@unal.edu.co]**
+- **Juan Pablo Velez Orjuela - Developer - [jvelezor@unal.edu.co]**
 
--**Carolina del Mar Gámez Herazo - Developer - [carolina.gamez@eia.edu.co]**
+- **Carolina del Mar Gámez Herazo - Developer - [carolina.gamez@eia.edu.co]**
 
 
 We welcome contributions! Please refer to the contribution guidelines (if available) or open an issue/pull request.
@@ -85,19 +94,20 @@ GitHub Repository: https://github.com/CesarGarech/Biocontrol_modeling_project
 }
 ```
 ## 🛡 License
-This work is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License (or specify your chosen license).
+This work is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License.
+
 You are free to:
+- Use, modify, and distribute this code for any purpose.
+- Cite the appropriate reference when using this code (see References section).
 
-Use, modify, and distribute this code for any purpose.
-
-Cite the appropriate reference when using this code (see References section).
+Citation format:
 ```text
 [Author(s) Name].
 "[Title of Paper or Project]",
 [Journal/Conference Name], vol. [XX], no. [X], [Year].
-[DOI: [DOI or URL]]([Link to Paper])
+DOI: [DOI or URL] ([Link to Paper])
 ```
-See the full license details in the https://www.google.com/search?q=LICENSE file (ensure you have this file).
+See the full license details in the [LICENSE](LICENSE) file.
 
 ## 📞 Contact
 For any inquiries, please contact César Augusto García Echeverry at cesar.garech@gmail.com or open an issue in this repository.
