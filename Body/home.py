@@ -12,7 +12,7 @@ def home_page():
         st.image("images/fed_batch.png", use_container_width=True)
         st.caption("**Figure 2:** Fed-Batch Reactor")
     with col3:
-        st.image("images/continous.png", use_container_width=True)
+        st.image("images/continuous.png", use_container_width=True)
         st.caption("**Figure 3:** Continuous Reactor")
 
     st.markdown("""
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     import os
     # (Code to create dummy images without changes)
     if not os.path.exists("images"): os.makedirs("images")
-    dummy_files = ["images/Batch.png", "images/fed_batch.png", "images/continous.png"]
+    dummy_files = ["images/Batch.png", "images/fed_batch.png", "images/continuous.png"]
     for f_path in dummy_files:
         if not os.path.exists(f_path):
             try:
