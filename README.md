@@ -18,35 +18,94 @@ The purpose of this project is to assist in teaching classical and advanced mode
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
 
 ## 📦 Installation
-To install and use this project, follow these steps or just run 'run_dashboard.bat':
 
-### Prerequisites
-Ensure you have Python installed. Then install the required dependencies:
+### Option 1: Quick Start (Windows)
+Just run the provided batch script:
+```bash
+run_dashboard.bat
 ```
-# It's recommended to use a virtual environment
-# python -m venv venv
-# source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+This will automatically create a virtual environment, install dependencies, and launch the dashboard.
+
+### Option 2: Manual Installation
+Ensure you have Python 3.8 or higher installed. Then:
+
+1. Clone the repository:
+```bash
+git clone https://github.com/CesarGarech/Biocontrol_modeling_project.git
+cd Biocontrol_modeling_project
+```
+
+2. Create and activate a virtual environment (recommended):
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate on Linux/Mac
+source venv/bin/activate
+
+# Activate on Windows
+venv\Scripts\activate
+```
+
+3. Install the package and dependencies:
+```bash
+# Option A: Install in development mode
+pip install -e .
+
+# Option B: Install just the requirements
 pip install -r requirements.txt
 ```
+
+4. Run the application:
+```bash
+streamlit run main.py
+```
+
 
 ## 📂 Repository Structure
 
 ```text
 Biocontrol_modeling_project/
 ├── Body/                   # Core modules: modeling, analysis, estimation, control
+│   ├── __init__.py
 │   ├── modeling/           # Bioreactor simulation modes (batch, fed-batch, etc.)
+│   │   ├── __init__.py
+│   │   ├── lote.py        # Batch reactor
+│   │   ├── lote_alimentado.py  # Fed-batch reactor
+│   │   ├── continuo.py    # Continuous reactor (chemostat)
+│   │   └── ferm_alcohol.py     # Alcoholic fermentation
 │   ├── analysis.py         # Sensitivity analysis code
-│   ├── estimacion_parametros/ # Parameter estimation modules
-│   ├── estimation/         # State estimation (EKF) code
-│   └── control/            # Regulatory and advanced control modules
+│   ├── parameter_estimation/  # Parameter estimation modules
+│   │   ├── __init__.py
+│   │   ├── ajuste_parametros_lote.py       # Batch parameter fitting
+│   │   ├── ajuste_parametros_lote_alim.py  # Fed-batch parameter fitting
+│   │   └── ajuste_parametros_ferm.py       # Fermentation parameter fitting
+│   ├── estimation/         # State estimation (EKF, ANN)
+│   │   ├── __init__.py
+│   │   ├── ekf.py         # Extended Kalman Filter
+│   │   └── ann.py         # Artificial Neural Network
+│   ├── control/            # Process control strategies
+│   │   ├── __init__.py
+│   │   ├── regulatorio/   # Regulatory (PID) control
+│   │   │   ├── __init__.py
+│   │   │   ├── reg_temp.py, reg_ph.py, reg_oxigeno.py, etc.
+│   │   └── avanzado/      # Advanced control (RTO, NMPC)
+│   │       ├── __init__.py
+│   │       ├── rto.py, rto_ferm.py, nmpc.py
+│   └── home.py            # Home page content
 ├── Utils/                  # Utility functions
-│   └── kinetics.py         # Kinetic model definitions
+│   ├── __init__.py
+│   └── kinetics.py         # Kinetic model definitions (Monod, etc.)
 ├── Data/                   # Example experimental datasets (.xlsx)
 ├── Examples/               # Standalone examples (EKF, RTO, NMPC CasADi scripts)
-├── LICENSE                 # License information (Add your license file here)
+├── test_data/              # Test data files
+├── Images/                 # Images for documentation and UI
+├── Output/                 # Output files from simulations
+├── setup.py                # Package setup configuration
 ├── main.py                 # Main Streamlit application entry point
 ├── README.md               # Project documentation (this file)
-└── requirements.txt        # Python dependencies list
+├── requirements.txt        # Python dependencies list
+└── run_dashboard.bat       # Windows batch script to run the dashboard
 ```
 
 ## ✏️ Authors & Contributors
