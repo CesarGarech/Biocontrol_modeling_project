@@ -102,13 +102,13 @@ def main():
             from Body import analysis
             analysis.analysis_page()
         elif selected_page == "Batch Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_lote
+            from Body.parameter_estimation import ajuste_parametros_lote
             ajuste_parametros_lote.ajuste_parametros_page()
         elif selected_page == "Fed-Batch Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_lote_alim
+            from Body.parameter_estimation import ajuste_parametros_lote_alim
             ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
         elif selected_page == "Fermentation Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_ferm
+            from Body.parameter_estimation import ajuste_parametros_ferm
             ajuste_parametros_ferm.ajuste_parametros_ferm_page()
 
         # --- MODIFICACIÓN EN LA LÓGICA DE CARGA ---
