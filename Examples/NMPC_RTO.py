@@ -53,7 +53,7 @@ def odefun(x, u):
     return ca.vertcat(dX, dS, dP, dO, dV)
 
 # ====================================================
-# 2) Parámetros del proceso y NMPC
+# 2) Process and NMPC parameters
 # ====================================================
 # Times del proceso original
 t_batch = 5.0
@@ -120,7 +120,7 @@ try:
         {"x": x_sym, "p": u_sym, "ode": ode_expr},
         {"tf": dt_fine_sim} # Especificar el tamaño del paso tf
     )
-    # Crear perfil de F completo para la simulación fina
+    # Create complete F profile for fine simulation
     # Necesitamos un valor de F para cada dt_fine_sim
     t_sim_ref = np.arange(t_batch, t_total + dt_fine_sim/2, dt_fine_sim) # Times finos
     F_sim_ref_func = interp1d(t_rto_profile, F_rto_profile, kind='previous', # 'previous' para mantener F constante en el intervalo
@@ -140,7 +140,7 @@ try:
         x_ref_traj.append(xk_ref)
     x_ref_traj = np.array(x_ref_traj)
 
-    # Crear funciones de interpolación para la referencia (estados y control)
+    # Create interpolation functions for reference (states and control)
     interp_x_ref = interp1d(t_sim_ref, x_ref_traj, axis=0, kind='linear', bounds_error=False, fill_value=(x_ref_traj[0,:], x_ref_traj[-1,:]))
     interp_F_ref = interp1d(t_sim_ref, F_sim_ref, kind='previous', bounds_error=False, fill_value=(F_sim_ref[0], F_sim_ref[-1])) # Usa el mismo F que la simulación
 
@@ -156,15 +156,15 @@ except Exception as e:
 
 
 # ====================================================
-# 5) Configuración del problema de optimización NMPC
+# 5) NMPC optimization problem configuration
 # ====================================================
 opti_nmpc = ca.Opti()
 
-# ---- Variables de decisión ----
+# ---- Decision variables ----
 U_nmpc = opti_nmpc.variable(nu, N_p) # Secuencia de control F[k], F[k+1], ..., F[k+Np-1]
 X_pred = opti_nmpc.variable(nx, N_p + 1) # Estados predichos X[k|k]...X[k+Np|k]
 
-# ---- Parámetros (cambian en cada paso de NMPC) ----
+# ---- Parameters (change at each NMPC step) ----
 X0_nmpc = opti_nmpc.parameter(nx)     # Estado actual medido/estimado x[k]
 X_ref_nmpc = opti_nmpc.parameter(nx, N_p + 1) # Trayectoria de estado de referencia para el horizonte
 F_ref_nmpc = opti_nmpc.parameter(nu, N_p)     # Trayectoria de control de referencia
@@ -221,7 +221,7 @@ for k in range(1, N_p + 1): # Empezar desde k=1 porque X_pred[:,0] es el estado 
     opti_nmpc.subject_to(X_pred[4, k] >= 0) # V >= 0
     opti_nmpc.subject_to(X_pred[4, k] <= V_max) # V <= V_max
 
-# ---- Configuración del Solver ----
+# ---- Solver Configuration ----
 p_opts_nmpc = {}
 s_opts_nmpc = {
     "max_iter": 3000, # Puede necesitar ajuste
@@ -237,7 +237,7 @@ opti_nmpc.solver("ipopt", p_opts_nmpc, s_opts_nmpc)
 print("[INFO] Optimizador NMPC ('ipopt') configurado.")
 
 # ====================================================
-# 6) Bucle de simulación NMPC
+# 6) NMPC simulation loop
 # ====================================================
 # Historial para guardar resultados
 t_history = [t_batch]

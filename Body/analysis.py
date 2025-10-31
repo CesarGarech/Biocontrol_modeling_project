@@ -61,7 +61,7 @@ def analysis_page():
             # Save results
             resultados = []
 
-            def modelo_lote_b(t, y, mumax, Ks, Yxs, Kd, Ypx, Kla, Cs, mo):
+            def batch_model_b(t, y, mumax, Ks, Yxs, Kd, Ypx, Kla, Cs, mo):
                 X, S, P, O2 = y
 
                 # Calculate mu according to the selected model (assuming simple Monod for the analysis)
@@ -86,7 +86,7 @@ def analysis_page():
                     params = [mumax_base, Ks_base, Yxs_base, Kd_base*factor]
 
                 # Model Simulation
-                sol = solve_ivp(modelo_lote_b, [0, t_final], y0,
+                sol = solve_ivp(batch_model_b, [0, t_final], y0,
                               args=(*params, Ypx, Kla, Cs, mo),
                               t_eval=t_eval)
 

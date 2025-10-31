@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from unified_bioreactor_model import get_unified_model, x0_unified, lbx, ubx, lbu, ubu, lbdu, ubdu # Importar modelo, x0 y límites
 
 # ---------------------------------------------------
-# 1. Obtener Modelo Unificado y Parámetros
+# 1. Get Unified Model and Parameters
 # ---------------------------------------------------
 # Usar el modelo completo con dinámica de oxígeno
 ode_func, output_func_nmpc, x_sym, u_sym, c_sym, params, x_names, u_names, c_names = get_unified_model(use_oxygen_dynamics=True)

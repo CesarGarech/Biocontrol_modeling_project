@@ -12,7 +12,7 @@ def get_unified_model(use_oxygen_dynamics=True):
     Returns:
         tuple: Contiene (ode_func, output_func, x_sym, u_sym, c_sym_for_nmpc, params, x_names, u_names, c_names)
     """
-    # --- Parámetros Unificados ---
+    # --- Unified Parameters ---
     # (Combinando y seleccionando de ambos archivos originales, ajusta según necesidad)
     params = {
         # Cinéticos / Estequiométricos
@@ -40,7 +40,7 @@ def get_unified_model(use_oxygen_dynamics=True):
         'epsilon': 1e-9     # Para evitar división por cero
     }
 
-    # --- Variables Simbólicas ---
+    # --- Symbolic Variables ---
     X = ca.MX.sym('X')  # Biomasa (g/L)
     S = ca.MX.sym('S')  # Sustrato (g/L)
     P = ca.MX.sym('P')  # Producto (g/L)

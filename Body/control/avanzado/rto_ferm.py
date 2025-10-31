@@ -893,7 +893,7 @@ def rto_fermentation_page():
                st.download_button(
                     label="Download Simulation Data as Excel",
                     data=buffer,
-                    file_name="dados_rto.xlsx",
+                    file_name="rto_data.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                )
 

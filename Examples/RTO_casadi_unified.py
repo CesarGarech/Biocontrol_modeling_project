@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from unified_bioreactor_model import get_unified_model, x0_unified # Importar modelo y x0
 
 # ====================================================
-# 1) Obtener Modelo y Parámetros Unificados
+# 1) Get Unified Model and Parameters
 # ====================================================
 ode_func, _, x_sym_model, u_sym_model, _, params, x_names, _, _ = get_unified_model(use_oxygen_dynamics=True)
 nx = x_sym_model.shape[0]
@@ -30,7 +30,7 @@ def radau_coefficients(d):
         raise NotImplementedError("Solo implementado para d=2.")
 
 # ====================================================
-# 3) Parámetros del proceso y condiciones iniciales
+# 3) Process parameters and initial conditions
 # ====================================================
 t_batch = 5.0
 t_total = 24.0
@@ -152,7 +152,7 @@ print(f"[INFO] Objetivo: Maximizar Producto Total (P*V) = X[{P_final_idx}]*X[{V_
 # ====================================================
 # 8) Guesses iniciales (Mejorados)
 # ====================================================
-# Crear un integrador simple para propagar el guess
+# Create a simple integrator to propagate the guess
 integrator_guess = ca.integrator('int_guess', 'cvodes',
                                  {"x": x_sym_model, "p": u_rto_sym, "ode": ode_rto_func(x_sym_model, u_rto_sym)},
                                  {"tf": dt_fb / (d+1)}) # Integrar pasos pequeños dentro del intervalo

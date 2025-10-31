@@ -71,7 +71,7 @@ def radau_coefficients(d):
         raise NotImplementedError("Solo implementado para d=2.")
 
 # ====================================================
-# 3) Parámetros del proceso y condiciones iniciales
+# 3) Process parameters and initial conditions
 # ====================================================
 t_batch = 5.0
 t_total = 24.0
@@ -112,7 +112,7 @@ d = 2
 C_radau, D_radau = radau_coefficients(d)
 nx = 5
 
-# Variables de estado y control
+# State and control variables
 X_col = []
 F_col = []
 
@@ -241,7 +241,7 @@ file_name = "rto_original_feed_profile.npz"
 # Construir la ruta completa al archivo
 full_path = os.path.join(output_dir, file_name)
 
-# Crear la carpeta "Output" si no existe
+# Create "Output" folder if it does not exist
 # exist_ok=True evita un error si la carpeta ya existe
 os.makedirs(output_dir, exist_ok=True)
 
