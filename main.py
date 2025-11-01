@@ -25,7 +25,7 @@ menu_structure = {
     "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
         "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
-        "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC"]
+        "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC"]
     }
 }
 
@@ -158,6 +158,9 @@ def main():
         elif selected_page == "LMPC":
             from Body.control.avanzado import lmpc
             lmpc.lmpc_page()
+        elif selected_page == "EKF-NMPC":
+            from Body.control.avanzado import ekf_nmpc
+            ekf_nmpc.ekf_nmpc_page()
         else:
             st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")
             from Body import home
