@@ -124,23 +124,122 @@ This project was primarily developed by César Augusto García Echeverry at the 
 We welcome contributions! Please refer to the contribution guidelines (if available) or open an issue/pull request.
 
 
-## 🔬 References & Publications
-If you use this work in your research, please cite the following publications (if applicable):
+## 📚 Theoretical Background
 
-Author(s). "Title of Paper." Journal/Conference, Year. DOI/Link
+This project is built upon well-established theoretical foundations in bioprocess engineering, process control, optimization, and numerical methods. The following sections provide key references for understanding the underlying theory.
+
+### Bioprocess Engineering and Modeling
+
+**Kinetic Models and Microbial Growth:**
+- **Shuler, M. L., & Kargi, F. (2002).** *Bioprocess Engineering: Basic Concepts* (2nd ed.). Prentice Hall. 
+  - Comprehensive coverage of microbial kinetics including Monod, Haldane, and substrate/product inhibition models
+  - Mass balance equations for batch, fed-batch, and continuous bioreactors
+  
+- **Bailey, J. E., & Ollis, D. F. (1986).** *Biochemical Engineering Fundamentals* (2nd ed.). McGraw-Hill.
+  - Foundational text on bioprocess modeling and stoichiometry
+  - Detailed treatment of oxygen transfer (kLa) and metabolic pathways
+
+- **Luedeking, R., & Piret, E. L. (1959).** "A kinetic study of the lactic acid fermentation. Batch process at controlled pH." *Journal of Biochemical and Microbiological Technology and Engineering*, 1(4), 393-412.
+  - Classic paper establishing the Luedeking-Piret model for product formation (qP = α·μ + β)
+
+### Classical Process Control
+
+**PID Control and Regulatory Strategies:**
+- **Smith, C. A., & Corripio, A. B. (2005).** *Principles and Practice of Automatic Process Control* (3rd ed.). John Wiley & Sons.
+  - Standard reference for PID controller design and tuning
+  - Cascade control, split-range control, and feedforward strategies
+  - Chapters on controller tuning methods (Ziegler-Nichols, Cohen-Coon, etc.)
+
+- **Stephanopoulos, G. (1984).** *Chemical Process Control: An Introduction to Theory and Practice*. Prentice Hall.
+  - Comprehensive treatment of feedback and feedforward control
+  - Process dynamics, transfer functions, and frequency response
+
+- **Seborg, D. E., Edgar, T. F., Mellichamp, D. A., & Doyle III, F. J. (2016).** *Process Dynamics and Control* (4th ed.). John Wiley & Sons.
+  - Modern perspective on process control with extensive examples
+  - Digital control implementation and discrete-time systems
+
+### Advanced Process Control
+
+**Model Predictive Control (MPC/NMPC):**
+- **Camacho, E. F., & Bordons, C. (2007).** *Model Predictive Control* (2nd ed.). Springer-Verlag.
+  - Comprehensive coverage of linear and nonlinear MPC formulations
+  - Constraint handling and optimization problem formulation
+
+- **Rawlings, J. B., Mayne, D. Q., & Diehl, M. (2017).** *Model Predictive Control: Theory, Computation, and Design* (2nd ed.). Nob Hill Publishing.
+  - Advanced treatment of MPC theory including stability and robustness
+  - Nonlinear MPC and moving horizon estimation
+
+**Real-Time Optimization (RTO):**
+- **Biegler, L. T. (2010).** *Nonlinear Programming: Concepts, Algorithms, and Applications to Chemical Processes*. SIAM.
+  - Mathematical foundations for RTO and dynamic optimization
+  - IPOPT and other NLP solvers
+  
+- **Marlin, T. E. (2000).** *Process Control: Designing Processes and Control Systems for Dynamic Performance* (2nd ed.). McGraw-Hill.
+  - Integration of process design and control
+  - Real-time optimization in the context of process operations
+
+### State Estimation
+
+**Extended Kalman Filter (EKF) and Observers:**
+- **Jazwinski, A. H. (1970).** *Stochastic Processes and Filtering Theory*. Academic Press.
+  - Theoretical foundation of Kalman filtering for nonlinear systems
+
+- **Simon, D. (2006).** *Optimal State Estimation: Kalman, H∞, and Nonlinear Approaches*. John Wiley & Sons.
+  - Practical treatment of EKF implementation
+  - Application to nonlinear bioprocess systems
+
+- **Bastin, G., & Dochain, D. (1990).** *On-line Estimation and Adaptive Control of Bioreactors*. Elsevier.
+  - Specialized reference for bioprocess state estimation
+  - Asymptotic observers and adaptive control
+
+### Numerical Methods and Optimization
+
+**Ordinary Differential Equations (ODEs):**
+- **Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007).** *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+  - Implementation of Runge-Kutta and other ODE solvers
+  - Used by scipy.integrate.solve_ivp
+
+**Optimization Algorithms:**
+- **Nocedal, J., & Wright, S. J. (2006).** *Numerical Optimization* (2nd ed.). Springer.
+  - Comprehensive coverage of optimization theory
+  - Levenberg-Marquardt, Sequential Quadratic Programming (SQP), and interior-point methods
+
+- **Andersson, J. A. E., Gillis, J., Horn, G., Rawlings, J. B., & Diehl, M. (2019).** "CasADi: a software framework for nonlinear optimization and optimal control." *Mathematical Programming Computation*, 11(1), 1-36.
+  - CasADi framework used for NMPC and RTO in this project
+
+### Statistical Methods
+
+**Parameter Estimation and Confidence Intervals:**
+- **Bard, Y. (1974).** *Nonlinear Parameter Estimation*. Academic Press.
+  - Theory and methods for fitting kinetic parameters to experimental data
+  
+- **Beck, J. V., & Arnold, K. J. (1977).** *Parameter Estimation in Engineering and Science*. John Wiley & Sons.
+  - Statistical analysis of parameter estimates
+  - Confidence intervals and sensitivity coefficients
+
+**Design of Experiments:**
+- **Box, G. E. P., Hunter, W. G., & Hunter, J. S. (2005).** *Statistics for Experimenters: Design, Innovation, and Discovery* (2nd ed.). John Wiley & Sons.
+  - Experimental design for bioprocess optimization
+
+### Software and Tools
+
+- **SciPy:** Virtanen, P., et al. (2020). "SciPy 1.0: fundamental algorithms for scientific computing in Python." *Nature Methods*, 17(3), 261-272.
+- **NumPy:** Harris, C. R., et al. (2020). "Array programming with NumPy." *Nature*, 585(7825), 357-362.
+- **Streamlit:** Used for interactive dashboard development
+- **Matplotlib:** Hunter, J. D. (2007). "Matplotlib: A 2D graphics environment." *Computing in Science & Engineering*, 9(3), 90-95.
+
+## 🔬 Publications & Citations
+If you use this work in your research, please cite the following:
 
 GitHub Repository: https://github.com/CesarGarech/Biocontrol_modeling_project
 
 ```text
-@article{AuthorYear,
-  author  = {Author Name},
-  title   = {Title of Paper},
-  journal = {Journal Name},
-  year    = {YYYY},
-  volume  = {XX},
-  number  = {X},
-  pages   = {XX-XX},
-  doi     = {10.XXXX/YYYY}
+@software{Garcia2024Biocontrol,
+  author  = {García Echeverry, César Augusto and Franco Reyes, Andrés Mateo and Vélez Orjuela, Juan Pablo and Gámez Herazo, Carolina del Mar},
+  title   = {Biocontrol Modeling Project: Interactive Tools for Bioprocess Control Education},
+  year    = {2024},
+  url     = {https://github.com/CesarGarech/Biocontrol_modeling_project},
+  institution = {LADES - COPPE/UFRJ}
 }
 ```
 ## 🛡 License
