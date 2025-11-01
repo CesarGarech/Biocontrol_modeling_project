@@ -246,11 +246,12 @@ def ekf_nmpc_page():
             self.tau_root = np.append(0, ca.collocation_points(self.m, 'legendre'))
             self.C = np.zeros((self.m + 1, self.m + 1))
             self.D = np.zeros(self.m + 1)
+            EPSILON = 1e-10  # Small value to prevent division by zero in polynomial construction
             for j in range(self.m + 1):
                 p = np.poly1d([1])
                 for r in range(self.m + 1):
                     if r != j:
-                        p *= np.poly1d([1, -self.tau_root[r]]) / (self.tau_root[j] - self.tau_root[r] + 1e-10)
+                        p *= np.poly1d([1, -self.tau_root[r]]) / (self.tau_root[j] - self.tau_root[r] + EPSILON)
                 p_der = np.polyder(p)
                 for i in range(self.m + 1):
                     self.C[j, i] = np.polyval(p_der, self.tau_root[i])
@@ -261,6 +262,9 @@ def ekf_nmpc_page():
             self.w0 = np.zeros(self.dim_w)
         
         def _build_nlp(self):
+            # Constraint tolerance for equality constraints (numerical stability)
+            CONSTRAINT_TOL = 1e-9
+            
             # Collocation step function
             Xk_step = ca.MX.sym('Xk_step', self.nx)
             Xc_step = ca.MX.sym('Xc_step', self.nx, self.m)
@@ -322,8 +326,8 @@ def ekf_nmpc_page():
                 # Control horizon constraint
                 if k >= self.M:
                     self.g.append(Uk_k - Uk_prev_M)
-                    self.lbg.extend([-1e-9] * self.nu)
-                    self.ubg.extend([+1e-9] * self.nu)
+                    self.lbg.extend([-CONSTRAINT_TOL] * self.nu)
+                    self.ubg.extend([+CONSTRAINT_TOL] * self.nu)
                 
                 # Collocation states
                 Xc_k = ca.MX.sym(f'Xc_{k}', self.nx, self.m)
@@ -337,8 +341,8 @@ def ekf_nmpc_page():
                 
                 # Collocation equations
                 self.g.append(coll_eqs)
-                self.lbg.extend([-1e-9] * self.nx * self.m)
-                self.ubg.extend([+1e-9] * self.nx * self.m)
+                self.lbg.extend([-CONSTRAINT_TOL] * self.nx * self.m)
+                self.ubg.extend([+CONSTRAINT_TOL] * self.nx * self.m)
                 
                 # Next state
                 Xk_next = ca.MX.sym(f'X_{k+1}', self.nx)
@@ -348,8 +352,8 @@ def ekf_nmpc_page():
                 
                 # Continuity
                 self.g.append(Xk_end - Xk_next)
-                self.lbg.extend([-1e-9] * self.nx)
-                self.ubg.extend([+1e-9] * self.nx)
+                self.lbg.extend([-CONSTRAINT_TOL] * self.nx)
+                self.ubg.extend([+CONSTRAINT_TOL] * self.nx)
                 
                 # Cost
                 Ck_next = self.output_func(Xk_next)
