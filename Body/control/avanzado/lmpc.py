@@ -3,15 +3,13 @@ import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from scipy import signal
-from scipy.linalg import solve_discrete_are
 import control as ct
 import time
 
 # Numerical stability constant
 NUMERICAL_EPSILON = 1e-9
 
-# Define la página/función principal de Streamlit
+# Main page function for Streamlit
 def lmpc_page():
     st.header("Linear Model Predictive Control (LMPC) of the Bioreactor")
     st.markdown("""
@@ -30,7 +28,7 @@ def lmpc_page():
     ```
     """)
 
-    # --- Sidebar para configuración ---
+    # --- Sidebar for configuration ---
     with st.sidebar:
         st.subheader("Operating Point for Linearization")
         X_op = st.number_input("Biomass (X_op) [g/L]", value=2.0, key="X_op")
