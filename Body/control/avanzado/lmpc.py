@@ -8,6 +8,9 @@ from scipy.linalg import solve_discrete_are
 import control as ct
 import time
 
+# Numerical stability constant
+NUMERICAL_EPSILON = 1e-9
+
 # Define la página/función principal de Streamlit
 def lmpc_page():
     st.header("Linear Model Predictive Control (LMPC) of the Bioreactor")
@@ -107,7 +110,7 @@ def lmpc_page():
         Q_j = u[1]  # Jacket heat rate (W)
 
         # Model equations
-        mu = params['mu_max'] * S / (params['K_S'] + S + 1e-9)
+        mu = params['mu_max'] * S / (params['K_S'] + S + NUMERICAL_EPSILON)
         F_total = F_S + params['F_const']
         D = F_total / params['V']
 
@@ -119,7 +122,7 @@ def lmpc_page():
         Q_rem = -Q_j * 3600.0  # Heat removed by jacket (J/h)
         Q_gen = params['Y_QX'] * mu * X * params['V']  # Heat generated (J/h)
         Q_flow = F_total * params['rho'] * params['Cp'] * (params['T_in'] - T)  # Heat by flow (J/h)
-        dT_dt = (Q_gen + Q_rem + Q_flow) / (params['rho'] * params['Cp'] * params['V'] + 1e-9)
+        dT_dt = (Q_gen + Q_rem + Q_flow) / (params['rho'] * params['Cp'] * params['V'] + NUMERICAL_EPSILON)
 
         dx = ca.vertcat(dX_dt, dS_dt, dT_dt)
 
@@ -239,18 +242,22 @@ def lmpc_page():
             nx, nu, ny = self.nx, self.nu, self.ny
             N, M = self.N, self.M
             
-            # Build prediction matrices
-            # State prediction: X = Sx*x0 + Su*U
+            # Build prediction matrices for state trajectory
+            # The state evolves as: x[k+1] = Ad*x[k] + Bd*u[k]
+            # Over N steps: X = Sx*x0 + Su*U
+            # where X is the stacked state vector and U is the stacked input vector
             Sx = np.zeros((nx * (N + 1), nx))
             Su = np.zeros((nx * (N + 1), nu * M))
             
             Sx[0:nx, :] = np.eye(nx)
             
+            # Build state prediction matrices step by step
             for k in range(N):
-                # State matrix
+                # State matrix: how initial state propagates forward
                 Sx[(k+1)*nx:(k+2)*nx, :] = self.Ad @ Sx[k*nx:(k+1)*nx, :]
                 
-                # Input matrix
+                # Input matrix: how control inputs affect future states
+                # Each control input affects current and all future states
                 for j in range(min(k+1, M)):
                     if j == 0:
                         Su[(k+1)*nx:(k+2)*nx, j*nu:(j+1)*nu] = self.Bd
@@ -258,7 +265,8 @@ def lmpc_page():
                         Su[(k+1)*nx:(k+2)*nx, j*nu:(j+1)*nu] = \
                             self.Ad @ Su[k*nx:(k+1)*nx, (j-1)*nu:j*nu]
                 
-                # For steps beyond M, repeat last control
+                # Beyond control horizon M, control is frozen at u[M-1]
+                # So we accumulate the effect of the last control input
                 for j in range(min(k+1, M), k+1):
                     Su[(k+1)*nx:(k+2)*nx, (M-1)*nu:M*nu] += \
                         np.linalg.matrix_power(self.Ad, k+1-j) @ self.Bd
@@ -373,6 +381,7 @@ def lmpc_page():
             
             if not result.success:
                 st.warning(f"LMPC optimization did not converge: {result.message}")
+                st.info("Suggestions: Try reducing prediction/control horizon (N/M), relaxing constraints, or adjusting weights (Q/R).")
             
             dU_opt = result.x
             
