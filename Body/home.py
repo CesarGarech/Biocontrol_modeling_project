@@ -36,7 +36,7 @@ def home_page():
         in this simulator are detailed below, with a particular focus on alcoholic fermentation as a case study.
         """)
 
-    st.subheader("Specific Growth Rate ($\mu$)")
+    st.subheader(r"Specific Growth Rate ($\mu$)")
     st.markdown(r"""
         The specific growth rate (($\mu$), unit $h^{-1}$) describes how fast the biomass increases per unit of 
         existing biomass. It depends on factors such as substrate ($S$), product ($P$) and dissolved oxygen ($O_2$)
@@ -148,7 +148,7 @@ def home_page():
 
     # ========= MOVED SECTION: BALANCE SHEETS =========
     st.header("📊 Theoretical Basis: Material Balances") # Adjusted title
-    st.markdown("""
+    st.markdown(r"""
         Bioprocess modeling allows to describe mathematically the evolution of the variables of interest 
         (biomass concentration, substrate, product, dissolved oxygen, etc.) in a bioreactor.
         The general material balances for the three main modes of operation are presented below, assuming 

@@ -281,7 +281,6 @@ def mu_fermentacion(S, P, O2,
     # Asegurar que la tasa de crecimiento final no sea negativa
     return max(0.0, mu_total)
 
-import casadi as ca
 def mu_fermentacion_rto(S, P, O2,
                       mumax_aerob, Ks_aerob, KO_aerob,           # Params mu1 (aerobio)
                       mumax_anaerob, Ks_anaerob, KiS_anaerob,    # Params mu2 (anaerobio) - Sustrato
@@ -333,6 +332,8 @@ def mu_fermentacion_rto(S, P, O2,
     --------
     mu_fermentacion : Non-symbolic version for standard simulation
     """
+    import casadi as ca
+    
     # --- Asegurar valores no negativos usando ca.fmax ---
     S = ca.fmax(1e-9, S) # Evita S=0 exacto
     P = ca.fmax(0.0, P)
