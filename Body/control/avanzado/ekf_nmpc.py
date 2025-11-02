@@ -94,10 +94,10 @@ def ekf_nmpc_page():
     
     st.sidebar.markdown("**NMPC Weights**")
     Q_X_weight = st.sidebar.number_input("Weight Q - X tracking", 0.1, 100.0, 10.0, key="ekf_nmpc_qx_weight")
-    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 10.0, 1.0, key="ekf_nmpc_qt_weight")
+    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 100.0, 5.0, key="ekf_nmpc_qt_weight")
     W_FS_weight = st.sidebar.number_input("Weight W - ΔF_S", 0.001, 10.0, 0.1, key="ekf_nmpc_wfs")
-    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁸)", 0.1, 100.0, 1.0, format="%.1f", key="ekf_nmpc_wqj")
-    W_Qj_weight = W_Qj_weight * 1e-8  # Scale to reasonable value
+    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁷)", 0.1, 100.0, 5.0, format="%.1f", key="ekf_nmpc_wqj")
+    W_Qj_weight = W_Qj_weight * 1e-7  # Scale to reasonable value (increased from 1e-8 for smoother Q_j)
     
     st.sidebar.markdown("**Control Input Limits**")
     min_FS = st.sidebar.number_input("Min F_S (L/h)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_fs")
@@ -107,7 +107,7 @@ def ekf_nmpc_page():
     
     st.sidebar.markdown("**Control Input Rate Limits**")
     delta_FS_max = st.sidebar.number_input("Max |ΔF_S| (L/h)", 0.01, 1.0, 0.2, key="ekf_nmpc_dfs")
-    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 5000.0, format="%.0f", key="ekf_nmpc_dqj")
+    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 2000.0, format="%.0f", key="ekf_nmpc_dqj")
     
     st.sidebar.markdown("**State Limits**")
     min_X_opt = st.sidebar.number_input("Min X (g/L)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_x")
@@ -122,16 +122,16 @@ def ekf_nmpc_page():
     
     # Initial setpoints
     sp_X_initial = st.sidebar.number_input("Initial X setpoint (g/L)", 0.5, 5.0, 1.0, key="ekf_nmpc_sp_x0")
-    sp_T_initial = st.sidebar.number_input("Initial T setpoint (K)", 295.0, 315.0, 305.0, key="ekf_nmpc_sp_t0")
+    sp_T_initial = st.sidebar.number_input("Initial T setpoint (K)", 295.0, 315.0, 303.0, key="ekf_nmpc_sp_t0")
     
     # Setpoint changes
     t_sp1 = st.sidebar.number_input("1st change time (h)", 0.0, 50.0, 8.0, key="ekf_nmpc_t_sp1")
     sp_X_t1 = st.sidebar.number_input("X setpoint at t1 (g/L)", 0.5, 5.0, 2.5, key="ekf_nmpc_sp_x1")
-    sp_T_t1 = st.sidebar.number_input("T setpoint at t1 (K)", 295.0, 315.0, 308.0, key="ekf_nmpc_sp_t1")
+    sp_T_t1 = st.sidebar.number_input("T setpoint at t1 (K)", 295.0, 315.0, 306.0, key="ekf_nmpc_sp_t1")
     
     t_sp2 = st.sidebar.number_input("2nd change time (h)", 0.0, 50.0, 16.0, key="ekf_nmpc_t_sp2")
     sp_X_t2 = st.sidebar.number_input("X setpoint at t2 (g/L)", 0.5, 5.0, 1.5, key="ekf_nmpc_sp_x2")
-    sp_T_t2 = st.sidebar.number_input("T setpoint at t2 (K)", 295.0, 315.0, 303.0, key="ekf_nmpc_sp_t2")
+    sp_T_t2 = st.sidebar.number_input("T setpoint at t2 (K)", 295.0, 315.0, 301.0, key="ekf_nmpc_sp_t2")
     
     # Initial control inputs
     st.sidebar.markdown("**Initial Control Inputs**")
