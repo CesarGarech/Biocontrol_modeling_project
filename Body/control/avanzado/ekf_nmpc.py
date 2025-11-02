@@ -89,15 +89,15 @@ def ekf_nmpc_page():
     st.sidebar.markdown("---")
     st.sidebar.subheader("NMPC Configuration")
     
-    N = st.sidebar.number_input("Prediction Horizon (N)", 1, 30, 10, key="ekf_nmpc_N")
-    M = st.sidebar.number_input("Control Horizon (M)", 1, 20, 4, key="ekf_nmpc_M")
+    N = st.sidebar.number_input("Prediction Horizon (N)", 1, 30, 15, key="ekf_nmpc_N")
+    M = st.sidebar.number_input("Control Horizon (M)", 1, 20, 6, key="ekf_nmpc_M")
     
     st.sidebar.markdown("**NMPC Weights**")
-    Q_X_weight = st.sidebar.number_input("Weight Q - X tracking", 0.1, 100.0, 10.0, key="ekf_nmpc_qx_weight")
-    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 100.0, 5.0, key="ekf_nmpc_qt_weight")
+    Q_X_weight = st.sidebar.number_input("Weight Q - X tracking", 0.1, 100.0, 5.0, key="ekf_nmpc_qx_weight")
+    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 100.0, 20.0, key="ekf_nmpc_qt_weight")
     W_FS_weight = st.sidebar.number_input("Weight W - ΔF_S", 0.001, 10.0, 0.1, key="ekf_nmpc_wfs")
-    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁷)", 0.1, 100.0, 5.0, format="%.1f", key="ekf_nmpc_wqj")
-    W_Qj_weight = W_Qj_weight * 1e-7  # Scale to reasonable value (increased from 1e-8 for smoother Q_j)
+    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁷)", 0.1, 100.0, 2.0, format="%.1f", key="ekf_nmpc_wqj")
+    W_Qj_weight = W_Qj_weight * 1e-7  # Scale to reasonable value (reduced for more responsive Q_j)
     
     st.sidebar.markdown("**Control Input Limits**")
     min_FS = st.sidebar.number_input("Min F_S (L/h)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_fs")
@@ -107,7 +107,7 @@ def ekf_nmpc_page():
     
     st.sidebar.markdown("**Control Input Rate Limits**")
     delta_FS_max = st.sidebar.number_input("Max |ΔF_S| (L/h)", 0.01, 1.0, 0.2, key="ekf_nmpc_dfs")
-    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 2000.0, format="%.0f", key="ekf_nmpc_dqj")
+    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 3000.0, format="%.0f", key="ekf_nmpc_dqj")
     
     st.sidebar.markdown("**State Limits**")
     min_X_opt = st.sidebar.number_input("Min X (g/L)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_x")
