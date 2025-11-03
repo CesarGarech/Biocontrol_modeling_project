@@ -10,12 +10,12 @@ def ekf_nmpc_page():
     for a bioreactor system.
     
     **Process Flow:**
-    1. **EKF** estimates states (Biomass X, Substrate S, Product P, Temperature T) and parameters (μ_max, Y_XS) from noisy measurements (DO, pH, T)
+    1. **EKF** estimates states (Biomass X, Substrate S, Product P) and parameters (μ_max, Y_XS) from noisy measurements (DO, pH, T)
     2. **NMPC** uses the EKF-estimated states to compute optimal control actions (F_S, Q_j)
     3. Control actions are applied to the real plant with process noise
     4. New noisy measurements are generated and fed back to the EKF
     
-    **Model States:** X (biomass), S (substrate), P (product), T (temperature), μ_max, Y_XS  
+    **Model States:** X (biomass), S (substrate), P (product), μ_max, Y_XS  
     **Measurements:** DO (dissolved oxygen), pH, Temperature  
     **Control Inputs:** F_S (substrate flow), Q_j (thermal load)  
     **Control Objectives:** Track setpoints for X and T
@@ -55,7 +55,6 @@ def ekf_nmpc_page():
     X0_real = 1.0
     S0_real = 8.0
     P0_real = 0.0
-    T0_real = 305.0  # Real initial temperature
     mu_max_real = 0.4
     Yxs_real = 0.5
     
@@ -64,7 +63,6 @@ def ekf_nmpc_page():
     X0_est = st.sidebar.number_input("Est. initial X (g/L)", 0.01, 5.0, 0.5, format="%.2f", key="ekf_nmpc_x0e")
     S0_est = st.sidebar.number_input("Est. initial S (g/L)", 0.1, 20.0, 5.0, format="%.1f", key="ekf_nmpc_s0e")
     P0_est = st.sidebar.number_input("Est. initial P (g/L)", 0.0, 5.0, 0.01, format="%.2f", key="ekf_nmpc_p0e")
-    T0_est = st.sidebar.number_input("Est. initial T (K)", 295.0, 315.0, 303.0, format="%.1f", key="ekf_nmpc_t0e")
     mu0_est = st.sidebar.number_input("Est. initial μ_max (1/h)", 0.1, 1.0, 0.35, format="%.2f", key="ekf_nmpc_mu0e")
     yxs0_est = st.sidebar.number_input("Est. initial Y_XS (g/g)", 0.1, 1.0, 0.45, format="%.2f", key="ekf_nmpc_yxs0e")
     
@@ -73,7 +71,6 @@ def ekf_nmpc_page():
     p0_X = st.sidebar.number_input("P0 - X", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_nmpc_p0x")
     p0_S = st.sidebar.number_input("P0 - S", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_nmpc_p0s")
     p0_P = st.sidebar.number_input("P0 - P", 1e-4, 1.0, 0.03, format="%.4f", key="ekf_nmpc_p0p")
-    p0_T = st.sidebar.number_input("P0 - T", 1e-4, 10.0, 1.0, format="%.2f", key="ekf_nmpc_p0t")
     p0_mu = st.sidebar.number_input("P0 - μ_max", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_nmpc_p0mu")
     p0_yxs = st.sidebar.number_input("P0 - Y_XS", 1e-4, 1.0, 0.01, format="%.4f", key="ekf_nmpc_p0yxs")
     
@@ -81,7 +78,6 @@ def ekf_nmpc_page():
     q_X = st.sidebar.number_input("Q - X", 1e-8, 1e-2, 1e-5, format="%.2e", key="ekf_nmpc_qx")
     q_S = st.sidebar.number_input("Q - S", 1e-10, 1e-2, 1e-7, format="%.2e", key="ekf_nmpc_qs")
     q_P = st.sidebar.number_input("Q - P", 1e-8, 1e-2, 1e-5, format="%.2e", key="ekf_nmpc_qp")
-    q_T = st.sidebar.number_input("Q - T", 1e-8, 1e-2, 1e-4, format="%.2e", key="ekf_nmpc_qt")
     q_mu = st.sidebar.number_input("Q - μ_max", 1e-8, 1e-2, 1e-6, format="%.2e", key="ekf_nmpc_qmu")
     q_yxs = st.sidebar.number_input("Q - Y_XS", 1e-8, 1e-2, 1e-6, format="%.2e", key="ekf_nmpc_qyxs")
     
@@ -93,15 +89,15 @@ def ekf_nmpc_page():
     st.sidebar.markdown("---")
     st.sidebar.subheader("NMPC Configuration")
     
-    N = st.sidebar.number_input("Prediction Horizon (N)", 1, 30, 10, key="ekf_nmpc_N")
-    M = st.sidebar.number_input("Control Horizon (M)", 1, 20, 4, key="ekf_nmpc_M")
+    N = st.sidebar.number_input("Prediction Horizon (N)", 1, 30, 15, key="ekf_nmpc_N")
+    M = st.sidebar.number_input("Control Horizon (M)", 1, 20, 6, key="ekf_nmpc_M")
     
     st.sidebar.markdown("**NMPC Weights**")
-    Q_X_weight = st.sidebar.number_input("Weight Q - X tracking", 0.1, 100.0, 1.0, key="ekf_nmpc_qx_weight")
-    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 100.0, 10.0, key="ekf_nmpc_qt_weight")
+    Q_X_weight = st.sidebar.number_input("Weight Q - X tracking", 0.1, 100.0, 5.0, key="ekf_nmpc_qx_weight")
+    Q_T_weight = st.sidebar.number_input("Weight Q - T tracking", 0.001, 100.0, 20.0, key="ekf_nmpc_qt_weight")
     W_FS_weight = st.sidebar.number_input("Weight W - ΔF_S", 0.001, 10.0, 0.1, key="ekf_nmpc_wfs")
-    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁸)", 0.1, 100.0, 1.0, format="%.1f", key="ekf_nmpc_wqj")
-    W_Qj_weight = W_Qj_weight * 1e-8  # Scale to reasonable value
+    W_Qj_weight = st.sidebar.number_input("Weight W - ΔQ_j (×10⁻⁷)", 0.1, 100.0, 2.0, format="%.1f", key="ekf_nmpc_wqj")
+    W_Qj_weight = W_Qj_weight * 1e-7  # Scale to reasonable value (reduced for more responsive Q_j)
     
     st.sidebar.markdown("**Control Input Limits**")
     min_FS = st.sidebar.number_input("Min F_S (L/h)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_fs")
@@ -110,8 +106,8 @@ def ekf_nmpc_page():
     max_Qj = st.sidebar.number_input("Max Q_j (W)", 0.0, 20000.0, 10000.0, format="%.0f", key="ekf_nmpc_max_qj")
     
     st.sidebar.markdown("**Control Input Rate Limits**")
-    delta_FS_max = st.sidebar.number_input("Max |ΔF_S| (L/h)", 0.01, 1.0, 0.1, key="ekf_nmpc_dfs")
-    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 5000.0, format="%.0f", key="ekf_nmpc_dqj")
+    delta_FS_max = st.sidebar.number_input("Max |ΔF_S| (L/h)", 0.01, 1.0, 0.2, key="ekf_nmpc_dfs")
+    delta_Qj_max = st.sidebar.number_input("Max |ΔQ_j| (W)", 100.0, 10000.0, 3000.0, format="%.0f", key="ekf_nmpc_dqj")
     
     st.sidebar.markdown("**State Limits**")
     min_X_opt = st.sidebar.number_input("Min X (g/L)", 0.0, 1.0, 0.0, key="ekf_nmpc_min_x")
@@ -146,18 +142,18 @@ def ekf_nmpc_page():
     run_simulation = st.sidebar.button("Run EKF-NMPC Simulation")
     
     # --- CasADi Model Definitions (shared by EKF and NMPC) ---
-    # EKF model: 6 states [X, S, P, T, μ_max, Y_XS]
-    n_states_ekf = 6
+    # EKF model: 5 states [X, S, P, μ_max, Y_XS]
+    n_states_ekf = 5
     n_meas = 3
     x_ekf_sym = ca.SX.sym('x_ekf', n_states_ekf)
-    X_ekf, S_ekf, P_ekf, T_ekf, mu_max_ekf, Yxs_ekf = ca.vertsplit(x_ekf_sym)
+    X_ekf, S_ekf, P_ekf, mu_max_ekf, Yxs_ekf = ca.vertsplit(x_ekf_sym)
     
     # Control inputs for dynamics
     u_sym = ca.SX.sym('u', 2)  # [F_S, Q_j]
     F_S_sym = u_sym[0]
     Q_j_sym = u_sym[1]
     
-    # EKF dynamics (with control inputs and temperature)
+    # EKF dynamics (with control inputs)
     mu_ekf = mu_max_ekf * (S_ekf / (Ks + S_ekf))
     F_total = F_S_sym + F_const
     D = F_total / V
@@ -165,27 +161,20 @@ def ekf_nmpc_page():
     dX_ekf = mu_ekf * X_ekf - D * X_ekf
     dS_ekf = D * (S_in - S_ekf) - (1.0 / Yxs_ekf) * mu_ekf * X_ekf
     dP_ekf = alpha * mu_ekf * X_ekf - D * P_ekf
-    
-    # Temperature dynamics (same as NMPC)
-    Q_rem = -Q_j_sym * 3600.0  # W to J/h
-    Q_gen = Y_QX * mu_ekf * X_ekf * V
-    Q_flow = F_total * rho * Cp * (T_in - T_ekf)
-    dT_ekf = (Q_gen + Q_rem + Q_flow) / (rho * Cp * V)
-    
     dMu_max = 0
     dYxs = 0
     
-    x_ekf_dot = ca.vertcat(dX_ekf, dS_ekf, dP_ekf, dT_ekf, dMu_max, dYxs)
+    x_ekf_dot = ca.vertcat(dX_ekf, dS_ekf, dP_ekf, dMu_max, dYxs)
     
     # Discrete-time EKF prediction (Euler)
     dt_sym = ca.SX.sym('dt')
     x_ekf_next = x_ekf_sym + dt_sym * x_ekf_dot
     f_ekf_func = ca.Function('f_ekf', [x_ekf_sym, u_sym, dt_sym], [x_ekf_next])
     
-    # EKF measurement model (direct measurements of DO, pH, and T)
+    # EKF measurement model
     DO_val = DO_sat - k_OUR * X_ekf
     pH_val = pH0 - k_acid * (P_ekf - P0_ref)
-    T_val = T_ekf  # Direct temperature measurement
+    T_val = Tset + k_Temp * (X_ekf * S_ekf)
     z_ekf = ca.vertcat(DO_val, pH_val, T_val)
     h_ekf_func = ca.Function('h_ekf', [x_ekf_sym], [z_ekf])
     
@@ -470,15 +459,15 @@ def ekf_nmpc_page():
         N_steps = len(time_vec) - 1
         
         # Covariance matrices
-        Q_ekf = np.diag([q_X, q_S, q_P, q_T, q_mu, q_yxs])
+        Q_ekf = np.diag([q_X, q_S, q_P, q_mu, q_yxs])
         R_ekf = np.diag([r_DO, r_pH, r_T])
         
-        # Real plant state (6 states including temperature)
-        x_real = np.array([[X0_real], [S0_real], [P0_real], [T0_real], [mu_max_real], [Yxs_real]])
+        # Real plant state (5 states for EKF model)
+        x_real = np.array([[X0_real], [S0_real], [P0_real], [mu_max_real], [Yxs_real]])
         
         # EKF estimates
-        x_est = np.array([[X0_est], [S0_est], [P0_est], [T0_est], [mu0_est], [yxs0_est]])
-        P_est = np.diag([p0_X, p0_S, p0_P, p0_T, p0_mu, p0_yxs])
+        x_est = np.array([[X0_est], [S0_est], [P0_est], [mu0_est], [yxs0_est]])
+        P_est = np.diag([p0_X, p0_S, p0_P, p0_mu, p0_yxs])
         
         # Control inputs
         u_current = np.array([initial_FS, initial_Qj])
@@ -566,18 +555,18 @@ def ekf_nmpc_page():
             
             # Update estimates with constraints
             x_est = x_upd
-            x_est[0:3] = np.maximum(x_est[0:3], 0)  # Non-negative X, S, P
-            x_est[3] = np.clip(x_est[3], 295.0, 320.0)  # Reasonable temperature bounds
-            x_est[4:] = np.maximum(x_est[4:], 1e-6)  # Positive parameters
+            x_est[0:3] = np.maximum(x_est[0:3], 0)  # Non-negative states
+            x_est[3:] = np.maximum(x_est[3:], 1e-6)  # Positive parameters
             P_est = P_upd
             
             x_est_hist[:, k+1] = x_est.flatten()
             
             # (3) NMPC Control - use EKF estimates
-            # Extract state estimates for NMPC [X, S, T]
-            x_nmpc_current = np.array([x_est[0, 0], x_est[1, 0], x_est[3, 0]])  # X, S, T from EKF
-            mu_max_est = x_est[4, 0]
-            Yxs_est = x_est[5, 0]
+            # Extract state estimates for NMPC [X, S, T from measurement model]
+            x_nmpc_current = np.array([x_est[0, 0], x_est[1, 0], 
+                                       z_meas[2, 0]])  # Use measured T
+            mu_max_est = x_est[3, 0]
+            Yxs_est = x_est[4, 0]
             
             # Create setpoint trajectory
             sp_traj = np.tile(current_sp, (N, 1)).T
@@ -605,8 +594,7 @@ def ekf_nmpc_page():
             # Add process noise
             proc_noise = np.random.multivariate_normal(np.zeros(n_states_ekf), Q_ekf).reshape(-1, 1)
             x_real = x_real_next + proc_noise
-            x_real[0:3] = np.maximum(x_real[0:3], 0)  # Physical constraints on X, S, P
-            x_real[3] = np.clip(x_real[3], 295.0, 320.0)  # Temperature bounds
+            x_real[0:3] = np.maximum(x_real[0:3], 0)  # Physical constraints
             
             x_real_hist[:, k+1] = x_real.flatten()
             
@@ -632,7 +620,7 @@ def ekf_nmpc_page():
         plt.style.use('seaborn-v0_8-whitegrid')
         
         # Figure 1: EKF Estimation Performance
-        fig1, axs1 = plt.subplots(4, 2, figsize=(14, 12))
+        fig1, axs1 = plt.subplots(3, 2, figsize=(14, 10))
         fig1.suptitle('EKF State Estimation Performance', fontsize=14, fontweight='bold')
         
         # Biomass
@@ -652,17 +640,10 @@ def ekf_nmpc_page():
         # Product
         axs1[2, 0].plot(time_vec, x_real_hist[2, :], 'b-', linewidth=2, label='Real P')
         axs1[2, 0].plot(time_vec, x_est_hist[2, :], 'r--', linewidth=2, label='Estimated P')
+        axs1[2, 0].set_xlabel('Time (h)', fontsize=10)
         axs1[2, 0].set_ylabel('Product (g/L)', fontsize=10)
         axs1[2, 0].legend(fontsize=9)
         axs1[2, 0].grid(True, alpha=0.3)
-        
-        # Temperature
-        axs1[3, 0].plot(time_vec, x_real_hist[3, :], 'b-', linewidth=2, label='Real T')
-        axs1[3, 0].plot(time_vec, x_est_hist[3, :], 'r--', linewidth=2, label='Estimated T')
-        axs1[3, 0].set_xlabel('Time (h)', fontsize=10)
-        axs1[3, 0].set_ylabel('Temperature (K)', fontsize=10)
-        axs1[3, 0].legend(fontsize=9)
-        axs1[3, 0].grid(True, alpha=0.3)
         
         # DO measurement
         axs1[0, 1].plot(time_vec, z_meas_hist[0, :], 'k.', markersize=2, label='DO measured')
@@ -680,13 +661,11 @@ def ekf_nmpc_page():
         
         # Temperature measurement
         axs1[2, 1].plot(time_vec, z_meas_hist[2, :], 'k.', markersize=2, label='T measured')
+        axs1[2, 1].set_xlabel('Time (h)', fontsize=10)
         axs1[2, 1].set_ylabel('Temperature (K)', fontsize=10)
-        axs1[2, 1].set_title('Temperature Measurement', fontsize=10)
+        axs1[2, 1].set_title('Temperature', fontsize=10)
         axs1[2, 1].legend(fontsize=9)
         axs1[2, 1].grid(True, alpha=0.3)
-        
-        # Empty plot for symmetry
-        axs1[3, 1].axis('off')
         
         plt.tight_layout()
         st.pyplot(fig1)
@@ -696,15 +675,15 @@ def ekf_nmpc_page():
         fig2.suptitle('EKF Parameter Estimation', fontsize=14, fontweight='bold')
         
         # mu_max
-        axs2[0].plot(time_vec, x_real_hist[4, :], 'b-', linewidth=2, label=r'Real $\mu_{max}$')
-        axs2[0].plot(time_vec, x_est_hist[4, :], 'r--', linewidth=2, label=r'Estimated $\mu_{max}$')
+        axs2[0].plot(time_vec, x_real_hist[3, :], 'b-', linewidth=2, label=r'Real $\mu_{max}$')
+        axs2[0].plot(time_vec, x_est_hist[3, :], 'r--', linewidth=2, label=r'Estimated $\mu_{max}$')
         axs2[0].set_ylabel(r'$\mu_{max}$ (1/h)', fontsize=10)
         axs2[0].legend(fontsize=9)
         axs2[0].grid(True, alpha=0.3)
         
         # Y_XS
-        axs2[1].plot(time_vec, x_real_hist[5, :], 'b-', linewidth=2, label=r'Real $Y_{X/S}$')
-        axs2[1].plot(time_vec, x_est_hist[5, :], 'r--', linewidth=2, label=r'Estimated $Y_{X/S}$')
+        axs2[1].plot(time_vec, x_real_hist[4, :], 'b-', linewidth=2, label=r'Real $Y_{X/S}$')
+        axs2[1].plot(time_vec, x_est_hist[4, :], 'r--', linewidth=2, label=r'Estimated $Y_{X/S}$')
         axs2[1].set_xlabel('Time (h)', fontsize=10)
         axs2[1].set_ylabel(r'$Y_{X/S}$ (g/g)', fontsize=10)
         axs2[1].legend(fontsize=9)
@@ -725,7 +704,7 @@ def ekf_nmpc_page():
         axs3[0, 0].grid(True, alpha=0.3)
         
         # Temperature tracking
-        axs3[1, 0].plot(time_vec, x_real_hist[3, :], 'b-', linewidth=2, label='Temperature')
+        axs3[1, 0].plot(time_vec, z_meas_hist[2, :], 'b-', linewidth=2, label='Temperature')
         axs3[1, 0].plot(time_vec, sp_hist[1, :], 'r--', linewidth=2, label='T Setpoint')
         axs3[1, 0].set_xlabel('Time (h)', fontsize=10)
         axs3[1, 0].set_ylabel('Temperature (K)', fontsize=10)
