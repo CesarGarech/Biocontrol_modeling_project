@@ -344,9 +344,11 @@ def mu_fermentacion_rto(S, P, O2,
     import casadi as ca
     
     # --- Asegurar valores no negativos usando ca.fmax ---
+    # S and P can be exactly 0 in fermentation processes
     safe_S = ca.fmax(0.0, S)
     safe_P = ca.fmax(0.0, P)
-    safe_O2 = ca.fmax(1e-9, O2) # Use 1e-9 to avoid division by zero if O2=0
+    # O2 uses small epsilon to avoid division by zero in aerobic term calculations
+    safe_O2 = ca.fmax(1e-9, O2)
 
     # --- Cálculo de mu1 (Componente Aeróbica) ---
     den_S_aerob = Ks_aerob + safe_S
@@ -360,8 +362,9 @@ def mu_fermentacion_rto(S, P, O2,
 
     # --- Cálculo de mu2 (Componente Anaeróbica / Fermentativa) ---
     # Término de sustrato con inhibición (Haldane)
-    large_kis = 1e9
-    den_S_an = Ks_anaerob + safe_S + ca.if_else(KiS_anaerob < large_kis, safe_S**2 / ca.fmax(KiS_anaerob, 1e-9), 0.0)
+    # Large KiS threshold to distinguish between finite inhibition (< 1e9) and no inhibition (>= 1e9)
+    LARGE_KIS_THRESHOLD = 1e9
+    den_S_an = Ks_anaerob + safe_S + ca.if_else(KiS_anaerob < LARGE_KIS_THRESHOLD, safe_S**2 / ca.fmax(KiS_anaerob, 1e-9), 0.0)
     safe_den_S_an = ca.fmax(den_S_an, 1e-9)
     term_S_an = safe_S / safe_den_S_an
 
@@ -369,7 +372,8 @@ def mu_fermentacion_rto(S, P, O2,
     safe_KP_an = ca.fmax(KP_anaerob, 1e-9)
     term_P_base = 1.0 - (safe_P / safe_KP_an)
     safe_term_P_base = ca.fmax(0.0, term_P_base)
-    safe_n_p = ca.fmax(n_p, 1e-6)
+    # Small epsilon for Hill coefficient to handle very low cooperativity cases
+    safe_n_p = ca.fmax(n_p, 1e-9)
     term_P_an = safe_term_P_base**safe_n_p
 
     # Término de INHIBICIÓN por oxígeno (Pasteur effect)
