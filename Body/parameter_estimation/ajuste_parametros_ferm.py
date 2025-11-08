@@ -3,13 +3,14 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import minimize, differential_evolution, basinhopping
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
-from scipy.stats import t
+from scipy.stats import t, zscore
 import openpyxl
 import seaborn as sns
 import traceback
+import warnings
 try:
     from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion
 except ImportError:
@@ -84,19 +85,147 @@ def modelo_fermentacion(t, y, params):
     return [dXdt, dSdt, dPdt, dOdt, dVdt]
 
 #==========================================================================
+# HELPER FUNCTIONS FOR ROBUST OPTIMIZATION
+#==========================================================================
+
+def detect_outliers_zscore(y_data, threshold=3.0):
+    """
+    Detect outliers in experimental data using Z-score method.
+    
+    Parameters
+    ----------
+    y_data : np.ndarray
+        Experimental data array (can contain NaN values)
+    threshold : float
+        Z-score threshold for outlier detection (default: 3.0)
+    
+    Returns
+    -------
+    outlier_mask : np.ndarray
+        Boolean mask where True indicates an outlier
+    """
+    valid_mask = ~np.isnan(y_data)
+    if np.sum(valid_mask) < 4:  # Need at least 4 points for meaningful statistics
+        return np.zeros_like(y_data, dtype=bool)
+    
+    valid_data = y_data[valid_mask]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        z_scores = np.abs(zscore(valid_data, nan_policy='omit'))
+    
+    outlier_mask_valid = z_scores > threshold
+    outlier_mask = np.zeros_like(y_data, dtype=bool)
+    outlier_mask[valid_mask] = outlier_mask_valid
+    return outlier_mask
+
+def scale_parameters(params, bounds):
+    """
+    Scale parameters to [0, 1] range for better optimization.
+    
+    Parameters
+    ----------
+    params : np.ndarray
+        Parameter values
+    bounds : list of tuples
+        List of (min, max) bounds for each parameter
+    
+    Returns
+    -------
+    scaled_params : np.ndarray
+        Scaled parameters in [0, 1] range
+    """
+    scaled = np.zeros_like(params)
+    for i, (p, (lb, ub)) in enumerate(zip(params, bounds)):
+        if ub - lb > 1e-10:
+            scaled[i] = (p - lb) / (ub - lb)
+        else:
+            scaled[i] = 0.5
+    return scaled
+
+def unscale_parameters(scaled_params, bounds):
+    """
+    Unscale parameters from [0, 1] range back to original range.
+    
+    Parameters
+    ----------
+    scaled_params : np.ndarray
+        Scaled parameter values in [0, 1] range
+    bounds : list of tuples
+        List of (min, max) bounds for each parameter
+    
+    Returns
+    -------
+    params : np.ndarray
+        Unscaled parameters in original range
+    """
+    params = np.zeros_like(scaled_params)
+    for i, (sp, (lb, ub)) in enumerate(zip(scaled_params, bounds)):
+        params[i] = lb + sp * (ub - lb)
+    return params
+
+def validate_parameter_bounds(param_names, initial_guess, bounds):
+    """
+    Validate that initial guess is within bounds and bounds are reasonable.
+    
+    Parameters
+    ----------
+    param_names : list
+        Names of parameters
+    initial_guess : list
+        Initial parameter values
+    bounds : list of tuples
+        Parameter bounds
+    
+    Returns
+    -------
+    warnings_list : list
+        List of warning messages
+    """
+    warnings_list = []
+    for i, (name, guess, (lb, ub)) in enumerate(zip(param_names, initial_guess, bounds)):
+        # Check if guess is within bounds
+        if guess < lb or guess > ub:
+            warnings_list.append(f"⚠️ {name}: Initial guess {guess:.4f} outside bounds [{lb:.4f}, {ub:.4f}]")
+        
+        # Check if bounds are too tight
+        if ub - lb < 1e-6:
+            warnings_list.append(f"⚠️ {name}: Bounds very tight [{lb:.4f}, {ub:.4f}] - may restrict optimization")
+        
+        # Check for unrealistic parameter ranges
+        if (ub / lb) > 1000 and lb > 1e-6:
+            warnings_list.append(f"ℹ️ {name}: Very wide bounds ratio ({ub/lb:.0f}x) - consider narrowing")
+    
+    return warnings_list
+
+#==========================================================================
 # FUNCIONES DE OPTIMIZACIÓN
 #==========================================================================
 
 # --- Función Objetivo (CON ESCALADO Y PONDERACIÓN!) ---
-def objetivo_ferm(params_trial, param_names_opt, t_exp, y_exp_data, y0_fit, fixed_params, weights, atol, rtol): # Añadido 'weights'
+def objetivo_ferm(params_trial, param_names_opt, t_exp, y_exp_data, y0_fit, fixed_params, weights, atol, rtol, bounds=None, use_scaling=False, outlier_masks=None): # Añadido bounds, use_scaling, outlier_masks
     """
-    Función objetivo con residuos escalados Y PONDERADOS.
+    Función objetivo con residuos escalados Y PONDERADOS, con soporte para scaling y outliers.
     weights: lista o array [w_X, w_S, w_P, w_O2]
     y_exp_data tiene shape (4, n_times) -> [X_exp, S_exp, P_exp, O2_exp]
     Devuelve la suma ponderada de errores cuadráticos escalados (SSE_wp).
+    
+    Parameters
+    ----------
+    bounds : list of tuples, optional
+        Parameter bounds for unscaling
+    use_scaling : bool, optional
+        Whether parameters are scaled (default: False)
+    outlier_masks : list of np.ndarray, optional
+        List of 4 boolean masks indicating outliers to exclude
     """
+    # Unscale parameters if needed
+    if use_scaling and bounds is not None:
+        params_trial = unscale_parameters(params_trial, bounds)
+    
     params_full = fixed_params.copy()
-    if len(params_trial) != len(param_names_opt): st.error(f"Length discrepancy between params_trial/names"); return 1e20
+    if len(params_trial) != len(param_names_opt): 
+        if st: st.error(f"Length discrepancy between params_trial/names")
+        return 1e20
     for name, value in zip(param_names_opt, params_trial): params_full[name] = value
 
     try:
@@ -104,13 +233,21 @@ def objetivo_ferm(params_trial, param_names_opt, t_exp, y_exp_data, y0_fit, fixe
         if sol.status != 0: return 1e6 + np.sum(np.abs(params_trial))
 
         y_pred = sol.y[0:4, :]
-        if y_exp_data.shape != y_pred.shape: st.error(f"Shape discrepancy between target data"); return 1e11
+        if y_exp_data.shape != y_pred.shape: 
+            if st: st.error(f"Shape discrepancy between target data")
+            return 1e11
 
         sse_weighted_scaled = 0.0; valid_points_total = 0
         if len(weights) != 4: weights = [1.0, 1.0, 1.0, 1.0] # Fallback
 
         for i in range(4): # Iterar sobre X, S, P, O2
-            exp_data_i = y_exp_data[i, :]; pred_data_i = y_pred[i, :]; mask_i = ~np.isnan(exp_data_i)
+            exp_data_i = y_exp_data[i, :]; pred_data_i = y_pred[i, :]
+            mask_i = ~np.isnan(exp_data_i)
+            
+            # Apply outlier mask if provided
+            if outlier_masks is not None and i < len(outlier_masks):
+                mask_i = mask_i & ~outlier_masks[i]
+            
             if np.sum(mask_i) > 0:
                 scale_factor = np.nanmax(np.abs(exp_data_i[mask_i])); scale_factor = 1.0 if scale_factor < 1e-6 else scale_factor
                 weighted_scaled_residuals_sq = (weights[i] * ((pred_data_i[mask_i] - exp_data_i[mask_i]) / scale_factor)**2)
@@ -125,7 +262,9 @@ def objetivo_ferm(params_trial, param_names_opt, t_exp, y_exp_data, y0_fit, fixe
         if np.any(sol.y[4,:] < 0): objective_value += 1e5
         if np.isnan(objective_value) or np.isinf(objective_value): return 1e15
         return objective_value
-    except KeyError as e: st.warning(f"Key Error: {e} is missing. Penalizing."); return 1e16 + np.sum(np.abs(params_trial))
+    except KeyError as e: 
+        if st: st.warning(f"Key Error: {e} is missing. Penalizing.")
+        return 1e16 + np.sum(np.abs(params_trial))
     except Exception as e: return 1e15
 
 # --- Cálculo de Jacobiano ---
@@ -176,6 +315,164 @@ def calcular_flujo_post_sim(t, fixed_params):
              if delta_t > 1e-6: slope = (F_lineal_fin_val - F_base) / delta_t; F = max(0, F_base + slope * (t - t_alim_inicio))
              else: F = F_base
     return max(0, F)
+
+def multi_stage_optimization(objetivo_func, initial_guess, bounds, args_tuple, method='auto', max_iter=500, use_scaling=True, n_restarts=0):
+    """
+    Multi-stage optimization: global search followed by local refinement.
+    
+    Parameters
+    ----------
+    objetivo_func : callable
+        Objective function to minimize
+    initial_guess : np.ndarray
+        Initial parameter guess
+    bounds : list of tuples
+        Parameter bounds
+    args_tuple : tuple
+        Additional arguments for objective function
+    method : str
+        Optimization strategy: 'auto', 'L-BFGS-B', 'Nelder-Mead', 'differential_evolution', 
+        'basinhopping', 'hybrid'
+    max_iter : int
+        Maximum iterations
+    use_scaling : bool
+        Whether to use parameter scaling
+    n_restarts : int
+        Number of random restarts for robustness (default: 0)
+    
+    Returns
+    -------
+    result : OptimizeResult
+        Optimization result
+    """
+    # Unpack args_tuple and add scaling/bounds if needed
+    param_names_opt, t_exp, y_exp_data, y0_fit, fixed_params, weights, atol, rtol = args_tuple[:8]
+    outlier_masks = args_tuple[8] if len(args_tuple) > 8 else None
+    
+    # Build extended args with scaling support
+    extended_args = (param_names_opt, t_exp, y_exp_data, y0_fit, fixed_params, weights, atol, rtol, 
+                     bounds, use_scaling, outlier_masks)
+    
+    # Scale initial guess if using scaling
+    if use_scaling:
+        initial_guess_opt = scale_parameters(np.array(initial_guess), bounds)
+        bounds_opt = [(0, 1)] * len(bounds)
+    else:
+        initial_guess_opt = np.array(initial_guess)
+        bounds_opt = bounds
+    
+    best_result = None
+    best_fun = np.inf
+    
+    # Strategy selection
+    if method == 'auto':
+        # Automatic strategy: use hybrid approach for robustness
+        method = 'hybrid'
+    
+    try:
+        if method == 'differential_evolution':
+            # Global optimization with differential evolution
+            result = differential_evolution(
+                objetivo_func, bounds_opt, args=extended_args,
+                maxiter=max_iter, tol=1e-6, updating='deferred', 
+                workers=-1, seed=42, init='latinhypercube', atol=0, 
+                strategy='best1bin', popsize=15
+            )
+            best_result = result
+            
+        elif method == 'basinhopping':
+            # Basin hopping for escaping local minima
+            minimizer_kwargs = {
+                "method": "L-BFGS-B", 
+                "args": extended_args, 
+                "bounds": bounds_opt,
+                "options": {'maxiter': max_iter // 10, 'ftol': 1e-8, 'gtol': 1e-7}
+            }
+            result = basinhopping(
+                objetivo_func, initial_guess_opt, 
+                minimizer_kwargs=minimizer_kwargs,
+                niter=max(10, max_iter // 50), seed=42
+            )
+            best_result = result
+            
+        elif method == 'hybrid':
+            # Hybrid: Global search with DE followed by local refinement
+            st.info("🔄 Stage 1/2: Global search with Differential Evolution...")
+            result_global = differential_evolution(
+                objetivo_func, bounds_opt, args=extended_args,
+                maxiter=min(100, max_iter // 3), tol=1e-5, 
+                updating='deferred', workers=-1, seed=42, 
+                init='latinhypercube', atol=0, strategy='best1bin', popsize=10
+            )
+            
+            st.info("🎯 Stage 2/2: Local refinement with L-BFGS-B...")
+            result_local = minimize(
+                objetivo_func, result_global.x, args=extended_args,
+                method='L-BFGS-B', bounds=bounds_opt,
+                options={'maxiter': max_iter, 'ftol': 1e-9, 'gtol': 1e-8}
+            )
+            
+            # Use the better result
+            best_result = result_local if result_local.fun < result_global.fun else result_global
+            best_fun = best_result.fun
+            
+        else:
+            # Single-stage local optimization
+            minimizer_kwargs = {
+                "args": extended_args, 
+                "method": method,
+                "options": {'maxiter': max_iter, 'disp': False}
+            }
+            
+            if method in ['L-BFGS-B', 'TNC', 'SLSQP']:
+                minimizer_kwargs['bounds'] = bounds_opt
+                minimizer_kwargs['options'].update({'ftol': 1e-8, 'gtol': 1e-7})
+            elif method == 'Nelder-Mead':
+                minimizer_kwargs['options'].update({'xatol': 1e-6, 'fatol': 1e-8})
+            
+            result = minimize(objetivo_func, initial_guess_opt, **minimizer_kwargs)
+            best_result = result
+            best_fun = result.fun
+        
+        # Random restarts for robustness
+        if n_restarts > 0 and method not in ['differential_evolution', 'hybrid']:
+            st.info(f"🔄 Performing {n_restarts} random restarts for robustness...")
+            for i in range(n_restarts):
+                # Perturb initial guess
+                perturbation = np.random.uniform(-0.2, 0.2, len(initial_guess_opt))
+                perturbed_guess = np.clip(initial_guess_opt + perturbation, 
+                                         [b[0] for b in bounds_opt], 
+                                         [b[1] for b in bounds_opt])
+                
+                minimizer_kwargs_restart = minimizer_kwargs.copy()
+                if method in ['L-BFGS-B', 'TNC', 'SLSQP']:
+                    minimizer_kwargs_restart['options'] = {'maxiter': max_iter // 2, 'ftol': 1e-8}
+                
+                try:
+                    result_restart = minimize(objetivo_func, perturbed_guess, **minimizer_kwargs_restart)
+                    if result_restart.fun < best_fun:
+                        best_result = result_restart
+                        best_fun = result_restart.fun
+                        st.success(f"✅ Restart {i+1}/{n_restarts}: Found better solution (obj={best_fun:.6f})")
+                except:
+                    pass
+        
+        # Unscale parameters if needed
+        if use_scaling and best_result is not None:
+            best_result.x = unscale_parameters(best_result.x, bounds)
+        
+        return best_result
+        
+    except Exception as e:
+        st.error(f"Multi-stage optimization error: {e}")
+        # Return a failed result
+        class FailedResult:
+            def __init__(self):
+                self.success = False
+                self.x = initial_guess
+                self.fun = 1e20
+                self.message = str(e)
+        return FailedResult()
 
 #==========================================================================
 # PÁGINA STREAMLIT PARA AJUSTE (¡MODIFICADA!)
@@ -321,8 +618,22 @@ def ajuste_parametros_ferm_page():
 
             # --- Configuración Optimizador ---
             st.markdown("##### Optimization Options")
-            metodo_opt = st.selectbox("Optimization Method", ['L-BFGS-B', 'Nelder-Mead', 'differential_evolution'], key="opt_method_ferm")
-            max_iter_opt = st.number_input("Maximum Iterations", 50, 10000, 500, key="max_iter_ferm")
+            metodo_opt = st.selectbox("Optimization Method", 
+                                     ['hybrid', 'L-BFGS-B', 'Nelder-Mead', 'differential_evolution', 'basinhopping'], 
+                                     key="opt_method_ferm",
+                                     help="hybrid = Global search + Local refinement (recommended)")
+            
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                max_iter_opt = st.number_input("Maximum Iterations", 50, 10000, 500, key="max_iter_ferm")
+                use_param_scaling = st.checkbox("Use Parameter Scaling", value=True, key="use_scaling",
+                                               help="Scales parameters to [0,1] for better convergence")
+            with col_opt2:
+                n_restarts = st.number_input("Random Restarts", 0, 5, 0, key="n_restarts",
+                                            help="Number of restarts with perturbed initial guess")
+                detect_outliers = st.checkbox("Detect and Exclude Outliers", value=True, key="detect_outliers",
+                                             help="Uses Z-score method (threshold=3.0) to exclude outliers")
+            
             # --- Inputs para Pesos ---
             st.markdown("##### Weights for Objetive Function (Scaled)")
             st.caption("Higher weight = More importance to adjust that variable.")
@@ -349,22 +660,65 @@ def ajuste_parametros_ferm_page():
                         y0_run = st.session_state.y0_fit_ferm
                         t_exp_run = st.session_state.t_exp_ferm
                         y_exp_data_run = y_exp_run # Pasar datos (4,n)
+                        
+                        # Validate parameter bounds
+                        bound_warnings = validate_parameter_bounds(param_names_to_opt, initial_guess_to_opt, bounds_to_opt)
+                        if bound_warnings:
+                            st.warning("⚠️ Parameter Bounds Validation:")
+                            for warning in bound_warnings[:5]:  # Show first 5
+                                st.caption(warning)
+                        
+                        # Detect outliers if requested
+                        outlier_masks_run = None
+                        if detect_outliers:
+                            st.info("🔍 Detecting outliers in experimental data...")
+                            outlier_masks_run = []
+                            outlier_counts = []
+                            for i, var_name in enumerate(['Biomass', 'Substrate', 'Product', 'Oxygen']):
+                                mask = detect_outliers_zscore(y_exp_data_run[i], threshold=3.0)
+                                outlier_masks_run.append(mask)
+                                n_outliers = np.sum(mask)
+                                outlier_counts.append(n_outliers)
+                                if n_outliers > 0:
+                                    st.caption(f"  • {var_name}: {n_outliers} outlier(s) detected and will be excluded")
+                            
+                            if sum(outlier_counts) == 0:
+                                st.success("✅ No outliers detected")
+                                outlier_masks_run = None
+                        
                         result = None; st.session_state.run_complete_ferm = False
                         try:
-                            if metodo_opt == 'differential_evolution':
-                                # Pasar weights_run
-                                result = differential_evolution(objetivo_ferm, bounds_to_opt, args=(param_names_to_opt, t_exp_run, y_exp_data_run, y0_run, fixed_params_run, weights_run, atol_solver, rtol_solver), maxiter=max_iter_opt, tol=1e-6, updating='deferred', workers=-1, seed=42, init='latinhypercube')
-                            else:
-                                 # Pasar weights_run
-                                 minimizer_kwargs = {"args": (param_names_to_opt, t_exp_run, y_exp_data_run, y0_run, fixed_params_run, weights_run, atol_solver, rtol_solver), "method": metodo_opt, "bounds": bounds_to_opt if metodo_opt in ['L-BFGS-B', 'TNC', 'SLSQP'] else None, "options": {'maxiter': max_iter_opt, 'disp': False}}
-                                 if metodo_opt in ['L-BFGS-B', 'TNC', 'SLSQP']: minimizer_kwargs['options']['ftol'] = 1e-8; minimizer_kwargs['options']['gtol'] = 1e-7
-                                 elif metodo_opt == 'Nelder-Mead': minimizer_kwargs['options']['xatol'] = 1e-6; minimizer_kwargs['options']['fatol'] = 1e-8
-                                 result = minimize(objetivo_ferm, initial_guess_to_opt, **minimizer_kwargs)
-                            if result and hasattr(result, 'success') and result.success: st.session_state.params_opt_ferm = result.x; st.session_state.result_ferm = result; st.session_state.run_complete_ferm = True; st.success(f"Optimization ({metodo_opt}) completed.")
-                            elif result and hasattr(result, 'x'): st.session_state.params_opt_ferm = result.x; st.session_state.result_ferm = result; st.session_state.run_complete_ferm = True; st.warning(f"Optimization ({metodo_opt}) finished but it was unsuccessful: {getattr(result, 'message', 'N/A')}")
-                            else: st.error(f"Optimization ({metodo_opt}) failed.")
-                        except Exception as e: st.error(f"Optimization Error: {e}"); st.text(traceback.format_exc()); st.session_state.params_opt_ferm = None; st.session_state.result_ferm = None; st.session_state.run_complete_ferm = False
-                        # st.rerun() # Eliminado
+                            # Use multi-stage optimization
+                            args_tuple = (param_names_to_opt, t_exp_run, y_exp_data_run, y0_run, 
+                                        fixed_params_run, weights_run, atol_solver, rtol_solver, outlier_masks_run)
+                            
+                            result = multi_stage_optimization(
+                                objetivo_ferm, initial_guess_to_opt, bounds_to_opt, 
+                                args_tuple, method=metodo_opt, max_iter=max_iter_opt,
+                                use_scaling=use_param_scaling, n_restarts=n_restarts
+                            )
+                            
+                            if result and hasattr(result, 'success') and result.success: 
+                                st.session_state.params_opt_ferm = result.x
+                                st.session_state.result_ferm = result
+                                st.session_state.run_complete_ferm = True
+                                st.success(f"✅ Optimization ({metodo_opt}) completed successfully!")
+                                st.metric("Final Objective Value", f"{result.fun:.6e}")
+                            elif result and hasattr(result, 'x'): 
+                                st.session_state.params_opt_ferm = result.x
+                                st.session_state.result_ferm = result
+                                st.session_state.run_complete_ferm = True
+                                st.warning(f"⚠️ Optimization ({metodo_opt}) finished but may not have fully converged")
+                                st.caption(f"Message: {getattr(result, 'message', 'N/A')}")
+                                st.metric("Final Objective Value", f"{result.fun:.6e}")
+                            else: 
+                                st.error(f"❌ Optimization ({metodo_opt}) failed.")
+                        except Exception as e: 
+                            st.error(f"Optimization Error: {e}")
+                            st.text(traceback.format_exc())
+                            st.session_state.params_opt_ferm = None
+                            st.session_state.result_ferm = None
+                            st.session_state.run_complete_ferm = False
 
         elif st.session_state.df_exp_ferm is None: st.warning("⏳ Upload experimental data.")
 
@@ -385,6 +739,31 @@ def ajuste_parametros_ferm_page():
                 final_objective_value = getattr(result, 'fun', np.nan)
                 st.write(f"**Final Objective Value:** {final_objective_value:.6f}" if pd.notna(final_objective_value) else "**Final Objective Value:** N/A")
                 st.caption("(Weighted sum of scaled quadratic errors)")
+                
+                # Convergence diagnostics
+                with st.expander("🔍 Optimization Diagnostics", expanded=False):
+                    col_diag1, col_diag2 = st.columns(2)
+                    with col_diag1:
+                        st.write("**Convergence Status:**")
+                        success_status = getattr(result, 'success', False)
+                        st.write(f"  • Success: {'✅ Yes' if success_status else '⚠️ No'}")
+                        st.write(f"  • Iterations: {getattr(result, 'nit', getattr(result, 'nfev', 'N/A'))}")
+                        st.write(f"  • Message: {getattr(result, 'message', 'N/A')}")
+                    with col_diag2:
+                        st.write("**Objective Function:**")
+                        st.write(f"  • Final value: {final_objective_value:.6e}")
+                        # Check for parameter bounds proximity
+                        params_near_bounds = []
+                        for i, (name, val) in enumerate(zip(param_names_res, params_opt)):
+                            bounds_i = st.session_state.param_config_ferm['bounds'][i]
+                            if abs(val - bounds_i[0]) / (bounds_i[1] - bounds_i[0]) < 0.05:
+                                params_near_bounds.append(f"{name} (near lower)")
+                            elif abs(val - bounds_i[1]) / (bounds_i[1] - bounds_i[0]) < 0.05:
+                                params_near_bounds.append(f"{name} (near upper)")
+                        if params_near_bounds:
+                            st.warning(f"⚠️ Parameters near bounds: {', '.join(params_near_bounds[:3])}")
+                            st.caption("Consider adjusting bounds if physically reasonable")
+                
                 parametros_opt_list = [{'Parameter': name, 'Optimized Value': value, 'Units': param_units_res.get(name, 'N/A')} for name, value in zip(param_names_res, params_opt)]
                 parametros_df = pd.DataFrame(parametros_opt_list)
                 st.dataframe(parametros_df.style.format({'Optimized Value': '{:.5f}'}))
