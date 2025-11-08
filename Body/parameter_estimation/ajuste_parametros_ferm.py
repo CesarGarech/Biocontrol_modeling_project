@@ -197,6 +197,72 @@ def validate_parameter_bounds(param_names, initial_guess, bounds):
     
     return warnings_list
 
+def assess_parameter_identifiability(jacobian, param_names, threshold=1e-3):
+    """
+    Assess parameter identifiability using condition number and sensitivity analysis.
+    
+    Parameters
+    ----------
+    jacobian : np.ndarray
+        Jacobian matrix (n_observations x n_parameters)
+    param_names : list
+        Parameter names
+    threshold : float
+        Threshold for low sensitivity warning
+    
+    Returns
+    -------
+    diagnostics : dict
+        Dictionary with identifiability diagnostics
+    """
+    diagnostics = {
+        'identifiable': True,
+        'condition_number': np.nan,
+        'low_sensitivity_params': [],
+        'high_correlation_pairs': []
+    }
+    
+    if jacobian is None or np.isnan(jacobian).any():
+        diagnostics['identifiable'] = False
+        return diagnostics
+    
+    try:
+        # Compute condition number of J^T J
+        jtj = jacobian.T @ jacobian
+        cond_num = np.linalg.cond(jtj)
+        diagnostics['condition_number'] = cond_num
+        
+        # High condition number indicates poor identifiability
+        if cond_num > 1e10:
+            diagnostics['identifiable'] = False
+        
+        # Check sensitivity (column norms of Jacobian)
+        col_norms = np.linalg.norm(jacobian, axis=0)
+        max_norm = np.max(col_norms)
+        for i, (name, norm) in enumerate(zip(param_names, col_norms)):
+            if norm / max_norm < threshold:
+                diagnostics['low_sensitivity_params'].append(name)
+        
+        # Check correlations
+        cov_matrix = np.linalg.pinv(jtj)
+        std_devs = np.sqrt(np.diag(cov_matrix))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            corr_matrix = cov_matrix / np.outer(std_devs, std_devs)
+        
+        # Find highly correlated parameters (|corr| > 0.95, excluding diagonal)
+        n_params = len(param_names)
+        for i in range(n_params):
+            for j in range(i+1, n_params):
+                if not np.isnan(corr_matrix[i, j]) and abs(corr_matrix[i, j]) > 0.95:
+                    diagnostics['high_correlation_pairs'].append(
+                        (param_names[i], param_names[j], corr_matrix[i, j])
+                    )
+    
+    except Exception:
+        diagnostics['identifiable'] = False
+    
+    return diagnostics
+
 #==========================================================================
 # FUNCIONES DE OPTIMIZACIÓN
 #==========================================================================
@@ -843,6 +909,40 @@ def ajuste_parametros_ferm_page():
                                    for col in ['Standard Error', 'Interval ± (95%)', '95% CI Lower bound', '95% CI Upper bound']:
                                         if col not in parametros_df.columns: parametros_df[col] = np.nan
                               else:
+                                   # Parameter identifiability analysis
+                                   st.subheader("🔬 Parameter Identifiability Analysis")
+                                   identif_diag = assess_parameter_identifiability(jac, param_names_res, threshold=1e-3)
+                                   
+                                   col_id1, col_id2 = st.columns(2)
+                                   with col_id1:
+                                       if identif_diag['identifiable']:
+                                           st.success("✅ Parameters are identifiable")
+                                       else:
+                                           st.error("⚠️ Poor parameter identifiability detected")
+                                       
+                                       cond_num = identif_diag['condition_number']
+                                       if not np.isnan(cond_num):
+                                           st.metric("Condition Number", f"{cond_num:.2e}")
+                                           if cond_num < 1e6:
+                                               st.caption("🟢 Well-conditioned")
+                                           elif cond_num < 1e10:
+                                               st.caption("🟡 Moderately conditioned")
+                                           else:
+                                               st.caption("🔴 Ill-conditioned - parameters may be difficult to identify")
+                                   
+                                   with col_id2:
+                                       if identif_diag['low_sensitivity_params']:
+                                           st.warning("⚠️ Low sensitivity parameters:")
+                                           for param in identif_diag['low_sensitivity_params'][:3]:
+                                               st.caption(f"  • {param}")
+                                           st.caption("Consider fixing these parameters")
+                                       
+                                       if identif_diag['high_correlation_pairs']:
+                                           st.warning("⚠️ Highly correlated parameters:")
+                                           for p1, p2, corr in identif_diag['high_correlation_pairs'][:2]:
+                                               st.caption(f"  • {p1} ↔ {p2} (r={corr:.3f})")
+                                           st.caption("These parameters may be redundant")
+                                   
                                    mse = np.sum(residuals_flat_clean**2) / dof; jtj = jac.T @ jac
                                    try: cov_matrix = np.linalg.pinv(jtj) * mse
                                    except np.linalg.LinAlgError: cov_matrix = np.linalg.pinv(jtj) * mse
