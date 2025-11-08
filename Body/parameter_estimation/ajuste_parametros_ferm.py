@@ -227,39 +227,59 @@ def assess_parameter_identifiability(jacobian, param_names, threshold=1e-3):
         return diagnostics
     
     try:
-        # Compute condition number of J^T J
-        jtj = jacobian.T @ jacobian
-        cond_num = np.linalg.cond(jtj)
-        diagnostics['condition_number'] = cond_num
-        
-        # High condition number indicates poor identifiability
-        if cond_num > 1e10:
-            diagnostics['identifiable'] = False
-        
-        # Check sensitivity (column norms of Jacobian)
+        # Check sensitivity (column norms of Jacobian) - do this first
         col_norms = np.linalg.norm(jacobian, axis=0)
         max_norm = np.max(col_norms)
+        
+        # Identify parameters with very low or zero sensitivity
         for i, (name, norm) in enumerate(zip(param_names, col_norms)):
-            if norm / max_norm < threshold:
+            if norm < 1e-12:  # Absolute threshold for near-zero sensitivity
                 diagnostics['low_sensitivity_params'].append(name)
+            elif max_norm > 1e-12 and norm / max_norm < threshold:  # Relative threshold
+                if name not in diagnostics['low_sensitivity_params']:
+                    diagnostics['low_sensitivity_params'].append(name)
         
-        # Check correlations
-        cov_matrix = np.linalg.pinv(jtj)
-        std_devs = np.sqrt(np.diag(cov_matrix))
-        with np.errstate(divide='ignore', invalid='ignore'):
-            corr_matrix = cov_matrix / np.outer(std_devs, std_devs)
+        # Compute condition number of J^T J
+        jtj = jacobian.T @ jacobian
         
-        # Find highly correlated parameters (|corr| > 0.95, excluding diagonal)
-        n_params = len(param_names)
-        for i in range(n_params):
-            for j in range(i+1, n_params):
-                if not np.isnan(corr_matrix[i, j]) and abs(corr_matrix[i, j]) > 0.95:
-                    diagnostics['high_correlation_pairs'].append(
-                        (param_names[i], param_names[j], corr_matrix[i, j])
-                    )
+        # Check if matrix is near-singular
+        jtj_det = np.linalg.det(jtj)
+        if abs(jtj_det) < 1e-20:
+            diagnostics['condition_number'] = np.inf
+            diagnostics['identifiable'] = False
+        else:
+            cond_num = np.linalg.cond(jtj)
+            diagnostics['condition_number'] = cond_num
+            
+            # High condition number indicates poor identifiability
+            if cond_num > 1e10 or np.isinf(cond_num):
+                diagnostics['identifiable'] = False
+        
+        # Check correlations only if matrix is not singular
+        if not np.isinf(diagnostics['condition_number']):
+            try:
+                cov_matrix = np.linalg.pinv(jtj)
+                std_devs = np.sqrt(np.diag(cov_matrix))
+                
+                # Check for valid standard deviations
+                if np.all(std_devs > 1e-15):
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        corr_matrix = cov_matrix / np.outer(std_devs, std_devs)
+                    
+                    # Find highly correlated parameters (|corr| > 0.95, excluding diagonal)
+                    n_params = len(param_names)
+                    for i in range(n_params):
+                        for j in range(i+1, n_params):
+                            if not np.isnan(corr_matrix[i, j]) and abs(corr_matrix[i, j]) > 0.95:
+                                diagnostics['high_correlation_pairs'].append(
+                                    (param_names[i], param_names[j], corr_matrix[i, j])
+                                )
+            except:
+                pass  # Skip correlation analysis if it fails
     
     except Exception:
         diagnostics['identifiable'] = False
+        diagnostics['condition_number'] = np.inf
     
     return diagnostics
 
@@ -921,7 +941,7 @@ def ajuste_parametros_ferm_page():
                                            st.error("⚠️ Poor parameter identifiability detected")
                                        
                                        cond_num = identif_diag['condition_number']
-                                       if not np.isnan(cond_num):
+                                       if not np.isnan(cond_num) and not np.isinf(cond_num):
                                            st.metric("Condition Number", f"{cond_num:.2e}")
                                            if cond_num < 1e6:
                                                st.caption("🟢 Well-conditioned")
@@ -929,6 +949,11 @@ def ajuste_parametros_ferm_page():
                                                st.caption("🟡 Moderately conditioned")
                                            else:
                                                st.caption("🔴 Ill-conditioned - parameters may be difficult to identify")
+                                       elif np.isinf(cond_num):
+                                           st.metric("Condition Number", "inf")
+                                           st.caption("🔴 Singular matrix - some parameters cannot be identified")
+                                       else:
+                                           st.metric("Condition Number", "N/A")
                                    
                                    with col_id2:
                                        if identif_diag['low_sensitivity_params']:
@@ -942,6 +967,42 @@ def ajuste_parametros_ferm_page():
                                            for p1, p2, corr in identif_diag['high_correlation_pairs'][:2]:
                                                st.caption(f"  • {p1} ↔ {p2} (r={corr:.3f})")
                                            st.caption("These parameters may be redundant")
+                                   
+                                   # Add actionable recommendations when identifiability is poor
+                                   if not identif_diag['identifiable'] or np.isinf(identif_diag['condition_number']):
+                                       with st.expander("💡 How to Fix Identifiability Issues", expanded=True):
+                                           st.markdown("""
+                                           **Recommendations:**
+                                           
+                                           1. **Fix low-sensitivity parameters**: Set them to literature values or typical values
+                                              - In the UI, use fixed parameters instead of optimizing them
+                                              - Example: If aerobic parameters (mumax_aerob, Ks_aerob, KO_aerob) have low sensitivity,
+                                                your data may be mostly anaerobic. Fix these to typical values (e.g., mumax_aerob=0.4, Ks_aerob=0.5, KO_aerob=0.2)
+                                           
+                                           2. **Collect more diverse data**:
+                                              - Include both aerobic and anaerobic phases if using Fermentation model
+                                              - Ensure wide range of substrate, oxygen, and product concentrations
+                                              - More time points help identify dynamics
+                                           
+                                           3. **Simplify the model**:
+                                              - Use "Simple Monod" instead of "Fermentation" if data is primarily aerobic or anaerobic
+                                              - Start simple and add complexity only when justified by data
+                                           
+                                           4. **Check parameter bounds**:
+                                              - Narrow bounds based on literature or prior knowledge
+                                              - Too wide bounds can cause poor identifiability
+                                           
+                                           5. **Increase data weights** for variables with good information:
+                                              - If substrate data is rich, increase its weight
+                                              - Balance weights based on data quality
+                                           """)
+                                           
+                                           # Specific recommendation based on low sensitivity params
+                                           if identif_diag['low_sensitivity_params']:
+                                               low_params_str = ', '.join(identif_diag['low_sensitivity_params'][:5])
+                                               st.info(f"🎯 **Quick Fix**: Try re-running optimization with these parameters fixed: {low_params_str}")
+                                               if any('aerob' in p for p in identif_diag['low_sensitivity_params']):
+                                                   st.caption("💡 Your data appears to lack aerobic conditions. Consider fixing aerobic parameters or using a simpler model.")
                                    
                                    mse = np.sum(residuals_flat_clean**2) / dof; jtj = jac.T @ jac
                                    try: cov_matrix = np.linalg.pinv(jtj) * mse
