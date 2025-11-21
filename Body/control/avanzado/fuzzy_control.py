@@ -27,8 +27,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
-from scipy.integrate import solve_ivp
-import pandas as pd
 
 
 def fuzzy_control_page():
@@ -285,22 +283,29 @@ def fuzzy_control_page():
                 heat_cool_array[i] = heat_cool
                 feed_rate_array[i] = feed_rate
                 
-                # Simple process dynamics (first-order plus dead time approximation)
-                # pH dynamics
+                # Simple process dynamics (first-order system with external input)
+                # pH dynamics: First-order response to acid/base addition with natural drift
                 tau_pH = 2.0  # time constant [hours]
                 K_pH = 0.05   # gain [pH / control unit]
-                dpH = (K_pH * acid_base - (pH_array[i-1] - pH_setpoint)) / tau_pH
+                pH_drift = 0.02  # natural pH drift rate towards neutral (pH 7)
+                pH_natural = 7.0  # natural equilibrium pH
+                dpH = (K_pH * acid_base - (pH_array[i-1] - pH_natural) * pH_drift) / tau_pH
                 pH_array[i] = pH_array[i-1] + dpH * dt
                 
-                # Temperature dynamics
+                # Temperature dynamics: First-order heat transfer with ambient temperature
                 tau_T = 1.5   # time constant [hours]
                 K_T = 0.1     # gain [°C / control unit]
-                dT = (K_T * heat_cool - (temp_array[i-1] - temp_setpoint)) / tau_T
+                T_ambient = 25.0  # ambient temperature [°C]
+                heat_loss_coeff = 0.1  # heat loss coefficient
+                # Metabolic heat generation (increases with substrate)
+                metabolic_heat = 0.02 * substrate_array[i-1] / (5.0 + substrate_array[i-1])
+                dT = (K_T * heat_cool + metabolic_heat - (temp_array[i-1] - T_ambient) * heat_loss_coeff) / tau_T
                 temp_array[i] = temp_array[i-1] + dT * dt
                 
                 # Substrate dynamics with consumption
                 tau_S = 3.0   # time constant [hours]
                 K_S = 0.15    # gain [g/L / control unit]
+                # Monod-like consumption rate
                 consumption_rate = 0.5 * substrate_array[i-1] / (2.0 + substrate_array[i-1])
                 dS = K_S * feed_rate - consumption_rate
                 substrate_array[i] = substrate_array[i-1] + dS * dt
