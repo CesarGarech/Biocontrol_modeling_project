@@ -178,6 +178,28 @@ This project is built upon well-established theoretical foundations in bioproces
   - Integration of process design and control
   - Real-time optimization in the context of process operations
 
+**Fuzzy Logic Control:**
+- **Zadeh, L. A. (1965).** "Fuzzy sets." *Information and Control*, 8(3), 338-353.
+  - Foundational paper introducing fuzzy set theory
+  
+- **Mamdani, E. H., & Assilian, S. (1975).** "An experiment in linguistic synthesis with a fuzzy logic controller." *International Journal of Man-Machine Studies*, 7(1), 1-13.
+  - First application of fuzzy logic to control systems
+  
+- **Passino, K. M., & Yurkovich, S. (1998).** *Fuzzy Control*. Addison Wesley Longman.
+  - Comprehensive textbook on fuzzy control theory and applications
+  
+- **Wang, L. X. (1997).** *A Course in Fuzzy Systems and Control*. Prentice Hall PTR.
+  - Detailed treatment of fuzzy systems design and implementation
+  
+- **Ross, T. J. (2010).** *Fuzzy Logic with Engineering Applications* (3rd ed.). John Wiley & Sons.
+  - Practical applications of fuzzy logic in engineering
+  
+- **Lee, C. C. (1990).** "Fuzzy logic in control systems: fuzzy logic controller-Parts I and II." *IEEE Transactions on Systems, Man, and Cybernetics*, 20(2), 404-435.
+  - Comprehensive review of fuzzy logic controllers
+  
+- **Chen, L., et al. (1996).** "Fuzzy logic based control of dissolved oxygen in a bioprocess." *Computers & Chemical Engineering*, 20, S1337-S1342.
+  - Application to bioprocess control
+
 ### State Estimation
 
 **Extended Kalman Filter (EKF) and Observers:**
