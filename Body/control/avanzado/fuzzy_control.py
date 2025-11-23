@@ -29,6 +29,33 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 
 
+def safe_trimf_points(a, b, c, max_val=None):
+    """
+    Ensure triangular membership function points are valid.
+    Returns (a, b, c) ensuring a <= b <= c for valid trimf.
+    
+    Parameters:
+    -----------
+    a, b, c : float
+        Triangle points (left, peak, right)
+    max_val : float, optional
+        Maximum value to clamp points to
+        
+    Returns:
+    --------
+    tuple or list : (a, b, c) with a <= b <= c
+    """
+    if max_val is not None:
+        points = sorted([min(a, max_val), min(b, max_val), min(c, max_val)])
+        return points
+    else:
+        a, b, c = sorted([a, b, c])
+        # Ensure b is the middle point
+        if a == c:  # Degenerate case
+            c = a + 0.01
+        return (a, b, c)
+
+
 def fuzzy_control_page():
     """
     Main Streamlit page for fuzzy control system simulation.
@@ -590,13 +617,17 @@ def create_ph_fuzzy_controller(params=None):
     span = pH_max - pH_min
     mid = (pH_max + pH_min) / 2
     
+    # Validate and constrain optimal zone width to prevent invalid membership functions
+    max_opt_width = span / 2.5  # Leave some margin for overlapping functions
+    pH_opt_width = min(pH_opt_width, max_opt_width)
+    
     # Membership functions for pH error (adjusted based on parameters)
     pH_error['very_low'] = fuzz.trapmf(pH_error.universe, 
                                        [pH_min, pH_min, pH_min + span*0.15, pH_min + span*0.35])
     pH_error['low'] = fuzz.trimf(pH_error.universe, 
                                  [pH_min + span*0.15, pH_min + span*0.35, mid])
     pH_error['optimal'] = fuzz.trimf(pH_error.universe, 
-                                     [mid - pH_opt_width, mid, mid + pH_opt_width])
+                                     [max(pH_min, mid - pH_opt_width), mid, min(pH_max, mid + pH_opt_width)])
     pH_error['high'] = fuzz.trimf(pH_error.universe, 
                                   [mid, pH_max - span*0.35, pH_max - span*0.15])
     pH_error['very_high'] = fuzz.trapmf(pH_error.universe, 
@@ -632,19 +663,28 @@ def create_ph_fuzzy_controller(params=None):
     # Define rule weights based on substrate influence
     def get_output_modifier(substrate_level, error_level):
         """Modify output based on substrate influence"""
+        # Mapping for reducing action strength
+        action_reduction = {
+            'strong_acid': 'mild_acid',
+            'strong_base': 'mild_base',
+            'mild_acid': 'neutral',
+            'mild_base': 'neutral',
+            'neutral': 'neutral'
+        }
+        
         if sub_inf < 0.3:  # Low influence - substrate doesn't matter much
             return error_level
         elif sub_inf < 0.7:  # Medium influence
             if substrate_level in ['high', 'very_high'] and error_level in ['strong_acid', 'strong_base']:
-                return 'mild_' + error_level.split('_')[1]  # Reduce to mild
+                return action_reduction.get(error_level, error_level)
             return error_level
         else:  # High influence - substrate significantly reduces action
             if substrate_level == 'very_high':
                 return 'neutral'
             elif substrate_level == 'high' and error_level in ['strong_acid', 'strong_base']:
                 return 'neutral'
-            elif substrate_level == 'high':
-                return 'mild_' + error_level.split('_')[1] if '_' in error_level else error_level
+            elif substrate_level == 'high' and error_level in ['mild_acid', 'mild_base']:
+                return 'neutral'
             return error_level
     
     # Generate rules systematically
@@ -715,13 +755,17 @@ def create_temperature_fuzzy_controller(params=None):
     span = temp_max - temp_min
     mid = (temp_max + temp_min) / 2
     
+    # Validate and constrain optimal zone width to prevent invalid membership functions
+    max_temp_opt_width = span / 2.5  # Leave some margin for overlapping functions
+    temp_opt_width = min(temp_opt_width, max_temp_opt_width)
+    
     # Membership functions for temperature error (adjusted based on parameters)
     temp_error['very_cold'] = fuzz.trapmf(temp_error.universe, 
                                           [temp_min, temp_min, temp_min + span*0.15, temp_min + span*0.35])
     temp_error['cold'] = fuzz.trimf(temp_error.universe, 
                                     [temp_min + span*0.15, temp_min + span*0.35, mid])
     temp_error['optimal'] = fuzz.trimf(temp_error.universe, 
-                                       [mid - temp_opt_width, mid, mid + temp_opt_width])
+                                       [max(temp_min, mid - temp_opt_width), mid, min(temp_max, mid + temp_opt_width)])
     temp_error['hot'] = fuzz.trimf(temp_error.universe, 
                                    [mid, temp_max - span*0.35, temp_max - span*0.15])
     temp_error['very_hot'] = fuzz.trapmf(temp_error.universe, 
@@ -872,11 +916,6 @@ def create_substrate_fuzzy_controller(params=None):
     # Membership functions for feed rate (scaled by sensitivity)
     # Sensitivity affects how quickly feed rate responds to errors
     # Ensure proper sorting to avoid invalid triangular functions when sensitivity > 1
-    def safe_trimf_points(a, b, c, max_val):
-        """Ensure a <= b <= c and all values <= max_val"""
-        points = sorted([min(a, max_val), min(b, max_val), min(c, max_val)])
-        return points
-    
     feed_rate['none'] = fuzz.trimf(feed_rate.universe, [0, 0, 0.05 * max_feed])
     feed_rate['very_low'] = fuzz.trimf(feed_rate.universe, 
                                        safe_trimf_points(0, 0.15 * sensitivity * max_feed, 0.3 * sensitivity * max_feed, max_feed))
@@ -1152,11 +1191,6 @@ def visualize_substrate_controller(params=None):
     
     # Calculate feed rate membership function points with proper sorting to avoid invalid triangular functions
     # When sensitivity is high, ensure a <= b <= c for all trimf calls by sorting and clipping
-    def safe_trimf_points(a, b, c, max_val):
-        """Ensure a <= b <= c and all values <= max_val"""
-        points = sorted([min(a, max_val), min(b, max_val), min(c, max_val)])
-        return points
-    
     axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0, 0, 0.05 * max_feed]), 
                 'b', linewidth=2, label='None')
     axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
