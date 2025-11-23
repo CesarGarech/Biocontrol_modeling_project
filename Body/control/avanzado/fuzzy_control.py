@@ -219,14 +219,14 @@ def fuzzy_control_page():
                 pH_error_range = st.slider("pH Error Range", -5.0, 5.0, (-3.0, 3.0), 0.5, 
                                           key="pH_err_range", 
                                           help="Adjust the input range for pH error")
-                pH_error_optimal_width = st.slider("pH Optimal Zone Width", 0.1, 2.0, 0.5, 0.1,
+                pH_error_optimal_width = st.slider("pH Optimal Zone Width", 0.1, 2.0, 0.3, 0.1,
                                                    key="pH_opt_width",
                                                    help="Width of the optimal pH range (±)")
             with col2:
                 pH_output_range = st.slider("pH Control Action Range", 0.1, 1.0, 1.0, 0.1,
                                            key="pH_out_range",
                                            help="Maximum control action magnitude")
-                pH_control_aggressive = st.slider("pH Control Aggressiveness", 0.5, 1.5, 1.0, 0.1,
+                pH_control_aggressive = st.slider("pH Control Aggressiveness", 0.5, 2.0, 1.3, 0.1,
                                                  key="pH_aggr",
                                                  help="Multiplier for control action strength")
             
@@ -237,14 +237,14 @@ def fuzzy_control_page():
                 temp_error_range = st.slider("Temp Error Range [°C]", -20.0, 20.0, (-15.0, 15.0), 1.0,
                                             key="temp_err_range",
                                             help="Adjust the input range for temperature error")
-                temp_error_optimal_width = st.slider("Temp Optimal Zone Width [°C]", 0.5, 5.0, 3.0, 0.5,
+                temp_error_optimal_width = st.slider("Temp Optimal Zone Width [°C]", 0.5, 5.0, 2.0, 0.5,
                                                      key="temp_opt_width",
                                                      help="Width of the optimal temperature range (±)")
             with col2:
                 temp_output_range = st.slider("Temp Control Action Range", 0.1, 1.0, 1.0, 0.1,
                                              key="temp_out_range",
                                              help="Maximum control action magnitude")
-                temp_control_aggressive = st.slider("Temp Control Aggressiveness", 0.5, 1.5, 1.0, 0.1,
+                temp_control_aggressive = st.slider("Temp Control Aggressiveness", 0.5, 2.0, 1.3, 0.1,
                                                    key="temp_aggr",
                                                    help="Multiplier for control action strength")
             
@@ -255,23 +255,23 @@ def fuzzy_control_page():
                 sub_error_range = st.slider("Substrate Error Range [g/L]", -40.0, 40.0, (-30.0, 30.0), 5.0,
                                            key="sub_err_range",
                                            help="Adjust the input range for substrate error")
-                sub_error_zero_width = st.slider("Substrate Zero Error Width [g/L]", 1.0, 10.0, 5.0, 1.0,
+                sub_error_zero_width = st.slider("Substrate Zero Error Width [g/L]", 1.0, 10.0, 3.0, 1.0,
                                                 key="sub_zero_width",
                                                 help="Width of the zero error zone (±)")
             with col2:
                 feed_rate_max = st.slider("Maximum Feed Rate", 0.5, 1.0, 1.0, 0.05,
                                          key="feed_max",
                                          help="Maximum normalized feed rate")
-                feed_sensitivity = st.slider("Feed Rate Sensitivity", 0.5, 1.5, 1.0, 0.1,
+                feed_sensitivity = st.slider("Feed Rate Sensitivity", 0.5, 2.0, 1.2, 0.1,
                                             key="feed_sens",
                                             help="How quickly feed rate responds to substrate error")
             
             # Substrate influence on pH and Temperature
             st.markdown("#### Substrate Influence")
-            substrate_influence_pH = st.slider("Substrate Influence on pH Control", 0.0, 1.0, 0.5, 0.1,
+            substrate_influence_pH = st.slider("Substrate Influence on pH Control", 0.0, 1.0, 0.3, 0.1,
                                               key="sub_inf_pH",
                                               help="How much substrate level affects pH control (0=none, 1=high)")
-            substrate_influence_temp = st.slider("Substrate Influence on Temp Control", 0.0, 1.0, 0.5, 0.1,
+            substrate_influence_temp = st.slider("Substrate Influence on Temp Control", 0.0, 1.0, 0.3, 0.1,
                                                 key="sub_inf_temp",
                                                 help="How much substrate level affects temperature control")
         
@@ -397,30 +397,30 @@ def fuzzy_control_page():
                 heat_cool_array[i] = heat_cool
                 feed_rate_array[i] = feed_rate
                 
-                # Simple process dynamics (first-order system with external input)
+                # Improved process dynamics for better controllability
                 # pH dynamics: First-order response to acid/base addition with natural drift
-                tau_pH = 2.0  # time constant [hours]
-                K_pH = 0.05   # gain [pH / control unit]
-                pH_drift = 0.02  # natural pH drift rate towards neutral (pH 7)
+                tau_pH = 0.5  # time constant [hours] - faster response
+                K_pH = 0.3    # gain [pH / control unit] - increased sensitivity
+                pH_drift = 0.01  # natural pH drift rate towards neutral (pH 7) - reduced
                 pH_natural = 7.0  # natural equilibrium pH
                 dpH = (K_pH * acid_base - (pH_array[i-1] - pH_natural) * pH_drift) / tau_pH
                 pH_array[i] = pH_array[i-1] + dpH * dt
                 
                 # Temperature dynamics: First-order heat transfer with ambient temperature
-                tau_T = 1.5   # time constant [hours]
-                K_T = 0.1     # gain [°C / control unit]
+                tau_T = 0.8   # time constant [hours] - faster response
+                K_T = 0.5     # gain [°C / control unit] - increased sensitivity
                 T_ambient = 25.0  # ambient temperature [°C]
-                heat_loss_coeff = 0.1  # heat loss coefficient
+                heat_loss_coeff = 0.05  # heat loss coefficient - reduced
                 # Metabolic heat generation (increases with substrate)
-                metabolic_heat = 0.02 * substrate_array[i-1] / (5.0 + substrate_array[i-1])
+                metabolic_heat = 0.01 * substrate_array[i-1] / (5.0 + substrate_array[i-1])  # reduced
                 dT = (K_T * heat_cool + metabolic_heat - (temp_array[i-1] - T_ambient) * heat_loss_coeff) / tau_T
                 temp_array[i] = temp_array[i-1] + dT * dt
                 
                 # Substrate dynamics with consumption
-                tau_S = 3.0   # time constant [hours]
-                K_S = 0.15    # gain [g/L / control unit]
+                tau_S = 1.5   # time constant [hours] - faster response
+                K_S = 0.8     # gain [g/L / control unit] - increased to match consumption
                 # Monod-like consumption rate
-                consumption_rate = 0.5 * substrate_array[i-1] / (2.0 + substrate_array[i-1])
+                consumption_rate = 0.3 * substrate_array[i-1] / (2.0 + substrate_array[i-1])  # reduced
                 dS = K_S * feed_rate - consumption_rate
                 substrate_array[i] = substrate_array[i-1] + dS * dt
                 
