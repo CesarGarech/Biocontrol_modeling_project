@@ -178,6 +178,76 @@ def fuzzy_control_page():
     with st.sidebar:
         st.header("🎛️ Fuzzy Control Configuration")
         
+        # Fuzzy Controller Tuning
+        with st.expander("🎯 Fuzzy Controller Tuning", expanded=False):
+            st.markdown("### Membership Function Configuration")
+            st.info("Adjust membership function parameters to tune controller behavior. "
+                   "These parameters define the linguistic terms (Low, Medium, High, etc.) "
+                   "used in the fuzzy rules.")
+            
+            # pH Controller MF Parameters
+            st.markdown("#### pH Controller")
+            col1, col2 = st.columns(2)
+            with col1:
+                pH_error_range = st.slider("pH Error Range", -5.0, 5.0, (-3.0, 3.0), 0.5, 
+                                          key="pH_err_range", 
+                                          help="Adjust the input range for pH error")
+                pH_error_optimal_width = st.slider("pH Optimal Zone Width", 0.1, 2.0, 0.5, 0.1,
+                                                   key="pH_opt_width",
+                                                   help="Width of the optimal pH range (±)")
+            with col2:
+                pH_output_range = st.slider("pH Control Action Range", 0.1, 1.0, 1.0, 0.1,
+                                           key="pH_out_range",
+                                           help="Maximum control action magnitude")
+                pH_control_aggressive = st.slider("pH Control Aggressiveness", 0.5, 1.5, 1.0, 0.1,
+                                                 key="pH_aggr",
+                                                 help="Multiplier for control action strength")
+            
+            # Temperature Controller MF Parameters
+            st.markdown("#### Temperature Controller")
+            col1, col2 = st.columns(2)
+            with col1:
+                temp_error_range = st.slider("Temp Error Range [°C]", -20.0, 20.0, (-15.0, 15.0), 1.0,
+                                            key="temp_err_range",
+                                            help="Adjust the input range for temperature error")
+                temp_error_optimal_width = st.slider("Temp Optimal Zone Width [°C]", 0.5, 5.0, 3.0, 0.5,
+                                                     key="temp_opt_width",
+                                                     help="Width of the optimal temperature range (±)")
+            with col2:
+                temp_output_range = st.slider("Temp Control Action Range", 0.1, 1.0, 1.0, 0.1,
+                                             key="temp_out_range",
+                                             help="Maximum control action magnitude")
+                temp_control_aggressive = st.slider("Temp Control Aggressiveness", 0.5, 1.5, 1.0, 0.1,
+                                                   key="temp_aggr",
+                                                   help="Multiplier for control action strength")
+            
+            # Substrate Feed Controller MF Parameters
+            st.markdown("#### Substrate Feed Controller")
+            col1, col2 = st.columns(2)
+            with col1:
+                sub_error_range = st.slider("Substrate Error Range [g/L]", -40.0, 40.0, (-30.0, 30.0), 5.0,
+                                           key="sub_err_range",
+                                           help="Adjust the input range for substrate error")
+                sub_error_zero_width = st.slider("Substrate Zero Error Width [g/L]", 1.0, 10.0, 5.0, 1.0,
+                                                key="sub_zero_width",
+                                                help="Width of the zero error zone (±)")
+            with col2:
+                feed_rate_max = st.slider("Maximum Feed Rate", 0.5, 1.0, 1.0, 0.05,
+                                         key="feed_max",
+                                         help="Maximum normalized feed rate")
+                feed_sensitivity = st.slider("Feed Rate Sensitivity", 0.5, 1.5, 1.0, 0.1,
+                                            key="feed_sens",
+                                            help="How quickly feed rate responds to substrate error")
+            
+            # Substrate influence on pH and Temperature
+            st.markdown("#### Substrate Influence")
+            substrate_influence_pH = st.slider("Substrate Influence on pH Control", 0.0, 1.0, 0.5, 0.1,
+                                              key="sub_inf_pH",
+                                              help="How much substrate level affects pH control (0=none, 1=high)")
+            substrate_influence_temp = st.slider("Substrate Influence on Temp Control", 0.0, 1.0, 0.5, 0.1,
+                                                key="sub_inf_temp",
+                                                help="How much substrate level affects temperature control")
+        
         with st.expander("🔬 Process Parameters", expanded=True):
             st.subheader("Initial Conditions")
             pH_initial = st.number_input("Initial pH", min_value=3.0, max_value=11.0, 
@@ -222,10 +292,27 @@ def fuzzy_control_page():
     # Main simulation button
     if st.button("🚀 Run Fuzzy Control Simulation", key="run_fuzzy_sim"):
         with st.spinner("Building fuzzy control systems..."):
-            # Create fuzzy controllers
-            ph_controller = create_ph_fuzzy_controller()
-            temp_controller = create_temperature_fuzzy_controller()
-            feed_controller = create_substrate_fuzzy_controller()
+            # Create fuzzy controllers with user-configured parameters
+            fuzzy_params = {
+                'pH_error_range': pH_error_range,
+                'pH_error_optimal_width': pH_error_optimal_width,
+                'pH_output_range': pH_output_range,
+                'pH_control_aggressive': pH_control_aggressive,
+                'substrate_influence_pH': substrate_influence_pH,
+                'temp_error_range': temp_error_range,
+                'temp_error_optimal_width': temp_error_optimal_width,
+                'temp_output_range': temp_output_range,
+                'temp_control_aggressive': temp_control_aggressive,
+                'substrate_influence_temp': substrate_influence_temp,
+                'sub_error_range': sub_error_range,
+                'sub_error_zero_width': sub_error_zero_width,
+                'feed_rate_max': feed_rate_max,
+                'feed_sensitivity': feed_sensitivity
+            }
+            
+            ph_controller = create_ph_fuzzy_controller(fuzzy_params)
+            temp_controller = create_temperature_fuzzy_controller(fuzzy_params)
+            feed_controller = create_substrate_fuzzy_controller(fuzzy_params)
         
         with st.spinner("Running simulation..."):
             # Run simulation
@@ -425,26 +512,55 @@ def fuzzy_control_page():
     else:
         st.info("👆 Configure parameters in the sidebar and click '🚀 Run Fuzzy Control Simulation' to start")
         
+        # Get fuzzy parameters for visualization
+        fuzzy_params = {
+            'pH_error_range': st.session_state.get('pH_err_range', (-3.0, 3.0)),
+            'pH_error_optimal_width': st.session_state.get('pH_opt_width', 0.5),
+            'pH_output_range': st.session_state.get('pH_out_range', 1.0),
+            'pH_control_aggressive': st.session_state.get('pH_aggr', 1.0),
+            'substrate_influence_pH': st.session_state.get('sub_inf_pH', 0.5),
+            'temp_error_range': st.session_state.get('temp_err_range', (-15.0, 15.0)),
+            'temp_error_optimal_width': st.session_state.get('temp_opt_width', 3.0),
+            'temp_output_range': st.session_state.get('temp_out_range', 1.0),
+            'temp_control_aggressive': st.session_state.get('temp_aggr', 1.0),
+            'substrate_influence_temp': st.session_state.get('sub_inf_temp', 0.5),
+            'sub_error_range': st.session_state.get('sub_err_range', (-30.0, 30.0)),
+            'sub_error_zero_width': st.session_state.get('sub_zero_width', 5.0),
+            'feed_rate_max': st.session_state.get('feed_max', 1.0),
+            'feed_sensitivity': st.session_state.get('feed_sens', 1.0)
+        }
+        
         # Display membership functions
         st.subheader("🔍 Fuzzy System Visualization")
         st.markdown("Preview of membership functions for each controller:")
+        st.info("💡 Tip: Expand the 'Fuzzy Controller Tuning' section in the sidebar to customize membership functions and see the changes here.")
         
-        with st.expander("pH Controller Membership Functions"):
-            fig_ph = visualize_ph_controller()
+        with st.expander("pH Controller Membership Functions", expanded=True):
+            fig_ph = visualize_ph_controller(fuzzy_params)
             st.pyplot(fig_ph)
         
         with st.expander("Temperature Controller Membership Functions"):
-            fig_temp = visualize_temperature_controller()
+            fig_temp = visualize_temperature_controller(fuzzy_params)
             st.pyplot(fig_temp)
         
         with st.expander("Substrate Feed Controller Membership Functions"):
-            fig_feed = visualize_substrate_controller()
+            fig_feed = visualize_substrate_controller(fuzzy_params)
             st.pyplot(fig_feed)
 
 
-def create_ph_fuzzy_controller():
+def create_ph_fuzzy_controller(params=None):
     """
     Create fuzzy logic controller for pH control based on substrate composition.
+    
+    Parameters:
+    -----------
+    params : dict, optional
+        Dictionary containing fuzzy controller parameters:
+        - pH_error_range: tuple (min, max) for pH error input range
+        - pH_error_optimal_width: width of optimal pH zone
+        - pH_output_range: maximum control action magnitude
+        - pH_control_aggressive: control aggressiveness multiplier
+        - substrate_influence_pH: substrate influence factor (0-1)
     
     Inputs:
         - pH_error: Difference between setpoint and measured pH
@@ -453,19 +569,38 @@ def create_ph_fuzzy_controller():
     Output:
         - acid_base: Control action (-1 = add acid, +1 = add base)
     """
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    pH_min, pH_max = params.get('pH_error_range', (-3.0, 3.0))
+    pH_opt_width = params.get('pH_error_optimal_width', 0.5)
+    out_range = params.get('pH_output_range', 1.0)
+    aggr = params.get('pH_control_aggressive', 1.0)
+    sub_inf = params.get('substrate_influence_pH', 0.5)
+    
     # Input variables
-    pH_error = ctrl.Antecedent(np.linspace(-3, 3, 100), 'pH_error')
+    pH_error = ctrl.Antecedent(np.linspace(pH_min, pH_max, 100), 'pH_error')
     substrate = ctrl.Antecedent(np.linspace(0, 50, 100), 'substrate')
     
     # Output variable
-    acid_base = ctrl.Consequent(np.linspace(-1, 1, 100), 'acid_base')
+    acid_base = ctrl.Consequent(np.linspace(-out_range, out_range, 100), 'acid_base')
     
-    # Membership functions for pH error
-    pH_error['very_low'] = fuzz.trapmf(pH_error.universe, [-3, -3, -2, -1])
-    pH_error['low'] = fuzz.trimf(pH_error.universe, [-2, -1, 0])
-    pH_error['optimal'] = fuzz.trimf(pH_error.universe, [-0.5, 0, 0.5])
-    pH_error['high'] = fuzz.trimf(pH_error.universe, [0, 1, 2])
-    pH_error['very_high'] = fuzz.trapmf(pH_error.universe, [1, 2, 3, 3])
+    # Calculate membership function points based on parameters
+    span = pH_max - pH_min
+    mid = (pH_max + pH_min) / 2
+    
+    # Membership functions for pH error (adjusted based on parameters)
+    pH_error['very_low'] = fuzz.trapmf(pH_error.universe, 
+                                       [pH_min, pH_min, pH_min + span*0.15, pH_min + span*0.35])
+    pH_error['low'] = fuzz.trimf(pH_error.universe, 
+                                 [pH_min + span*0.15, pH_min + span*0.35, mid])
+    pH_error['optimal'] = fuzz.trimf(pH_error.universe, 
+                                     [mid - pH_opt_width, mid, mid + pH_opt_width])
+    pH_error['high'] = fuzz.trimf(pH_error.universe, 
+                                  [mid, pH_max - span*0.35, pH_max - span*0.15])
+    pH_error['very_high'] = fuzz.trapmf(pH_error.universe, 
+                                        [pH_max - span*0.35, pH_max - span*0.15, pH_max, pH_max])
     
     # Membership functions for substrate concentration
     substrate['very_low'] = fuzz.trapmf(substrate.universe, [0, 0, 5, 10])
@@ -474,47 +609,62 @@ def create_ph_fuzzy_controller():
     substrate['high'] = fuzz.trimf(substrate.universe, [25, 35, 45])
     substrate['very_high'] = fuzz.trapmf(substrate.universe, [40, 45, 50, 50])
     
-    # Membership functions for control action
-    acid_base['strong_acid'] = fuzz.trapmf(acid_base.universe, [-1, -1, -0.7, -0.4])
-    acid_base['mild_acid'] = fuzz.trimf(acid_base.universe, [-0.6, -0.3, 0])
-    acid_base['neutral'] = fuzz.trimf(acid_base.universe, [-0.2, 0, 0.2])
-    acid_base['mild_base'] = fuzz.trimf(acid_base.universe, [0, 0.3, 0.6])
-    acid_base['strong_base'] = fuzz.trapmf(acid_base.universe, [0.4, 0.7, 1, 1])
+    # Membership functions for control action (scaled by aggressiveness)
+    strong_mag = 0.7 * aggr * out_range
+    mild_mag = 0.3 * aggr * out_range
+    neutral_width = 0.2 * out_range
+    
+    acid_base['strong_acid'] = fuzz.trapmf(acid_base.universe, 
+                                           [-out_range, -out_range, -strong_mag, -mild_mag])
+    acid_base['mild_acid'] = fuzz.trimf(acid_base.universe, 
+                                        [-mild_mag*2, -mild_mag, 0])
+    acid_base['neutral'] = fuzz.trimf(acid_base.universe, 
+                                      [-neutral_width, 0, neutral_width])
+    acid_base['mild_base'] = fuzz.trimf(acid_base.universe, 
+                                        [0, mild_mag, mild_mag*2])
+    acid_base['strong_base'] = fuzz.trapmf(acid_base.universe, 
+                                           [mild_mag, strong_mag, out_range, out_range])
     
     # Fuzzy rules for pH control based on pH error and substrate concentration
-    # High substrate requires more careful pH control due to buffering capacity
-    rules = [
-        # When pH is very low (too acidic) → Add base
-        ctrl.Rule(pH_error['very_low'] & substrate['very_low'], acid_base['strong_base']),
-        ctrl.Rule(pH_error['very_low'] & substrate['low'], acid_base['strong_base']),
-        ctrl.Rule(pH_error['very_low'] & substrate['medium'], acid_base['mild_base']),
-        ctrl.Rule(pH_error['very_low'] & substrate['high'], acid_base['mild_base']),
-        ctrl.Rule(pH_error['very_low'] & substrate['very_high'], acid_base['neutral']),
-        
-        # When pH is low (slightly acidic) → Add mild base
-        ctrl.Rule(pH_error['low'] & substrate['very_low'], acid_base['mild_base']),
-        ctrl.Rule(pH_error['low'] & substrate['low'], acid_base['mild_base']),
-        ctrl.Rule(pH_error['low'] & substrate['medium'], acid_base['mild_base']),
-        ctrl.Rule(pH_error['low'] & substrate['high'], acid_base['neutral']),
-        ctrl.Rule(pH_error['low'] & substrate['very_high'], acid_base['neutral']),
-        
-        # When pH is optimal → No action needed
-        ctrl.Rule(pH_error['optimal'], acid_base['neutral']),
-        
-        # When pH is high (slightly basic) → Add mild acid
-        ctrl.Rule(pH_error['high'] & substrate['very_low'], acid_base['mild_acid']),
-        ctrl.Rule(pH_error['high'] & substrate['low'], acid_base['mild_acid']),
-        ctrl.Rule(pH_error['high'] & substrate['medium'], acid_base['mild_acid']),
-        ctrl.Rule(pH_error['high'] & substrate['high'], acid_base['neutral']),
-        ctrl.Rule(pH_error['high'] & substrate['very_high'], acid_base['neutral']),
-        
-        # When pH is very high (too basic) → Add acid
-        ctrl.Rule(pH_error['very_high'] & substrate['very_low'], acid_base['strong_acid']),
-        ctrl.Rule(pH_error['very_high'] & substrate['low'], acid_base['strong_acid']),
-        ctrl.Rule(pH_error['very_high'] & substrate['medium'], acid_base['mild_acid']),
-        ctrl.Rule(pH_error['very_high'] & substrate['high'], acid_base['mild_acid']),
-        ctrl.Rule(pH_error['very_high'] & substrate['very_high'], acid_base['neutral']),
-    ]
+    # Substrate influence: higher substrate reduces control action due to buffering
+    rules = []
+    
+    # Define rule weights based on substrate influence
+    def get_output_modifier(substrate_level, error_level):
+        """Modify output based on substrate influence"""
+        if sub_inf < 0.3:  # Low influence - substrate doesn't matter much
+            return error_level
+        elif sub_inf < 0.7:  # Medium influence
+            if substrate_level in ['high', 'very_high'] and error_level in ['strong_acid', 'strong_base']:
+                return 'mild_' + error_level.split('_')[1]  # Reduce to mild
+            return error_level
+        else:  # High influence - substrate significantly reduces action
+            if substrate_level == 'very_high':
+                return 'neutral'
+            elif substrate_level == 'high' and error_level in ['strong_acid', 'strong_base']:
+                return 'neutral'
+            elif substrate_level == 'high':
+                return 'mild_' + error_level.split('_')[1] if '_' in error_level else error_level
+            return error_level
+    
+    # Generate rules systematically
+    error_levels = ['very_low', 'low', 'optimal', 'high', 'very_high']
+    substrate_levels = ['very_low', 'low', 'medium', 'high', 'very_high']
+    
+    # Map pH errors to appropriate control actions
+    error_to_action = {
+        'very_low': 'strong_base',   # Very acidic → strong base
+        'low': 'mild_base',          # Slightly acidic → mild base
+        'optimal': 'neutral',        # Optimal → no action
+        'high': 'mild_acid',         # Slightly basic → mild acid
+        'very_high': 'strong_acid'   # Very basic → strong acid
+    }
+    
+    for err in error_levels:
+        base_action = error_to_action[err]
+        for sub in substrate_levels:
+            action = get_output_modifier(sub, base_action)
+            rules.append(ctrl.Rule(pH_error[err] & substrate[sub], acid_base[action]))
     
     # Create control system
     pH_ctrl = ctrl.ControlSystem(rules)
@@ -523,9 +673,19 @@ def create_ph_fuzzy_controller():
     return pH_simulation
 
 
-def create_temperature_fuzzy_controller():
+def create_temperature_fuzzy_controller(params=None):
     """
     Create fuzzy logic controller for temperature control based on substrate composition.
+    
+    Parameters:
+    -----------
+    params : dict, optional
+        Dictionary containing fuzzy controller parameters:
+        - temp_error_range: tuple (min, max) for temperature error input range
+        - temp_error_optimal_width: width of optimal temperature zone
+        - temp_output_range: maximum control action magnitude
+        - temp_control_aggressive: control aggressiveness multiplier
+        - substrate_influence_temp: substrate influence factor (0-1)
     
     Inputs:
         - temp_error: Difference between setpoint and measured temperature
@@ -534,19 +694,38 @@ def create_temperature_fuzzy_controller():
     Output:
         - heat_cool: Control action (-1 = cooling, +1 = heating)
     """
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    temp_min, temp_max = params.get('temp_error_range', (-15.0, 15.0))
+    temp_opt_width = params.get('temp_error_optimal_width', 3.0)
+    out_range = params.get('temp_output_range', 1.0)
+    aggr = params.get('temp_control_aggressive', 1.0)
+    sub_inf = params.get('substrate_influence_temp', 0.5)
+    
     # Input variables
-    temp_error = ctrl.Antecedent(np.linspace(-15, 15, 100), 'temp_error')
+    temp_error = ctrl.Antecedent(np.linspace(temp_min, temp_max, 100), 'temp_error')
     substrate = ctrl.Antecedent(np.linspace(0, 50, 100), 'substrate')
     
     # Output variable
-    heat_cool = ctrl.Consequent(np.linspace(-1, 1, 100), 'heat_cool')
+    heat_cool = ctrl.Consequent(np.linspace(-out_range, out_range, 100), 'heat_cool')
     
-    # Membership functions for temperature error
-    temp_error['very_cold'] = fuzz.trapmf(temp_error.universe, [-15, -15, -10, -5])
-    temp_error['cold'] = fuzz.trimf(temp_error.universe, [-10, -5, 0])
-    temp_error['optimal'] = fuzz.trimf(temp_error.universe, [-3, 0, 3])
-    temp_error['hot'] = fuzz.trimf(temp_error.universe, [0, 5, 10])
-    temp_error['very_hot'] = fuzz.trapmf(temp_error.universe, [5, 10, 15, 15])
+    # Calculate membership function points based on parameters
+    span = temp_max - temp_min
+    mid = (temp_max + temp_min) / 2
+    
+    # Membership functions for temperature error (adjusted based on parameters)
+    temp_error['very_cold'] = fuzz.trapmf(temp_error.universe, 
+                                          [temp_min, temp_min, temp_min + span*0.15, temp_min + span*0.35])
+    temp_error['cold'] = fuzz.trimf(temp_error.universe, 
+                                    [temp_min + span*0.15, temp_min + span*0.35, mid])
+    temp_error['optimal'] = fuzz.trimf(temp_error.universe, 
+                                       [mid - temp_opt_width, mid, mid + temp_opt_width])
+    temp_error['hot'] = fuzz.trimf(temp_error.universe, 
+                                   [mid, temp_max - span*0.35, temp_max - span*0.15])
+    temp_error['very_hot'] = fuzz.trapmf(temp_error.universe, 
+                                         [temp_max - span*0.35, temp_max - span*0.15, temp_max, temp_max])
     
     # Membership functions for substrate (affects metabolic heat generation)
     substrate['very_low'] = fuzz.trapmf(substrate.universe, [0, 0, 5, 10])
@@ -555,47 +734,74 @@ def create_temperature_fuzzy_controller():
     substrate['high'] = fuzz.trimf(substrate.universe, [25, 35, 45])
     substrate['very_high'] = fuzz.trapmf(substrate.universe, [40, 45, 50, 50])
     
-    # Membership functions for control action
-    heat_cool['strong_cooling'] = fuzz.trapmf(heat_cool.universe, [-1, -1, -0.7, -0.4])
-    heat_cool['mild_cooling'] = fuzz.trimf(heat_cool.universe, [-0.6, -0.3, 0])
-    heat_cool['neutral'] = fuzz.trimf(heat_cool.universe, [-0.2, 0, 0.2])
-    heat_cool['mild_heating'] = fuzz.trimf(heat_cool.universe, [0, 0.3, 0.6])
-    heat_cool['strong_heating'] = fuzz.trapmf(heat_cool.universe, [0.4, 0.7, 1, 1])
+    # Membership functions for control action (scaled by aggressiveness)
+    strong_mag = 0.7 * aggr * out_range
+    mild_mag = 0.3 * aggr * out_range
+    neutral_width = 0.2 * out_range
     
-    # Fuzzy rules for temperature control
-    # Higher substrate → more metabolic heat → may need more cooling
-    rules = [
-        # When temperature is very cold → Strong heating
-        ctrl.Rule(temp_error['very_cold'] & substrate['very_low'], heat_cool['strong_heating']),
-        ctrl.Rule(temp_error['very_cold'] & substrate['low'], heat_cool['strong_heating']),
-        ctrl.Rule(temp_error['very_cold'] & substrate['medium'], heat_cool['mild_heating']),
-        ctrl.Rule(temp_error['very_cold'] & substrate['high'], heat_cool['mild_heating']),
-        ctrl.Rule(temp_error['very_cold'] & substrate['very_high'], heat_cool['neutral']),
-        
-        # When temperature is cold → Mild heating
-        ctrl.Rule(temp_error['cold'] & substrate['very_low'], heat_cool['mild_heating']),
-        ctrl.Rule(temp_error['cold'] & substrate['low'], heat_cool['mild_heating']),
-        ctrl.Rule(temp_error['cold'] & substrate['medium'], heat_cool['mild_heating']),
-        ctrl.Rule(temp_error['cold'] & substrate['high'], heat_cool['neutral']),
-        ctrl.Rule(temp_error['cold'] & substrate['very_high'], heat_cool['neutral']),
-        
-        # When temperature is optimal → No action
-        ctrl.Rule(temp_error['optimal'], heat_cool['neutral']),
-        
-        # When temperature is hot → Mild cooling
-        ctrl.Rule(temp_error['hot'] & substrate['very_low'], heat_cool['mild_cooling']),
-        ctrl.Rule(temp_error['hot'] & substrate['low'], heat_cool['mild_cooling']),
-        ctrl.Rule(temp_error['hot'] & substrate['medium'], heat_cool['mild_cooling']),
-        ctrl.Rule(temp_error['hot'] & substrate['high'], heat_cool['strong_cooling']),
-        ctrl.Rule(temp_error['hot'] & substrate['very_high'], heat_cool['strong_cooling']),
-        
-        # When temperature is very hot → Strong cooling (especially with high substrate)
-        ctrl.Rule(temp_error['very_hot'] & substrate['very_low'], heat_cool['mild_cooling']),
-        ctrl.Rule(temp_error['very_hot'] & substrate['low'], heat_cool['strong_cooling']),
-        ctrl.Rule(temp_error['very_hot'] & substrate['medium'], heat_cool['strong_cooling']),
-        ctrl.Rule(temp_error['very_hot'] & substrate['high'], heat_cool['strong_cooling']),
-        ctrl.Rule(temp_error['very_hot'] & substrate['very_high'], heat_cool['strong_cooling']),
-    ]
+    heat_cool['strong_cooling'] = fuzz.trapmf(heat_cool.universe, 
+                                              [-out_range, -out_range, -strong_mag, -mild_mag])
+    heat_cool['mild_cooling'] = fuzz.trimf(heat_cool.universe, 
+                                           [-mild_mag*2, -mild_mag, 0])
+    heat_cool['neutral'] = fuzz.trimf(heat_cool.universe, 
+                                      [-neutral_width, 0, neutral_width])
+    heat_cool['mild_heating'] = fuzz.trimf(heat_cool.universe, 
+                                           [0, mild_mag, mild_mag*2])
+    heat_cool['strong_heating'] = fuzz.trapmf(heat_cool.universe, 
+                                              [mild_mag, strong_mag, out_range, out_range])
+    
+    # Fuzzy rules for temperature control based on temp error and substrate concentration
+    # Substrate influence: higher substrate increases metabolic heat generation
+    rules = []
+    
+    # Define rule weights based on substrate influence
+    def get_output_modifier(substrate_level, error_level):
+        """Modify output based on substrate influence (metabolic heat)"""
+        if sub_inf < 0.3:  # Low influence - substrate doesn't affect much
+            return error_level
+        elif sub_inf < 0.7:  # Medium influence
+            # High substrate means more metabolic heat, reduce heating or increase cooling
+            if substrate_level in ['high', 'very_high']:
+                if error_level in ['strong_heating', 'mild_heating']:
+                    return 'mild_heating' if error_level == 'strong_heating' else 'neutral'
+                elif error_level == 'mild_cooling':
+                    return 'strong_cooling'
+            return error_level
+        else:  # High influence - substrate significantly affects temperature
+            if substrate_level == 'very_high':
+                if 'heating' in error_level:
+                    return 'neutral'
+                elif error_level == 'neutral':
+                    return 'mild_cooling'
+                else:  # cooling
+                    return 'strong_cooling'
+            elif substrate_level == 'high':
+                if error_level == 'strong_heating':
+                    return 'neutral'
+                elif error_level == 'mild_heating':
+                    return 'neutral'
+                elif error_level == 'mild_cooling':
+                    return 'strong_cooling'
+            return error_level
+    
+    # Generate rules systematically
+    error_levels = ['very_cold', 'cold', 'optimal', 'hot', 'very_hot']
+    substrate_levels = ['very_low', 'low', 'medium', 'high', 'very_high']
+    
+    # Map temperature errors to appropriate control actions
+    error_to_action = {
+        'very_cold': 'strong_heating',  # Very cold → strong heating
+        'cold': 'mild_heating',         # Cold → mild heating
+        'optimal': 'neutral',           # Optimal → no action
+        'hot': 'mild_cooling',          # Hot → mild cooling
+        'very_hot': 'strong_cooling'    # Very hot → strong cooling
+    }
+    
+    for err in error_levels:
+        base_action = error_to_action[err]
+        for sub in substrate_levels:
+            action = get_output_modifier(sub, base_action)
+            rules.append(ctrl.Rule(temp_error[err] & substrate[sub], heat_cool[action]))
     
     # Create control system
     temp_ctrl = ctrl.ControlSystem(rules)
@@ -604,9 +810,18 @@ def create_temperature_fuzzy_controller():
     return temp_simulation
 
 
-def create_substrate_fuzzy_controller():
+def create_substrate_fuzzy_controller(params=None):
     """
     Create fuzzy logic controller for substrate feeding based on substrate level and error.
+    
+    Parameters:
+    -----------
+    params : dict, optional
+        Dictionary containing fuzzy controller parameters:
+        - sub_error_range: tuple (min, max) for substrate error input range
+        - sub_error_zero_width: width of zero error zone
+        - feed_rate_max: maximum feed rate
+        - feed_sensitivity: feed rate sensitivity multiplier
     
     Inputs:
         - substrate_error: Difference between target and current substrate
@@ -615,19 +830,37 @@ def create_substrate_fuzzy_controller():
     Output:
         - feed_rate: Substrate feed rate (0 to 1, normalized)
     """
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    sub_min, sub_max = params.get('sub_error_range', (-30.0, 30.0))
+    zero_width = params.get('sub_error_zero_width', 5.0)
+    max_feed = params.get('feed_rate_max', 1.0)
+    sensitivity = params.get('feed_sensitivity', 1.0)
+    
     # Input variables
-    substrate_error = ctrl.Antecedent(np.linspace(-30, 30, 100), 'substrate_error')
+    substrate_error = ctrl.Antecedent(np.linspace(sub_min, sub_max, 100), 'substrate_error')
     substrate_level = ctrl.Antecedent(np.linspace(0, 50, 100), 'substrate_level')
     
     # Output variable
-    feed_rate = ctrl.Consequent(np.linspace(0, 1, 100), 'feed_rate')
+    feed_rate = ctrl.Consequent(np.linspace(0, max_feed, 100), 'feed_rate')
     
-    # Membership functions for substrate error
-    substrate_error['very_negative'] = fuzz.trapmf(substrate_error.universe, [-30, -30, -20, -10])
-    substrate_error['negative'] = fuzz.trimf(substrate_error.universe, [-20, -10, 0])
-    substrate_error['zero'] = fuzz.trimf(substrate_error.universe, [-5, 0, 5])
-    substrate_error['positive'] = fuzz.trimf(substrate_error.universe, [0, 10, 20])
-    substrate_error['very_positive'] = fuzz.trapmf(substrate_error.universe, [10, 20, 30, 30])
+    # Calculate membership function points based on parameters
+    span = sub_max - sub_min
+    mid = (sub_max + sub_min) / 2
+    
+    # Membership functions for substrate error (adjusted based on parameters)
+    substrate_error['very_negative'] = fuzz.trapmf(substrate_error.universe, 
+                                                    [sub_min, sub_min, sub_min + span*0.15, sub_min + span*0.35])
+    substrate_error['negative'] = fuzz.trimf(substrate_error.universe, 
+                                            [sub_min + span*0.15, sub_min + span*0.35, mid])
+    substrate_error['zero'] = fuzz.trimf(substrate_error.universe, 
+                                         [mid - zero_width, mid, mid + zero_width])
+    substrate_error['positive'] = fuzz.trimf(substrate_error.universe, 
+                                            [mid, sub_max - span*0.35, sub_max - span*0.15])
+    substrate_error['very_positive'] = fuzz.trapmf(substrate_error.universe, 
+                                                   [sub_max - span*0.35, sub_max - span*0.15, sub_max, sub_max])
     
     # Membership functions for substrate level
     substrate_level['very_low'] = fuzz.trapmf(substrate_level.universe, [0, 0, 5, 10])
@@ -636,46 +869,80 @@ def create_substrate_fuzzy_controller():
     substrate_level['high'] = fuzz.trimf(substrate_level.universe, [30, 40, 50])
     substrate_level['very_high'] = fuzz.trapmf(substrate_level.universe, [45, 50, 50, 50])
     
-    # Membership functions for feed rate
-    feed_rate['none'] = fuzz.trimf(feed_rate.universe, [0, 0, 0.1])
-    feed_rate['very_low'] = fuzz.trimf(feed_rate.universe, [0, 0.15, 0.3])
-    feed_rate['low'] = fuzz.trimf(feed_rate.universe, [0.2, 0.35, 0.5])
-    feed_rate['medium'] = fuzz.trimf(feed_rate.universe, [0.4, 0.55, 0.7])
-    feed_rate['high'] = fuzz.trimf(feed_rate.universe, [0.6, 0.75, 0.9])
-    feed_rate['very_high'] = fuzz.trimf(feed_rate.universe, [0.8, 0.95, 1.0])
+    # Membership functions for feed rate (scaled by sensitivity)
+    # Sensitivity affects how quickly feed rate responds to errors
+    # Ensure proper sorting to avoid invalid triangular functions when sensitivity > 1
+    def safe_trimf_points(a, b, c, max_val):
+        """Ensure a <= b <= c and all values <= max_val"""
+        points = sorted([min(a, max_val), min(b, max_val), min(c, max_val)])
+        return points
+    
+    feed_rate['none'] = fuzz.trimf(feed_rate.universe, [0, 0, 0.05 * max_feed])
+    feed_rate['very_low'] = fuzz.trimf(feed_rate.universe, 
+                                       safe_trimf_points(0, 0.15 * sensitivity * max_feed, 0.3 * sensitivity * max_feed, max_feed))
+    feed_rate['low'] = fuzz.trimf(feed_rate.universe, 
+                                  safe_trimf_points(0.2 * sensitivity * max_feed, 0.35 * sensitivity * max_feed, 0.5 * sensitivity * max_feed, max_feed))
+    feed_rate['medium'] = fuzz.trimf(feed_rate.universe, 
+                                     safe_trimf_points(0.4 * sensitivity * max_feed, 0.55 * sensitivity * max_feed, 0.7 * sensitivity * max_feed, max_feed))
+    feed_rate['high'] = fuzz.trimf(feed_rate.universe, 
+                                   safe_trimf_points(0.6 * sensitivity * max_feed, 0.75 * sensitivity * max_feed, 0.9 * sensitivity * max_feed, max_feed))
+    feed_rate['very_high'] = fuzz.trimf(feed_rate.universe, 
+                                        safe_trimf_points(0.8 * sensitivity * max_feed, 0.95 * max_feed, max_feed, max_feed))
     
     # Fuzzy rules for substrate feeding
     # Positive error → need more substrate → increase feed
     # Negative error → too much substrate → decrease feed
     # Current level also affects decision (avoid overfeeding)
-    rules = [
-        # Very positive error (need much more substrate)
-        ctrl.Rule(substrate_error['very_positive'] & substrate_level['very_low'], feed_rate['very_high']),
-        ctrl.Rule(substrate_error['very_positive'] & substrate_level['low'], feed_rate['high']),
-        ctrl.Rule(substrate_error['very_positive'] & substrate_level['medium'], feed_rate['medium']),
-        ctrl.Rule(substrate_error['very_positive'] & substrate_level['high'], feed_rate['low']),
-        ctrl.Rule(substrate_error['very_positive'] & substrate_level['very_high'], feed_rate['none']),
+    rules = []
+    
+    # Define rule logic based on error and current level
+    error_levels = ['very_negative', 'negative', 'zero', 'positive', 'very_positive']
+    level_categories = ['very_low', 'low', 'medium', 'high', 'very_high']
+    
+    # Map substrate error to base feed rates
+    error_to_base_feed = {
+        'very_negative': 'none',      # Too much substrate → no feed
+        'negative': 'none',           # Excess substrate → no feed
+        'zero': 'very_low',           # At target → maintain low feed
+        'positive': 'medium',         # Need substrate → moderate feed
+        'very_positive': 'high'       # Need much more → high feed
+    }
+    
+    # Adjust feed rate based on current substrate level
+    def get_adjusted_feed(error_cat, level_cat):
+        """Adjust feed rate based on error and current level"""
+        base_feed = error_to_base_feed[error_cat]
         
-        # Positive error (need more substrate)
-        ctrl.Rule(substrate_error['positive'] & substrate_level['very_low'], feed_rate['high']),
-        ctrl.Rule(substrate_error['positive'] & substrate_level['low'], feed_rate['medium']),
-        ctrl.Rule(substrate_error['positive'] & substrate_level['medium'], feed_rate['low']),
-        ctrl.Rule(substrate_error['positive'] & substrate_level['high'], feed_rate['very_low']),
-        ctrl.Rule(substrate_error['positive'] & substrate_level['very_high'], feed_rate['none']),
+        if base_feed == 'none':
+            return 'none'
         
-        # Zero error (at target)
-        ctrl.Rule(substrate_error['zero'] & substrate_level['very_low'], feed_rate['low']),
-        ctrl.Rule(substrate_error['zero'] & substrate_level['low'], feed_rate['very_low']),
-        ctrl.Rule(substrate_error['zero'] & substrate_level['medium'], feed_rate['very_low']),
-        ctrl.Rule(substrate_error['zero'] & substrate_level['high'], feed_rate['none']),
-        ctrl.Rule(substrate_error['zero'] & substrate_level['very_high'], feed_rate['none']),
+        # Reduce feed if substrate level is already high
+        feed_levels = ['none', 'very_low', 'low', 'medium', 'high', 'very_high']
+        base_idx = feed_levels.index(base_feed)
         
-        # Negative error (too much substrate)
-        ctrl.Rule(substrate_error['negative'], feed_rate['none']),
+        # Adjust based on current level
+        level_idx = level_categories.index(level_cat)
         
-        # Very negative error (way too much substrate)
-        ctrl.Rule(substrate_error['very_negative'], feed_rate['none']),
-    ]
+        if level_idx >= 4:  # very_high
+            return 'none'
+        elif level_idx >= 3:  # high
+            adjusted_idx = max(0, base_idx - 2)
+        elif level_idx >= 2:  # medium
+            adjusted_idx = max(0, base_idx - 1)
+        else:  # low or very_low
+            # Increase feed if error is positive and level is low
+            if 'positive' in error_cat:
+                adjusted_idx = min(len(feed_levels) - 1, base_idx + 1)
+            else:
+                adjusted_idx = base_idx
+        
+        return feed_levels[adjusted_idx]
+    
+    # Generate rules systematically
+    for err in error_levels:
+        for level in level_categories:
+            adjusted_feed = get_adjusted_feed(err, level)
+            rules.append(ctrl.Rule(substrate_error[err] & substrate_level[level], feed_rate[adjusted_feed]))
     
     # Create control system
     feed_ctrl = ctrl.ControlSystem(rules)
@@ -684,17 +951,35 @@ def create_substrate_fuzzy_controller():
     return feed_simulation
 
 
-def visualize_ph_controller():
+def visualize_ph_controller(params=None):
     """Visualize pH controller membership functions."""
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    pH_min, pH_max = params.get('pH_error_range', (-3.0, 3.0))
+    pH_opt_width = params.get('pH_error_optimal_width', 0.5)
+    out_range = params.get('pH_output_range', 1.0)
+    aggr = params.get('pH_control_aggressive', 1.0)
+    
     fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     
+    # Calculate membership function points
+    span = pH_max - pH_min
+    mid = (pH_max + pH_min) / 2
+    
     # pH error
-    pH_error = np.linspace(-3, 3, 100)
-    axes[0].plot(pH_error, fuzz.trapmf(pH_error, [-3, -3, -2, -1]), 'b', linewidth=2, label='Very Low')
-    axes[0].plot(pH_error, fuzz.trimf(pH_error, [-2, -1, 0]), 'g', linewidth=2, label='Low')
-    axes[0].plot(pH_error, fuzz.trimf(pH_error, [-0.5, 0, 0.5]), 'orange', linewidth=2, label='Optimal')
-    axes[0].plot(pH_error, fuzz.trimf(pH_error, [0, 1, 2]), 'r', linewidth=2, label='High')
-    axes[0].plot(pH_error, fuzz.trapmf(pH_error, [1, 2, 3, 3]), 'm', linewidth=2, label='Very High')
+    pH_error = np.linspace(pH_min, pH_max, 100)
+    axes[0].plot(pH_error, fuzz.trapmf(pH_error, [pH_min, pH_min, pH_min + span*0.15, pH_min + span*0.35]), 
+                'b', linewidth=2, label='Very Low')
+    axes[0].plot(pH_error, fuzz.trimf(pH_error, [pH_min + span*0.15, pH_min + span*0.35, mid]), 
+                'g', linewidth=2, label='Low')
+    axes[0].plot(pH_error, fuzz.trimf(pH_error, [mid - pH_opt_width, mid, mid + pH_opt_width]), 
+                'orange', linewidth=2, label='Optimal')
+    axes[0].plot(pH_error, fuzz.trimf(pH_error, [mid, pH_max - span*0.35, pH_max - span*0.15]), 
+                'r', linewidth=2, label='High')
+    axes[0].plot(pH_error, fuzz.trapmf(pH_error, [pH_max - span*0.35, pH_max - span*0.15, pH_max, pH_max]), 
+                'm', linewidth=2, label='Very High')
     axes[0].set_title('pH Error Membership Functions', fontsize=12, fontweight='bold')
     axes[0].set_xlabel('pH Error')
     axes[0].set_ylabel('Membership Degree')
@@ -715,12 +1000,21 @@ def visualize_ph_controller():
     axes[1].grid(True, alpha=0.3)
     
     # Control action
-    acid_base = np.linspace(-1, 1, 100)
-    axes[2].plot(acid_base, fuzz.trapmf(acid_base, [-1, -1, -0.7, -0.4]), 'b', linewidth=2, label='Strong Acid')
-    axes[2].plot(acid_base, fuzz.trimf(acid_base, [-0.6, -0.3, 0]), 'c', linewidth=2, label='Mild Acid')
-    axes[2].plot(acid_base, fuzz.trimf(acid_base, [-0.2, 0, 0.2]), 'orange', linewidth=2, label='Neutral')
-    axes[2].plot(acid_base, fuzz.trimf(acid_base, [0, 0.3, 0.6]), 'g', linewidth=2, label='Mild Base')
-    axes[2].plot(acid_base, fuzz.trapmf(acid_base, [0.4, 0.7, 1, 1]), 'm', linewidth=2, label='Strong Base')
+    strong_mag = 0.7 * aggr * out_range
+    mild_mag = 0.3 * aggr * out_range
+    neutral_width = 0.2 * out_range
+    
+    acid_base = np.linspace(-out_range, out_range, 100)
+    axes[2].plot(acid_base, fuzz.trapmf(acid_base, [-out_range, -out_range, -strong_mag, -mild_mag]), 
+                'b', linewidth=2, label='Strong Acid')
+    axes[2].plot(acid_base, fuzz.trimf(acid_base, [-mild_mag*2, -mild_mag, 0]), 
+                'c', linewidth=2, label='Mild Acid')
+    axes[2].plot(acid_base, fuzz.trimf(acid_base, [-neutral_width, 0, neutral_width]), 
+                'orange', linewidth=2, label='Neutral')
+    axes[2].plot(acid_base, fuzz.trimf(acid_base, [0, mild_mag, mild_mag*2]), 
+                'g', linewidth=2, label='Mild Base')
+    axes[2].plot(acid_base, fuzz.trapmf(acid_base, [mild_mag, strong_mag, out_range, out_range]), 
+                'm', linewidth=2, label='Strong Base')
     axes[2].set_title('pH Control Action Membership Functions', fontsize=12, fontweight='bold')
     axes[2].set_xlabel('Acid/Base Action')
     axes[2].set_ylabel('Membership Degree')
@@ -731,17 +1025,35 @@ def visualize_ph_controller():
     return fig
 
 
-def visualize_temperature_controller():
+def visualize_temperature_controller(params=None):
     """Visualize temperature controller membership functions."""
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    temp_min, temp_max = params.get('temp_error_range', (-15.0, 15.0))
+    temp_opt_width = params.get('temp_error_optimal_width', 3.0)
+    out_range = params.get('temp_output_range', 1.0)
+    aggr = params.get('temp_control_aggressive', 1.0)
+    
     fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     
+    # Calculate membership function points
+    span = temp_max - temp_min
+    mid = (temp_max + temp_min) / 2
+    
     # Temperature error
-    temp_error = np.linspace(-15, 15, 100)
-    axes[0].plot(temp_error, fuzz.trapmf(temp_error, [-15, -15, -10, -5]), 'b', linewidth=2, label='Very Cold')
-    axes[0].plot(temp_error, fuzz.trimf(temp_error, [-10, -5, 0]), 'c', linewidth=2, label='Cold')
-    axes[0].plot(temp_error, fuzz.trimf(temp_error, [-3, 0, 3]), 'g', linewidth=2, label='Optimal')
-    axes[0].plot(temp_error, fuzz.trimf(temp_error, [0, 5, 10]), 'orange', linewidth=2, label='Hot')
-    axes[0].plot(temp_error, fuzz.trapmf(temp_error, [5, 10, 15, 15]), 'r', linewidth=2, label='Very Hot')
+    temp_error = np.linspace(temp_min, temp_max, 100)
+    axes[0].plot(temp_error, fuzz.trapmf(temp_error, [temp_min, temp_min, temp_min + span*0.15, temp_min + span*0.35]), 
+                'b', linewidth=2, label='Very Cold')
+    axes[0].plot(temp_error, fuzz.trimf(temp_error, [temp_min + span*0.15, temp_min + span*0.35, mid]), 
+                'c', linewidth=2, label='Cold')
+    axes[0].plot(temp_error, fuzz.trimf(temp_error, [mid - temp_opt_width, mid, mid + temp_opt_width]), 
+                'g', linewidth=2, label='Optimal')
+    axes[0].plot(temp_error, fuzz.trimf(temp_error, [mid, temp_max - span*0.35, temp_max - span*0.15]), 
+                'orange', linewidth=2, label='Hot')
+    axes[0].plot(temp_error, fuzz.trapmf(temp_error, [temp_max - span*0.35, temp_max - span*0.15, temp_max, temp_max]), 
+                'r', linewidth=2, label='Very Hot')
     axes[0].set_title('Temperature Error Membership Functions', fontsize=12, fontweight='bold')
     axes[0].set_xlabel('Temperature Error [°C]')
     axes[0].set_ylabel('Membership Degree')
@@ -762,12 +1074,21 @@ def visualize_temperature_controller():
     axes[1].grid(True, alpha=0.3)
     
     # Control action
-    heat_cool = np.linspace(-1, 1, 100)
-    axes[2].plot(heat_cool, fuzz.trapmf(heat_cool, [-1, -1, -0.7, -0.4]), 'b', linewidth=2, label='Strong Cooling')
-    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [-0.6, -0.3, 0]), 'c', linewidth=2, label='Mild Cooling')
-    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [-0.2, 0, 0.2]), 'g', linewidth=2, label='Neutral')
-    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [0, 0.3, 0.6]), 'orange', linewidth=2, label='Mild Heating')
-    axes[2].plot(heat_cool, fuzz.trapmf(heat_cool, [0.4, 0.7, 1, 1]), 'r', linewidth=2, label='Strong Heating')
+    strong_mag = 0.7 * aggr * out_range
+    mild_mag = 0.3 * aggr * out_range
+    neutral_width = 0.2 * out_range
+    
+    heat_cool = np.linspace(-out_range, out_range, 100)
+    axes[2].plot(heat_cool, fuzz.trapmf(heat_cool, [-out_range, -out_range, -strong_mag, -mild_mag]), 
+                'b', linewidth=2, label='Strong Cooling')
+    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [-mild_mag*2, -mild_mag, 0]), 
+                'c', linewidth=2, label='Mild Cooling')
+    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [-neutral_width, 0, neutral_width]), 
+                'g', linewidth=2, label='Neutral')
+    axes[2].plot(heat_cool, fuzz.trimf(heat_cool, [0, mild_mag, mild_mag*2]), 
+                'orange', linewidth=2, label='Mild Heating')
+    axes[2].plot(heat_cool, fuzz.trapmf(heat_cool, [mild_mag, strong_mag, out_range, out_range]), 
+                'r', linewidth=2, label='Strong Heating')
     axes[2].set_title('Temperature Control Action Membership Functions', fontsize=12, fontweight='bold')
     axes[2].set_xlabel('Heat/Cool Action')
     axes[2].set_ylabel('Membership Degree')
@@ -778,17 +1099,35 @@ def visualize_temperature_controller():
     return fig
 
 
-def visualize_substrate_controller():
+def visualize_substrate_controller(params=None):
     """Visualize substrate feed controller membership functions."""
+    # Default parameters
+    if params is None:
+        params = {}
+    
+    sub_min, sub_max = params.get('sub_error_range', (-30.0, 30.0))
+    zero_width = params.get('sub_error_zero_width', 5.0)
+    max_feed = params.get('feed_rate_max', 1.0)
+    sensitivity = params.get('feed_sensitivity', 1.0)
+    
     fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     
+    # Calculate membership function points
+    span = sub_max - sub_min
+    mid = (sub_max + sub_min) / 2
+    
     # Substrate error
-    substrate_error = np.linspace(-30, 30, 100)
-    axes[0].plot(substrate_error, fuzz.trapmf(substrate_error, [-30, -30, -20, -10]), 'b', linewidth=2, label='Very Negative')
-    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [-20, -10, 0]), 'c', linewidth=2, label='Negative')
-    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [-5, 0, 5]), 'g', linewidth=2, label='Zero')
-    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [0, 10, 20]), 'orange', linewidth=2, label='Positive')
-    axes[0].plot(substrate_error, fuzz.trapmf(substrate_error, [10, 20, 30, 30]), 'r', linewidth=2, label='Very Positive')
+    substrate_error = np.linspace(sub_min, sub_max, 100)
+    axes[0].plot(substrate_error, fuzz.trapmf(substrate_error, [sub_min, sub_min, sub_min + span*0.15, sub_min + span*0.35]), 
+                'b', linewidth=2, label='Very Negative')
+    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [sub_min + span*0.15, sub_min + span*0.35, mid]), 
+                'c', linewidth=2, label='Negative')
+    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [mid - zero_width, mid, mid + zero_width]), 
+                'g', linewidth=2, label='Zero')
+    axes[0].plot(substrate_error, fuzz.trimf(substrate_error, [mid, sub_max - span*0.35, sub_max - span*0.15]), 
+                'orange', linewidth=2, label='Positive')
+    axes[0].plot(substrate_error, fuzz.trapmf(substrate_error, [sub_max - span*0.35, sub_max - span*0.15, sub_max, sub_max]), 
+                'r', linewidth=2, label='Very Positive')
     axes[0].set_title('Substrate Error Membership Functions', fontsize=12, fontweight='bold')
     axes[0].set_xlabel('Substrate Error [g/L]')
     axes[0].set_ylabel('Membership Degree')
@@ -809,13 +1148,32 @@ def visualize_substrate_controller():
     axes[1].grid(True, alpha=0.3)
     
     # Feed rate
-    feed_rate = np.linspace(0, 1, 100)
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0, 0, 0.1]), 'b', linewidth=2, label='None')
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0, 0.15, 0.3]), 'c', linewidth=2, label='Very Low')
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0.2, 0.35, 0.5]), 'g', linewidth=2, label='Low')
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0.4, 0.55, 0.7]), 'y', linewidth=2, label='Medium')
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0.6, 0.75, 0.9]), 'orange', linewidth=2, label='High')
-    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0.8, 0.95, 1.0]), 'r', linewidth=2, label='Very High')
+    feed_rate = np.linspace(0, max_feed, 100)
+    
+    # Calculate feed rate membership function points with proper sorting to avoid invalid triangular functions
+    # When sensitivity is high, ensure a <= b <= c for all trimf calls by sorting and clipping
+    def safe_trimf_points(a, b, c, max_val):
+        """Ensure a <= b <= c and all values <= max_val"""
+        points = sorted([min(a, max_val), min(b, max_val), min(c, max_val)])
+        return points
+    
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, [0, 0, 0.05 * max_feed]), 
+                'b', linewidth=2, label='None')
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
+                                       safe_trimf_points(0, 0.15 * sensitivity * max_feed, 0.3 * sensitivity * max_feed, max_feed)), 
+                'c', linewidth=2, label='Very Low')
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
+                                       safe_trimf_points(0.2 * sensitivity * max_feed, 0.35 * sensitivity * max_feed, 0.5 * sensitivity * max_feed, max_feed)), 
+                'g', linewidth=2, label='Low')
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
+                                       safe_trimf_points(0.4 * sensitivity * max_feed, 0.55 * sensitivity * max_feed, 0.7 * sensitivity * max_feed, max_feed)), 
+                'y', linewidth=2, label='Medium')
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
+                                       safe_trimf_points(0.6 * sensitivity * max_feed, 0.75 * sensitivity * max_feed, 0.9 * sensitivity * max_feed, max_feed)), 
+                'orange', linewidth=2, label='High')
+    axes[2].plot(feed_rate, fuzz.trimf(feed_rate, 
+                                       safe_trimf_points(0.8 * sensitivity * max_feed, 0.95 * max_feed, max_feed, max_feed)), 
+                'r', linewidth=2, label='Very High')
     axes[2].set_title('Feed Rate Membership Functions', fontsize=12, fontweight='bold')
     axes[2].set_xlabel('Feed Rate [normalized]')
     axes[2].set_ylabel('Membership Degree')
