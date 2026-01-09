@@ -40,6 +40,19 @@ This will automatically:
 4. Install dependencies
 5. Launch the dashboard
 
+### Option 1b: Quick Start (Linux/Mac)
+Just run the provided shell script:
+```bash
+chmod +x run_dashboard.sh
+./run_dashboard.sh
+```
+This will automatically:
+1. Verify you have Python 3.10.14 installed
+2. Guide you through installation if needed
+3. Create a virtual environment
+4. Install dependencies
+5. Launch the dashboard
+
 ### Option 2: Manual Installation
 Ensure you have Python 3.10.14 installed. Then:
 
