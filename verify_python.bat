@@ -5,6 +5,7 @@ REM This script verifies Python 3.10.14 is installed and provides installation g
 setlocal enabledelayedexpansion
 
 set "REQUIRED_VERSION=3.10.14"
+set "REQUIRED_MAJOR_MINOR=3.10"
 set "PYTHON_INSTALLER_URL=https://www.python.org/ftp/python/3.10.14/python-3.10.14-amd64.exe"
 set "PYTHON_DOWNLOAD_PAGE=https://www.python.org/downloads/release/python-31014/"
 
@@ -12,7 +13,7 @@ echo ============================================================
 echo Python Version Verification for Biocontrol Modeling Project
 echo ============================================================
 echo.
-echo Required Python Version: %REQUIRED_VERSION%
+echo Required Python Version: %REQUIRED_VERSION% (or compatible 3.10.x)
 echo.
 
 REM Check if python is available in PATH
@@ -28,9 +29,12 @@ for /f "tokens=2 delims= " %%i in ('python --version 2^>^&1') do set CURRENT_VER
 echo Current Python Version: %CURRENT_VERSION%
 echo.
 
-REM Check if version matches exactly
-if "%CURRENT_VERSION%"=="%REQUIRED_VERSION%" (
-    echo [SUCCESS] Python %REQUIRED_VERSION% is correctly installed!
+REM Extract major.minor version (e.g., 3.10 from 3.10.14)
+for /f "tokens=1,2 delims=." %%a in ("%CURRENT_VERSION%") do set CURRENT_MAJOR_MINOR=%%a.%%b
+
+REM Check if version is compatible (3.10.x)
+if "%CURRENT_MAJOR_MINOR%"=="%REQUIRED_MAJOR_MINOR%" (
+    echo [SUCCESS] Python 3.10.x is correctly installed!
     echo.
     exit /b 0
 )
@@ -39,7 +43,7 @@ REM Version doesn't match - show warning
 echo [WARNING] Python version mismatch detected!
 echo.
 echo The current Python version (%CURRENT_VERSION%) may cause compatibility issues.
-echo This project requires Python %REQUIRED_VERSION% specifically due to:
+echo This project requires Python 3.10.x specifically due to:
 echo   - TensorFlow compatibility requirements
 echo   - CasADi C++ binding compatibility
 echo   - NumPy/SciPy version stability

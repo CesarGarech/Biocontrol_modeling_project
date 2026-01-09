@@ -15,7 +15,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo ============================================================
-echo Python 3.10.14 verificado correctamente. Continuando...
+echo Python 3.10.x verificado correctamente. Continuando...
 echo ============================================================
 echo.
 

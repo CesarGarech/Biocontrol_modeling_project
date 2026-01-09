@@ -7,14 +7,14 @@ echo "Verificando version de Python..."
 ./verify_python.sh
 if [ $? -ne 0 ]; then
     echo ""
-    echo "No se puede continuar sin Python 3.10.14 instalado."
-    echo "Por favor, instale Python 3.10.14 siguiendo las instrucciones anteriores."
+    echo "No se puede continuar sin Python 3.10.x instalado."
+    echo "Por favor, instale Python 3.10.x siguiendo las instrucciones anteriores."
     exit 1
 fi
 
 echo ""
 echo "============================================================"
-echo "Python 3.10.14 verificado correctamente. Continuando..."
+echo "Python 3.10.x verificado correctamente. Continuando..."
 echo "============================================================"
 echo ""
 
