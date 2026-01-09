@@ -19,15 +19,29 @@ The purpose of this project is to assist in teaching classical and advanced mode
 
 ## 📦 Installation
 
+### ⚠️ Important: Python Version Requirement
+
+**This project requires Python 3.10.14 specifically.** Newer versions of Python (3.11+) have compatibility issues with some of the libraries used in this project, particularly:
+- **TensorFlow**: Requires specific Python version compatibility for optimal performance
+- **CasADi**: Has known issues with newer Python versions due to C++ binding changes
+- **NumPy/SciPy**: Version conflicts can arise with newer Python releases
+
+The `run_dashboard.bat` script will automatically verify your Python version and guide you through installing Python 3.10.14 if needed.
+
 ### Option 1: Quick Start (Windows)
 Just run the provided batch script:
 ```bash
 run_dashboard.bat
 ```
-This will automatically create a virtual environment, install dependencies, and launch the dashboard.
+This will automatically:
+1. Verify you have Python 3.10.14 installed
+2. Guide you through installation if needed
+3. Create a virtual environment
+4. Install dependencies
+5. Launch the dashboard
 
 ### Option 2: Manual Installation
-Ensure you have Python 3.8 or higher installed. Then:
+Ensure you have Python 3.10.14 installed. Then:
 
 1. Clone the repository:
 ```bash

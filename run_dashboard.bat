@@ -2,6 +2,23 @@
 title Dashboard de Bioprocesos
 cd /d "%~dp0"
 
+:: Verify Python version first
+echo Verificando version de Python...
+call verify_python.bat
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo No se puede continuar sin Python 3.10.14 instalado.
+    echo Por favor, instale Python 3.10.14 siguiendo las instrucciones anteriores.
+    pause
+    exit /b 1
+)
+
+echo.
+echo ============================================================
+echo Python 3.10.14 verificado correctamente. Continuando...
+echo ============================================================
+echo.
+
 :: Nombre del entorno
 set ENV_DIR=.venv
 
