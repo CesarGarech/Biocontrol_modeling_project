@@ -21,7 +21,7 @@ The purpose of this project is to assist in teaching classical and advanced mode
 
 ### ⚠️ Important: Python Version Requirement
 
-**This project requires Python 3.10.x (specifically 3.10.14 or higher patch versions within 3.10).** Newer versions of Python (3.11+) have compatibility issues with some of the libraries used in this project, particularly:
+**This project requires Python 3.10.x (specifically 3.10.9 or higher patch versions within 3.10).** Newer versions of Python (3.11+) have compatibility issues with some of the libraries used in this project, particularly:
 - **TensorFlow**: Requires specific Python version compatibility for optimal performance
 - **CasADi**: Has known issues with newer Python versions due to C++ binding changes
 - **NumPy/SciPy**: Version conflicts can arise with newer Python releases

@@ -1,9 +1,9 @@
 #!/bin/bash
 # Python Version Verification Script for Biocontrol Modeling Project
-# This script verifies Python 3.10.14 is installed and provides installation guidance
+# This script verifies Python 3.10.9 is installed and provides installation guidance
 
-REQUIRED_VERSION="3.10.14"
-PYTHON_DOWNLOAD_PAGE="https://www.python.org/downloads/release/python-31014/"
+REQUIRED_VERSION="3.10.9"
+PYTHON_DOWNLOAD_PAGE="https://www.python.org/downloads/release/python-3109/"
 
 echo "============================================================"
 echo "Python Version Verification for Biocontrol Modeling Project"

@@ -4,10 +4,10 @@ REM This script verifies Python 3.10.14 is installed and provides installation g
 
 setlocal enabledelayedexpansion
 
-set "REQUIRED_VERSION=3.10.14"
+set "REQUIRED_VERSION=3.10.9"
 set "REQUIRED_MAJOR_MINOR=3.10"
-set "PYTHON_INSTALLER_URL=https://www.python.org/ftp/python/3.10.14/python-3.10.14-amd64.exe"
-set "PYTHON_DOWNLOAD_PAGE=https://www.python.org/downloads/release/python-31014/"
+set "PYTHON_INSTALLER_URL=https://www.python.org/downloads/windows/"
+set "PYTHON_DOWNLOAD_PAGE=https://www.python.org/downloads/windows/"
 
 echo ============================================================
 echo Python Version Verification for Biocontrol Modeling Project
@@ -29,7 +29,7 @@ for /f "tokens=2 delims= " %%i in ('python --version 2^>^&1') do set CURRENT_VER
 echo Current Python Version: %CURRENT_VERSION%
 echo.
 
-REM Extract major.minor version (e.g., 3.10 from 3.10.14)
+REM Extract major.minor version (e.g., 3.10 from 3.10.9)
 for /f "tokens=1,2 delims=." %%a in ("%CURRENT_VERSION%") do set CURRENT_MAJOR_MINOR=%%a.%%b
 
 REM Check if version is compatible (3.10.x)
@@ -73,15 +73,15 @@ echo.
 echo Option 2: Install via winget (Windows Package Manager)
 echo -------------------------------------------------------
 echo If you have winget installed, run this command in a NEW command prompt:
-echo    winget install Python.Python.3.10 --version 3.10.14
+echo    winget install Python.Python.3.10 --version 3.10.9
 echo.
 echo.
 echo Option 3: Use pyenv-win (Python Version Manager)
 echo ------------------------------------------------
 echo 1. Install pyenv-win if not already installed
 echo 2. Run these commands in a NEW command prompt:
-echo    pyenv install 3.10.14
-echo    pyenv global 3.10.14
+echo    pyenv install 3.10.9
+echo    pyenv global 3.10.9
 echo.
 echo.
 echo Note: After installing Python %REQUIRED_VERSION%, please:
