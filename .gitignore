@@ -21,6 +21,12 @@ ENV/
 Pipfile.lock
 poetry.lock
 
+# Setup/Distribution
+build/
+dist/
+*.egg-info/
+*.egg
+
 # Jupyter notebooks
 .ipynb_checkpoints/
 

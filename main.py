@@ -24,8 +24,8 @@ menu_structure = {
     # La clave "State Estimation" ahora contiene una lista para crear un submenú
     "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
-        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "On-Off Feeding"],
-        "Advanced": ["RTO", "RTO Ferm", "NMPC"]
+        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
+        "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC"]
     }
 }
 
@@ -102,13 +102,13 @@ def main():
             from Body import analysis
             analysis.analysis_page()
         elif selected_page == "Batch Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_lote
+            from Body.parameter_estimation import ajuste_parametros_lote
             ajuste_parametros_lote.ajuste_parametros_page()
         elif selected_page == "Fed-Batch Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_lote_alim
+            from Body.parameter_estimation import ajuste_parametros_lote_alim
             ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
         elif selected_page == "Fermentation Parameter Adjustment":
-            from Body.estimacion_parametros import ajuste_parametros_ferm
+            from Body.parameter_estimation import ajuste_parametros_ferm
             ajuste_parametros_ferm.ajuste_parametros_ferm_page()
 
         # --- MODIFICACIÓN EN LA LÓGICA DE CARGA ---
@@ -138,6 +138,9 @@ def main():
         elif selected_page == "Oxygen":
             from Body.control.regulatorio import reg_oxigeno
             reg_oxigeno.regulatorio_oxigeno_page()
+        elif selected_page == "Cascade-Oxygen": # Nombre exacto que usarás en el menú
+             from Body.control.regulatorio import reg_cascade_oxigen
+             reg_cascade_oxigen.regulatorio_cascade_oxigen_page()
         elif selected_page == "On-Off Feeding":
             from Body.control.regulatorio import reg_feed_onoff
             reg_feed_onoff.regulatorio_feed_onoff_page()
@@ -152,6 +155,12 @@ def main():
         elif selected_page == "NMPC":
             from Body.control.avanzado import nmpc
             nmpc.nmpc_page()
+        elif selected_page == "LMPC":
+            from Body.control.avanzado import lmpc
+            lmpc.lmpc_page()
+        elif selected_page == "EKF-NMPC":
+            from Body.control.avanzado import ekf_nmpc
+            ekf_nmpc.ekf_nmpc_page()
         else:
             st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")
             from Body import home

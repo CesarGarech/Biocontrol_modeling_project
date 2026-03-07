@@ -10,49 +10,13 @@ import traceback # Para mostrar errores detallados
 import time # Para medir tiempos
 from io import BytesIO
 
-# ====================================================
-# --- Definiciones Cinéticas (Sin cambios) ---
-# ====================================================
-def mu_monod_ca(S, mumax, Ks):
-    safe_S = ca.fmax(0.0, S); safe_den = ca.fmax(Ks + S, 1e-9)
-    mu = mumax * safe_S / safe_den; return ca.fmax(mu, 0.0)
-
-def mu_sigmoidal_ca(S, mumax, Ks, n):
-    safe_S = ca.fmax(0.0, S); safe_S_n = safe_S**n; safe_Ks_n = ca.fmax(Ks**n, 1e-9)
-    safe_den = ca.fmax(safe_Ks_n + safe_S_n, 1e-9); mu = mumax * safe_S_n / safe_den
-    return ca.fmax(mu, 0.0)
-def mu_completa_ca(S, O2, P, mumax, Ks, KO, KP_gen):
-    safe_S = ca.fmax(0.0, S); safe_O2 = ca.fmax(0.0, O2); safe_P = ca.fmax(0.0, P)
-    term_S = safe_S / ca.fmax(Ks + safe_S, 1e-9); term_O2 = safe_O2 / ca.fmax(KO + safe_O2, 1e-9)
-    term_P = ca.fmax(KP_gen / ca.fmax(KP_gen + safe_P, 1e-9), 0.0)
-    mu = mumax * term_S * term_O2 * term_P; return ca.fmax(mu, 0.0)
-
-def mu_fermentacion_ca(S, P, O2, mumax_aerob, Ks_aerob, KO_aerob, mumax_anaerob, Ks_anaerob, KiS_anaerob, KP_anaerob, n_p, KO_inhib_anaerob, considerar_O2=None):
-    safe_S = ca.fmax(0.0, S); safe_P = ca.fmax(0.0, P); safe_O2 = ca.fmax(1e-9, O2) # Usar 1e-9 para evitar división por cero si O2=0
-    # --- Crecimiento Aerobio ---
-    mu_aer = mumax_aerob * (safe_S / ca.fmax(Ks_aerob + safe_S, 1e-9)) * (safe_O2 / ca.fmax(KO_aerob + safe_O2, 1e-9))
-    mu_aer = ca.fmax(0.0, mu_aer)
-    # --- Crecimiento Anaerobio ---
-    large_kis = 1e9
-    den_S_an = Ks_anaerob + safe_S + ca.if_else(KiS_anaerob < large_kis, safe_S**2 / ca.fmax(KiS_anaerob, 1e-9), 0.0)
-    safe_den_S_an = ca.fmax(den_S_an, 1e-9); term_S_an = safe_S / safe_den_S_an
-    safe_KP_an = ca.fmax(KP_anaerob, 1e-9); term_P_base = 1.0 - (safe_P / safe_KP_an)
-    safe_term_P_base = ca.fmax(0.0, term_P_base); safe_n_p = ca.fmax(n_p, 1e-6)
-    term_P_an = safe_term_P_base**safe_n_p
-    safe_KO_inhib_an = ca.fmax(KO_inhib_anaerob, 1e-9)
-    term_O2_inhib_an = safe_KO_inhib_an / ca.fmax(safe_KO_inhib_an + safe_O2, 1e-9)
-    mu_anaer = mumax_anaerob * term_S_an * term_P_an * term_O2_inhib_an
-    mu_anaer = ca.fmax(0.0, mu_anaer)
-    # --- Combinación de tasas ---
-    if isinstance(considerar_O2, (ca.MX, ca.SX)): # Para optimización conmutada
-        mu = ca.if_else(considerar_O2 > 0.5, mu_aer, mu_anaer)
-    elif considerar_O2 is None: # Modelo mixto (suma)
-        mu = mu_aer + mu_anaer
-    elif considerar_O2: # Solo aerobio
-        mu = mu_aer
-    else: # Solo anaerobio
-        mu = mu_anaer
-    return ca.fmax(mu, 0.0)
+# Import CasADi-compatible kinetic functions from Utils
+from Utils.kinetics import (
+    mu_monod_rto as mu_monod_ca,
+    mu_sigmoidal_rto as mu_sigmoidal_ca,
+    mu_completa_rto as mu_completa_ca,
+    mu_fermentacion_rto as mu_fermentacion_ca
+)
 
 # ====================================================
 # --- Página de Streamlit ---
