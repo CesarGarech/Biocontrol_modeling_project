@@ -33,12 +33,12 @@ CALL "%ENV_DIR%\Scripts\activate.bat"
 
 :: Install dependencies if necessary
 IF EXIST "requirements.txt" (
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
 ) ELSE (
     echo Installing Dash...
-    pip install --upgrade pip
-    pip install dash dash-bootstrap-components plotly
+    python -m pip install --upgrade pip
+    python -m pip install dash dash-bootstrap-components plotly
 )
 
 :: Run the Dash application
