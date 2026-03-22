@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  biocontrol_app:
+    build: .
+    container_name: Process_Simulator
+    ports:
+      - "8501:8501"
+    volumes:
+      # Sincroniza el código local con el contenedor.
+      # Así, si editas un archivo .py, el contenedor se actualiza sin tener que reconstruirlo.
+      - .:/app
+      
+      # Si generas archivos LaTeX (.tex), PDFs o datos (.npz) desde el código,
+      # esto asegura que se guarden en tu máquina host de forma persistente.
+      # Descomenta la siguiente línea si usas una carpeta específica para reportes:
+      # - ./Output:/app/Output
+    environment:
+      # Fuerza a Python a imprimir los logs directamente a la terminal sin hacer buffer
+      - PYTHONUNBUFFERED=1
