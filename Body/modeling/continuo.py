@@ -100,11 +100,11 @@ def get_params_layout():
 
         html.Label("Absolute tolerance (atol)", className="text-white-50 small mt-2"),
         dcc.Input(id=f'{PAGE_ID}-atol', type='number', min=1e-10, max=1e-2, value=1e-6,
-                  step=1e-10, style={"width": "100%"}),
+                  step=1e-7, style={"width": "100%"}),
 
         html.Label("Relative tolerance (rtol)", className="text-white-50 small mt-2"),
         dcc.Input(id=f'{PAGE_ID}-rtol', type='number', min=1e-10, max=1e-2, value=1e-6,
-                  step=1e-10, style={"width": "100%"}),
+                  step=1e-7, style={"width": "100%"}),
 
         html.Button("Run Simulation", id=f'{PAGE_ID}-run-btn', n_clicks=0,
                     className='btn btn-success w-100 mt-3'),
