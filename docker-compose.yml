@@ -16,5 +16,7 @@ services:
       # Descomenta la siguiente línea si usas una carpeta específica para reportes:
       # - ./Output:/app/Output
     environment:
-      # Fuerza a Python a imprimir los logs directamente a la terminal sin hacer buffer
       - PYTHONUNBUFFERED=1
+      # Las siguientes líneas solucionan el problema de la pantalla gris de carga
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
