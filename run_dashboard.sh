@@ -1,20 +1,20 @@
 #!/bin/bash
-# Dashboard de Bioprocesos - Linux/Mac Startup Script
+# Bioprocess Dashboard (Dash) - Linux/Mac Startup Script
 cd "$(dirname "$0")"
 
 # Verify Python version first
-echo "Verificando version de Python..."
+echo "Verifying Python version..."
 ./verify_python.sh
 if [ $? -ne 0 ]; then
     echo ""
-    echo "No se puede continuar sin Python 3.10.x instalado."
-    echo "Por favor, instale Python 3.10.x siguiendo las instrucciones anteriores."
+    echo "Cannot continue without Python 3.10.x installed."
+    echo "Please install Python 3.10.x following the previous instructions."
     exit 1
 fi
 
 echo ""
 echo "============================================================"
-echo "Python 3.10.x verificado correctamente. Continuando..."
+echo "Python 3.10.x verified successfully. Continuing..."
 echo "============================================================"
 echo ""
 
@@ -23,7 +23,7 @@ ENV_DIR=".venv"
 
 # Check if virtual environment exists
 if [ ! -d "$ENV_DIR" ]; then
-    echo "Creando entorno virtual en '$ENV_DIR'..."
+    echo "Creating virtual environment in '$ENV_DIR'..."
     python3 -m venv "$ENV_DIR"
 fi
 
@@ -35,10 +35,16 @@ if [ -f "requirements.txt" ]; then
     pip install --upgrade pip
     pip install -r requirements.txt
 else
-    echo "Instalando Streamlit..."
+    echo "Installing Dash..."
     pip install --upgrade pip
-    pip install streamlit
+    pip install dash dash-bootstrap-components plotly
 fi
 
-# Run the application
-streamlit run main.py
+# Run the Dash application
+echo ""
+echo "============================================================"
+echo "Starting Bioprocess Modeling Dashboard (Dash)..."
+echo "Open your browser at: http://localhost:8050"
+echo "============================================================"
+echo ""
+python3 main.py

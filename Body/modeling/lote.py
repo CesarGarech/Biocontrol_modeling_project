@@ -207,7 +207,7 @@ def register_callbacks(app):
             else:
                 mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
             dXdt = mu * X - Kd * X
-            dSdt = 0.0 if S <= 0 else (-1.0 / Yxs * mu * X - ms * X)
+            dSdt = 0.0 if S == 0.0 else (-1.0 / Yxs * mu * X - ms * X)
             dPdt = Ypx * mu * X
             dOdt = Kla * (Cs - O2) - (1.0 / Yxo) * mu * X - mo * X
             return [dXdt, dSdt, dPdt, dOdt]

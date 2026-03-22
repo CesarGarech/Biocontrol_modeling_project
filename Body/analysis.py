@@ -217,7 +217,8 @@ def register_callbacks(app):
         )
 
         # Global sensitivity bar chart
-        sensibilidad = df[['Max Biomass', 'Min Substrate', 'Max Product']].std() / df[['Max Biomass', 'Min Substrate', 'Max Product']].mean().abs()
+        _sens_cols = ['Max Biomass', 'Min Substrate', 'Max Product']
+        sensibilidad = df[_sens_cols].std() / df[_sens_cols].mean().abs()
         fig2 = go.Figure(go.Bar(
             x=list(sensibilidad.index),
             y=list(sensibilidad.values),

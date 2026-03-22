@@ -1,5 +1,5 @@
 @echo off
-title Bioprocess Dashboard
+title Bioprocess Dashboard (Dash)
 cd /d "%~dp0"
 
 :: Verify Python version first
@@ -36,13 +36,18 @@ IF EXIST "requirements.txt" (
     pip install --upgrade pip
     pip install -r requirements.txt
 ) ELSE (
-    echo Installing Streamlit...
+    echo Installing Dash...
     pip install --upgrade pip
-    pip install streamlit
+    pip install dash dash-bootstrap-components plotly
 )
 
-:: Run the application
-@REM streamlit run St_CABBIO03.py
-streamlit run main.py
+:: Run the Dash application
+echo.
+echo ============================================================
+echo Starting Bioprocess Modeling Dashboard (Dash)...
+echo Open your browser at: http://localhost:8050
+echo ============================================================
+echo.
+python main.py
 
 pause

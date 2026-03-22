@@ -15,7 +15,7 @@ setup(
     version="1.0.0",
     author="César Augusto García Echeverry",
     author_email="cesar.garech@gmail.com",
-    description="An interactive Streamlit application for teaching modeling, simulation, analysis, and control of bioprocesses",
+    description="An interactive Dash application for teaching modeling, simulation, analysis, and control of bioprocesses",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/CesarGarech/Biocontrol_modeling_project",

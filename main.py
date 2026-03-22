@@ -1,193 +1,307 @@
-import streamlit as st
+import dash
+from dash import dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
 import os
 import sys
 
-# --- Añadir carpetas relevantes al path (Ajusta según tu estructura) ---
+# Add project root to path
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# sys.path.append(os.path.dirname(script_dir))
-# sys.path.append(os.path.join(script_dir, 'Body'))
-# sys.path.append(os.path.join(script_dir, 'Utils'))
+sys.path.insert(0, script_dir)
 
-# --- Asumiendo que Utils.kinetics está accesible ---
-try:
-    from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion
-except ImportError:
-    pass
+# --- Initialize Dash App ---
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    suppress_callback_exceptions=True,
+    title="Bioprocess Modeling",
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+)
 
-# 1. Define la NUEVA estructura del menú jerárquico
-# --- MODIFICACIÓN AQUÍ ---
+# --- Menu Structure ---
 menu_structure = {
     "🏠 Home": None,
     "🔬 Models": ["Batch", "Fed-Batch", "Continuous", "Fermentation"],
     "📈 Sensitivity Analysis": None,
-    "🔧 Parameter Adjustment": ["Batch Parameter Adjustment", "Fed-Batch Parameter Adjustment", "Fermentation Parameter Adjustment"],
-    # La clave "State Estimation" ahora contiene una lista para crear un submenú
+    "🔧 Parameter Adjustment": [
+        "Batch Parameter Adjustment",
+        "Fed-Batch Parameter Adjustment",
+        "Fermentation Parameter Adjustment"
+    ],
     "📊 State Estimation": ["EKF", "ANN"],
     "⚙️ Control": {
-        "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
-        "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC", "Fuzzy Control"]
+        "Regulatory": [
+            "Identification (pH)", "Temperature", "pH",
+            "Oxygen", "Cascade-Oxygen", "On-Off Feeding"
+        ],
+        "Advanced": [
+            "RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC", "Fuzzy Control"
+        ]
     }
 }
 
-def main():
-    st.set_page_config(page_title="Bioprocess Modeling", layout="wide")
+# --- Import all page modules (with graceful fallback) ---
+def _import(module_path):
+    try:
+        parts = module_path.split('.')
+        mod = __import__(module_path, fromlist=[parts[-1]])
+        return mod
+    except Exception as e:
+        print(f"Warning: Could not import {module_path}: {e}")
+        return None
 
-    # --- Navegación en la Barra Lateral (sin cambios necesarios aquí) ---
-    st.sidebar.title("Main Navigation")
+home_mod            = _import('Body.home')
+lote_mod            = _import('Body.modeling.lote')
+lote_alim_mod       = _import('Body.modeling.lote_alimentado')
+continuo_mod        = _import('Body.modeling.continuo')
+ferm_mod            = _import('Body.modeling.ferm_alcohol')
+analysis_mod        = _import('Body.analysis')
+aj_lote_mod         = _import('Body.parameter_estimation.ajuste_parametros_lote')
+aj_alim_mod         = _import('Body.parameter_estimation.ajuste_parametros_lote_alim')
+aj_ferm_mod         = _import('Body.parameter_estimation.ajuste_parametros_ferm')
+ekf_mod             = _import('Body.estimation.ekf')
+ann_mod             = _import('Body.estimation.ann')
+reg_ident_mod       = _import('Body.control.regulatorio.reg_ident')
+reg_temp_mod        = _import('Body.control.regulatorio.reg_temp')
+reg_ph_mod          = _import('Body.control.regulatorio.reg_ph')
+reg_ox_mod          = _import('Body.control.regulatorio.reg_oxigeno')
+reg_casc_mod        = _import('Body.control.regulatorio.reg_cascade_oxigen')
+reg_feed_mod        = _import('Body.control.regulatorio.reg_feed_onoff')
+rto_mod             = _import('Body.control.avanzado.rto')
+rto_ferm_mod        = _import('Body.control.avanzado.rto_ferm')
+nmpc_mod            = _import('Body.control.avanzado.nmpc')
+lmpc_mod            = _import('Body.control.avanzado.lmpc')
+ekf_nmpc_mod        = _import('Body.control.avanzado.ekf_nmpc')
+fuzzy_mod           = _import('Body.control.avanzado.fuzzy_control')
 
-    # Widget para seleccionar la categoría principal
-    main_category = st.sidebar.selectbox(
-        "Select a section:",
-        list(menu_structure.keys()),
-        key="main_cat_select"
+# --- Map page names to modules ---
+PAGE_MODULE_MAP = {
+    "🏠 Home":                          home_mod,
+    "Batch":                            lote_mod,
+    "Fed-Batch":                        lote_alim_mod,
+    "Continuous":                       continuo_mod,
+    "Fermentation":                     ferm_mod,
+    "📈 Sensitivity Analysis":          analysis_mod,
+    "Batch Parameter Adjustment":       aj_lote_mod,
+    "Fed-Batch Parameter Adjustment":   aj_alim_mod,
+    "Fermentation Parameter Adjustment":aj_ferm_mod,
+    "EKF":                              ekf_mod,
+    "ANN":                              ann_mod,
+    "Identification (pH)":              reg_ident_mod,
+    "Temperature":                      reg_temp_mod,
+    "pH":                               reg_ph_mod,
+    "Oxygen":                           reg_ox_mod,
+    "Cascade-Oxygen":                   reg_casc_mod,
+    "On-Off Feeding":                   reg_feed_mod,
+    "RTO":                              rto_mod,
+    "RTO Ferm":                         rto_ferm_mod,
+    "NMPC":                             nmpc_mod,
+    "LMPC":                             lmpc_mod,
+    "EKF-NMPC":                         ekf_nmpc_mod,
+    "Fuzzy Control":                    fuzzy_mod,
+}
+
+# --- Register callbacks from all page modules ---
+for page_name, mod in PAGE_MODULE_MAP.items():
+    if mod is not None and hasattr(mod, 'register_callbacks'):
+        try:
+            mod.register_callbacks(app)
+        except Exception as e:
+            print(f"Warning: Could not register callbacks for '{page_name}': {e}")
+
+# --- Sidebar style ---
+SIDEBAR_STYLE = {
+    "position": "fixed",
+    "top": 0,
+    "left": 0,
+    "bottom": 0,
+    "width": "300px",
+    "padding": "20px 15px",
+    "backgroundColor": "#2c3e50",
+    "overflowY": "auto",
+    "zIndex": 1000,
+}
+
+CONTENT_STYLE = {
+    "marginLeft": "310px",
+    "padding": "20px 30px",
+    "minHeight": "100vh",
+    "backgroundColor": "#f5f6fa",
+}
+
+LABEL_STYLE = {"color": "#adb5bd", "fontSize": "12px", "marginTop": "8px", "marginBottom": "2px"}
+RADIO_STYLE = {"color": "white", "display": "block", "margin": "4px 0", "fontSize": "14px"}
+
+# Pre-build sub-navigation components (static IDs, conditionally shown)
+def build_sidebar():
+    ctrl_struct = menu_structure["⚙️ Control"]
+    ctrl_type_opts = [{"label": k, "value": k} for k in ctrl_struct.keys()]
+    return html.Div([
+        html.H5("🧫 Bioprocess Modeling", style={"color": "white", "fontSize": "16px"}),
+        html.Hr(style={"borderColor": "rgba(255,255,255,0.3)", "margin": "10px 0"}),
+
+        html.Div("Section", style=LABEL_STYLE),
+        dcc.Dropdown(
+            id="main-nav-dropdown",
+            options=[{"label": k, "value": k} for k in menu_structure.keys()],
+            value="🏠 Home",
+            clearable=False,
+            style={"marginBottom": "8px"},
+        ),
+
+        # --- Sub-navs (conditionally shown by callbacks) ---
+        html.Div(id="models-subnav", style={"display": "none"}, children=[
+            html.Div("Model:", style=LABEL_STYLE),
+            dcc.RadioItems(
+                id="models-radio",
+                options=[{"label": v, "value": v} for v in menu_structure["🔬 Models"]],
+                value="Batch",
+                labelStyle=RADIO_STYLE,
+            ),
+        ]),
+
+        html.Div(id="param-adj-subnav", style={"display": "none"}, children=[
+            html.Div("Adjustment:", style=LABEL_STYLE),
+            dcc.RadioItems(
+                id="param-adj-radio",
+                options=[{"label": v, "value": v} for v in menu_structure["🔧 Parameter Adjustment"]],
+                value="Batch Parameter Adjustment",
+                labelStyle=RADIO_STYLE,
+            ),
+        ]),
+
+        html.Div(id="state-est-subnav", style={"display": "none"}, children=[
+            html.Div("Estimator:", style=LABEL_STYLE),
+            dcc.RadioItems(
+                id="state-est-radio",
+                options=[{"label": v, "value": v} for v in menu_structure["📊 State Estimation"]],
+                value="EKF",
+                labelStyle=RADIO_STYLE,
+            ),
+        ]),
+
+        html.Div(id="control-subnav", style={"display": "none"}, children=[
+            html.Div("Control Type:", style=LABEL_STYLE),
+            dcc.Dropdown(
+                id="control-type-dropdown",
+                options=ctrl_type_opts,
+                value="Regulatory",
+                clearable=False,
+                style={"marginBottom": "6px"},
+            ),
+            html.Div("Page:", style=LABEL_STYLE),
+            dcc.RadioItems(
+                id="control-page-radio",
+                options=[{"label": v, "value": v} for v in ctrl_struct["Regulatory"]],
+                value="Identification (pH)",
+                labelStyle=RADIO_STYLE,
+            ),
+        ]),
+
+        html.Hr(style={"borderColor": "rgba(255,255,255,0.3)", "margin": "10px 0"}),
+
+        # Parameters area injected by selected page
+        html.Div(id="sidebar-params"),
+    ], style=SIDEBAR_STYLE)
+
+
+# --- App Layout ---
+app.layout = html.Div([
+    dcc.Store(id="selected-page-store", data="🏠 Home"),
+    build_sidebar(),
+    html.Div(id="main-content", style=CONTENT_STYLE),
+])
+
+
+# --- Callback: Show/hide sub-navs and update control page radio options ---
+@app.callback(
+    Output("models-subnav",   "style"),
+    Output("param-adj-subnav","style"),
+    Output("state-est-subnav","style"),
+    Output("control-subnav",  "style"),
+    Input("main-nav-dropdown", "value"),
+)
+def toggle_subnavs(main_cat):
+    show   = {"display": "block"}
+    hidden = {"display": "none"}
+    return (
+        show   if main_cat == "🔬 Models" else hidden,
+        show   if main_cat == "🔧 Parameter Adjustment" else hidden,
+        show   if main_cat == "📊 State Estimation" else hidden,
+        show   if main_cat == "⚙️ Control" else hidden,
     )
 
-    sub_options = menu_structure[main_category]
-    selected_page = main_category
 
-    # La lógica existente ya maneja submenús basados en listas, por lo que
-    # "State Estimation" funcionará automáticamente sin cambios en esta sección.
-    if isinstance(sub_options, list):
-        st.sidebar.markdown("---")
-        sub_selection = st.sidebar.radio(
-            f"Detail - {main_category.split(' ')[-1]}:",
-            sub_options,
-            key=f"radio_sub_{main_category.replace(' ', '_')}"
-        )
-        selected_page = sub_selection
-
-    elif isinstance(sub_options, dict):
-        st.sidebar.markdown("---")
-        sub_level1_selection = st.sidebar.selectbox(
-            f"Type - {main_category.split(' ')[-1]}:",
-            list(sub_options.keys()),
-            key=f"select_sub1_{main_category.replace(' ', '_')}"
-        )
-
-        sub_level2_options = sub_options[sub_level1_selection]
-        if sub_level2_options:
-            st.sidebar.markdown("---")
-            sub_level2_selection = st.sidebar.radio(
-                f"Option - {sub_level1_selection}:",
-                sub_level2_options,
-                key=f"radio_sub2_{main_category.replace(' ', '_')}_{sub_level1_selection}"
-            )
-            selected_page = sub_level2_selection
-
-    # --- Fin Navegación ---
+@app.callback(
+    Output("control-page-radio", "options"),
+    Output("control-page-radio", "value"),
+    Input("control-type-dropdown", "value"),
+)
+def update_control_radio(ctrl_type):
+    ctrl_struct = menu_structure["⚙️ Control"]
+    opts = ctrl_struct.get(ctrl_type, [])
+    options = [{"label": v, "value": v} for v in opts]
+    value = opts[0] if opts else None
+    return options, value
 
 
-    # --- Carga de la Página Seleccionada (AÑADIR NUEVAS PÁGINAS DE CONTROL) ---
-    st.subheader(f"Selected Page: {selected_page}")
-    st.markdown("---")
+# --- Callback: Derive selected page from all nav inputs ---
+@app.callback(
+    Output("selected-page-store", "data"),
+    Input("main-nav-dropdown",   "value"),
+    Input("models-radio",         "value"),
+    Input("param-adj-radio",      "value"),
+    Input("state-est-radio",      "value"),
+    Input("control-page-radio",   "value"),
+)
+def update_selected_page(main_cat, models_val, param_val, est_val, ctrl_val):
+    if main_cat == "🏠 Home":
+        return "🏠 Home"
+    elif main_cat == "🔬 Models":
+        return models_val or "Batch"
+    elif main_cat == "📈 Sensitivity Analysis":
+        return "📈 Sensitivity Analysis"
+    elif main_cat == "🔧 Parameter Adjustment":
+        return param_val or "Batch Parameter Adjustment"
+    elif main_cat == "📊 State Estimation":
+        return est_val or "EKF"
+    elif main_cat == "⚙️ Control":
+        return ctrl_val or "Identification (pH)"
+    return "🏠 Home"
 
-    # --- Carga dinámica de módulos ---
+
+# --- Callback: Render page content + sidebar params ---
+def _not_found_layout(page):
+    return html.Div([
+        dbc.Alert(f"Page '{page}' is not available.", color="warning")
+    ])
+
+
+@app.callback(
+    Output("sidebar-params", "children"),
+    Output("main-content",   "children"),
+    Input("selected-page-store", "data"),
+)
+def render_page(selected_page):
+    mod = PAGE_MODULE_MAP.get(selected_page)
+    if mod is None:
+        # Fallback to home
+        fallback = home_mod
+        if fallback and hasattr(fallback, 'get_params_layout') and hasattr(fallback, 'get_content_layout'):
+            return fallback.get_params_layout(), fallback.get_content_layout()
+        return html.Div(), _not_found_layout(selected_page)
+
     try:
-        if selected_page == "🏠 Home":
-            from Body import home
-            home.home_page()
-        elif selected_page == "Batch":
-            from Body.modeling import lote
-            lote.lote_page()
-        elif selected_page == "Fed-Batch":
-            from Body.modeling import lote_alimentado
-            lote_alimentado.lote_alimentado_page()
-        elif selected_page == "Continuous":
-            from Body.modeling import continuo
-            continuo.continuo_page()
-        elif selected_page == "Fermentation":
-            from Body.modeling import ferm_alcohol
-            ferm_alcohol.fermentacion_alcoholica_page()
-        elif selected_page == "📈 Sensitivity Analysis":
-            from Body import analysis
-            analysis.analysis_page()
-        elif selected_page == "Batch Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_lote
-            ajuste_parametros_lote.ajuste_parametros_page()
-        elif selected_page == "Fed-Batch Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_lote_alim
-            ajuste_parametros_lote_alim.ajuste_parametros_fedbatch_page()
-        elif selected_page == "Fermentation Parameter Adjustment":
-            from Body.parameter_estimation import ajuste_parametros_ferm
-            ajuste_parametros_ferm.ajuste_parametros_ferm_page()
-
-        # --- MODIFICACIÓN EN LA LÓGICA DE CARGA ---
-        # Se elimina la condición anterior para "State Estimation" y se reemplaza por las siguientes dos.
-        
-        elif selected_page == "EKF":
-            # Asumimos que la página EKF está en Body/estimation/ekf.py con una función ekf_page()
-            from Body.estimation import ekf
-            ekf.ekf_page()
-
-        elif selected_page == "ANN":
-            # Asumimos que la nueva página ANN estará en Body/estimation/ann.py con una función ann_page()
-            # Este es el módulo que crearemos a continuación.
-            from Body.estimation import ann
-            ann.ann_page()
-
-        # --- PÁGINAS DE CONTROL REGULATORIO ---
-        elif selected_page == "Identification (pH)":
-            from Body.control.regulatorio import reg_ident
-            reg_ident.ph_identification_page()
-        elif selected_page == "Temperature":
-            from Body.control.regulatorio import reg_temp
-            reg_temp.regulatorio_temperatura_page()
-        elif selected_page == "pH":
-            from Body.control.regulatorio import reg_ph
-            reg_ph.regulatorio_ph_page()
-        elif selected_page == "Oxygen":
-            from Body.control.regulatorio import reg_oxigeno
-            reg_oxigeno.regulatorio_oxigeno_page()
-        elif selected_page == "Cascade-Oxygen": # Nombre exacto que usarás en el menú
-             from Body.control.regulatorio import reg_cascade_oxigen
-             reg_cascade_oxigen.regulatorio_cascade_oxigen_page()
-        elif selected_page == "On-Off Feeding":
-            from Body.control.regulatorio import reg_feed_onoff
-            reg_feed_onoff.regulatorio_feed_onoff_page()
-
-        # --- PÁGINAS DE CONTROL AVANZADO (YA EXISTENTES) ---
-        elif selected_page == "RTO":
-            from Body.control.avanzado import rto
-            rto.rto_page()
-        elif selected_page == "RTO Ferm":
-            from Body.control.avanzado import rto_ferm
-            rto_ferm.rto_fermentation_page()
-        elif selected_page == "NMPC":
-            from Body.control.avanzado import nmpc
-            nmpc.nmpc_page()
-        elif selected_page == "LMPC":
-            from Body.control.avanzado import lmpc
-            lmpc.lmpc_page()
-        elif selected_page == "EKF-NMPC":
-            from Body.control.avanzado import ekf_nmpc
-            ekf_nmpc.ekf_nmpc_page()
-        elif selected_page == "Fuzzy Control":
-            from Body.control.avanzado import fuzzy_control
-            fuzzy_control.fuzzy_control_page()
-        else:
-            st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")
-            from Body import home
-            home.home_page()
-
-    except ModuleNotFoundError as e:
-         st.error(f"Error importing the module for '{selected_page}': {e}")
-         st.error(f"Check that the file '{e.name.replace('.', '/')}.py' exists in the correct folder (e.g., Body/estimation/) and has no syntax errors.")
-         st.info("Displaying Home Page as a fallback.")
-         from Body import home
-         home.home_page()
-    except AttributeError as e:
-         st.error(f"Error calling the page function for '{selected_page}': {e}")
-         st.error(f"Make sure the imported file contains a page function with the correct name (e.g., '{selected_page.lower()}_page()').")
-         st.info("Displaying Home Page as a fallback.")
-         from Body import home
-         home.home_page()
+        params  = mod.get_params_layout()  if hasattr(mod, 'get_params_layout')  else html.Div()
+        content = mod.get_content_layout() if hasattr(mod, 'get_content_layout') else _not_found_layout(selected_page)
+        return params, content
     except Exception as e:
-         st.error(f"An unexpected error occurred while loading the page '{selected_page}':")
-         st.exception(e)
-         st.info("Displaying Home Page as a fallback.")
-         from Body import home
-         home.home_page()
+        import traceback
+        err = traceback.format_exc()
+        return html.Div(), html.Div([
+            dbc.Alert(f"Error loading '{selected_page}': {str(e)}", color="danger"),
+            html.Pre(err, style={"fontSize": "12px", "color": "gray"}),
+        ])
+
 
 if __name__ == "__main__":
-    main()
-
+    app.run(debug=True, host="0.0.0.0", port=8050)

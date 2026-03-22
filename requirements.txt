@@ -1,5 +1,7 @@
 pandas
-streamlit
+dash
+dash-bootstrap-components
+plotly
 scipy
 matplotlib
 openpyxl
