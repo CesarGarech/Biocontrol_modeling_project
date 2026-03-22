@@ -7,14 +7,10 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      # Mantenemos la sincronización de tu código
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
-      # Desactivan las protecciones que bloquean la vista fuera del contenedor
       - STREAMLIT_SERVER_ENABLE_CORS=false
       - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
-      # Le dice a Streamlit que no intente abrir un navegador en el servidor (el contenedor)
       - STREAMLIT_SERVER_HEADLESS=true
-      # Evita que Streamlit colapse intentando leer los miles de archivos del .venv en OneDrive
-      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
+      # Eliminamos STREAMLIT_SERVER_FILE_WATCHER_TYPE=none para recuperar el hot-reload
