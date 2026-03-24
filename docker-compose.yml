@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  biocontrol_app:
+    build: .
+    container_name: Process_Simulator
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+      - STREAMLIT_SERVER_HEADLESS=true
+      # Eliminamos STREAMLIT_SERVER_FILE_WATCHER_TYPE=none para recuperar el hot-reload

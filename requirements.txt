@@ -9,4 +9,6 @@ casadi
 control
 xlsxwriter
 tensorflow
+scikit-fuzzy
+networkx
 # casadi ipopt

@@ -1,0 +1,114 @@
+
+## 🐳 Docker Setup Guide: Bioprocess Control Simulator
+
+### What is Docker and Why is it Useful for this Project?
+Docker is a platform that packages software and all its dependencies into standardized, isolated units called **containers**. Think of it as a shipping container for your code: it doesn't matter what operating system the host machine is running, the container will always behave exactly the same way.
+
+For this specific bioprocess modeling and control project, Docker provides critical advantages:
+*   **Mathematical Stability:** Advanced control strategies (NMPC, EKF, RTO) rely heavily on mathematical libraries like CasADi, SciPy, and PyTorch. Docker ensures these underlying C/C++ dependencies remain immutable, guaranteeing reproducible optimization results across different computers.
+*   **Built-in LaTeX Engine:** The container includes a TeX Live distribution. This allows the Python backend to automatically compile `.tex` files and generate professional PDF reports of the simulation results without requiring the user to install LaTeX on their local machine.
+*   **Cloud-Ready:** The containerized architecture makes it extremely easy to deploy the dashboard online (e.g., Hugging Face Spaces, Render, AWS) for free and with zero configuration.
+
+> **Note on Local Execution:** The `run_dashboard.bat` (and `.sh`) files remain in the repository. If you prefer to run the application directly on your local Windows/Linux machine without Docker, you can still use these scripts to manage your local Python virtual environment.
+
+---
+
+### Step 1: Download and Install Docker Desktop
+1. Go to the official Docker website: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Download the **Windows (AMD64)** installer.
+3. Run the installer. **Important:** Ensure the option **"Use WSL 2 instead of Hyper-V"** is checked during installation.
+4. Restart your computer if prompted.
+5. Open the "Docker Desktop" application. Wait until the indicator in the bottom-left corner turns green and says **"Engine running"**.
+
+---
+
+### Step 2: Configure the Project Files in VS Code
+Ensure the following two files are present in the root directory of your repository. If they are not, create them.
+
+**1. `Dockerfile`** (No file extension)
+This file defines the environment, installs OS-level dependencies (like LaTeX), and sets up Python.
+```dockerfile
+# 1. Use a lightweight but complete Python image
+FROM python:3.10-slim
+
+# 2. Set the working directory inside the container
+WORKDIR /app
+
+# 3. Install OS dependencies (C/C++ build tools and TeX Live for PDF reports)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    texlive-latex-base \
+    texlive-fonts-recommended \
+    texlive-fonts-extra \
+    texlive-latex-extra \
+    && rm -rf /var/lib/apt/lists/*
+
+# 4. Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# 5. Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 6. Copy the rest of the repository code
+COPY . .
+
+# 7. Expose the default Streamlit port
+EXPOSE 8501
+
+# 8. Command to run the application
+CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+```
+
+**2. `docker-compose.yml`**
+This file orchestrates the container and maps your local files to the container so you can see code changes in real-time.
+```yaml
+version: '3.8'
+
+services:
+  biocontrol_app:
+    build: .
+    container_name: Process_Simulator
+    ports:
+      - "8501:8501"
+    volumes:
+      # Synchronizes local code with the container for hot-reloading
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Disable security checks that block the UI when running inside Docker
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+      # Prevent Streamlit from crashing due to OneDrive/Virtual Environment file watching
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
+```
+
+---
+
+### Step 3: Essential Commands
+Open your VS Code terminal (or Git Bash) in the repository folder and use the following commands:
+
+*   **To Build and Start the Simulator (Background Mode):**
+    ```bash
+    docker compose up -d
+    ```
+    *The `-d` flag runs the container in the background, freeing up your terminal.*
+
+*   **To View the App in your Browser:**
+    Once the container is running, simply open Chrome, Edge, or Firefox and go to:
+    **`http://localhost:8501`**
+
+*   **To Stop the Simulator:**
+    When you are done working, stop the container safely without deleting it:
+    ```bash
+    docker compose stop
+    ```
+
+*   **To View the Logs (Troubleshooting):**
+    If your Python code has an error, you can check the terminal output by running:
+    ```bash
+    docker compose logs -f
+    ```
+    *(Press `Ctrl + C` to exit the log view).*
+
+***
+

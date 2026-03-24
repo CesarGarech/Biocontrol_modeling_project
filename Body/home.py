@@ -451,6 +451,70 @@ def home_page():
         - Rawlings, J. B., Mayne, D. Q., & Diehl, M. (2017). *Model Predictive Control: Theory, Computation, and Design* (2nd ed.). Nob Hill Publishing.
         - Andersson, J. A. E., et al. (2019). "CasADi: a software framework for nonlinear optimization and optimal control." *Mathematical Programming Computation*, 11(1), 1-36.
         """)
+    st.markdown("---")
+    st.subheader("🔹 Fuzzy Logic Control")
+    st.markdown(r"""
+        **Fuzzy Logic Control** is an intelligent control technique that uses linguistic rules and fuzzy sets 
+        to handle uncertainty, nonlinearity, and imprecision in complex systems without requiring detailed 
+        mathematical models. It was introduced by **Lotfi A. Zadeh (1965)** and first applied to control by 
+        **Mamdani & Assilian (1975)**.
+        
+        **Fuzzy Control System Components:**
+        
+        1. **Fuzzification:** Converts crisp input values to fuzzy membership degrees using membership functions 
+           (triangular, trapezoidal, Gaussian, etc.). For example: pH = 6.5 → "slightly acidic" (μ = 0.7), "neutral" (μ = 0.3)
+        
+        2. **Rule Base:** Collection of IF-THEN rules expressing control strategy based on expert knowledge. 
+           Example: "IF substrate is low AND pH is acidic THEN increase feed rate AND add base"
+        
+        3. **Inference Engine:** Evaluates fuzzy rules and combines their outputs using methods like 
+           Mamdani (min-max composition) or Sugeno (weighted average)
+        
+        4. **Defuzzification:** Converts fuzzy output back to crisp control signal using methods like 
+           centroid (center of gravity), bisector, or mean of maximum (MOM)
+        
+        **Advantages for Bioprocess Control:**
+        - Handles nonlinear and time-varying dynamics without precise mathematical models
+        - Incorporates expert knowledge through linguistic rules
+        - Robust to measurement noise and process uncertainties
+        - Effective for multivariable control with complex interactions
+        - Particularly suitable for pH control (nonlinear titration curves), temperature control 
+          (variable metabolic heat), and substrate feeding (growth phase dependent)
+        
+        **Mathematical Foundation:**
+        
+        A fuzzy set $\tilde{A}$ is characterized by a membership function $\mu_{\tilde{A}}(x): X \to [0,1]$ 
+        that assigns a degree of membership to each element in the universe of discourse.
+        
+        **Mamdani Inference System:**
+        - AND Operation: $\mu_{A \cap B}(x) = \min(\mu_A(x), \mu_B(x))$
+        - OR Operation: $\mu_{A \cup B}(x) = \max(\mu_A(x), \mu_B(x))$
+        - Implication: $\mu_{A \to B}(x,y) = \min(\mu_A(x), \mu_B(y))$
+        - Aggregation: Maximum of all rule outputs
+        - Defuzzification (Centroid): $u_{crisp} = \frac{\int \mu(u) \cdot u \, du}{\int \mu(u) \, du}$
+        
+        **Applications in this platform:**
+        The implemented fuzzy control system simultaneously controls three critical bioprocess variables:
+        - **pH:** Controlled by acid/base addition based on substrate composition and pH error
+        - **Temperature:** Controlled by heating/cooling based on substrate composition and temperature error
+        - **Substrate Feeding Rate:** Controlled based on substrate error and current concentration
+        
+        The fuzzy rules account for the interdependence between substrate composition and control requirements, 
+        such as increased buffering capacity at high substrate concentrations or elevated metabolic heat 
+        generation during active growth.
+        
+        **References:**
+        - Zadeh, L. A. (1965). "Fuzzy sets." *Information and Control*, 8(3), 338-353.
+        - Mamdani, E. H., & Assilian, S. (1975). "An experiment in linguistic synthesis with a fuzzy logic controller." 
+          *International Journal of Man-Machine Studies*, 7(1), 1-13.
+        - Lee, C. C. (1990). "Fuzzy logic in control systems: fuzzy logic controller-Parts I and II." 
+          *IEEE Transactions on Systems, Man, and Cybernetics*, 20(2), 404-435.
+        - Passino, K. M., & Yurkovich, S. (1998). *Fuzzy Control*. Addison Wesley Longman.
+        - Wang, L. X. (1997). *A Course in Fuzzy Systems and Control*. Prentice Hall PTR.
+        - Ross, T. J. (2010). *Fuzzy Logic with Engineering Applications* (3rd ed.). John Wiley & Sons.
+        - Chen, L., et al. (1996). "Fuzzy logic based control of dissolved oxygen in a bioprocess." 
+          *Computers & Chemical Engineering*, 20, S1337-S1342.
+        """)
 
 
 # To be able to run this page individually if necessary
