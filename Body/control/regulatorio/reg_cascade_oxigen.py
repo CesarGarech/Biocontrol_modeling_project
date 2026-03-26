@@ -1,12 +1,14 @@
-# Body/control/regulatorio/reg_cascada_oxigeno.py
-import streamlit as st
+# reg_cascade_oxigen.py - DO Cascade Control (Dash Version)
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
-import traceback
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from dash import dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
 
-# --- PID Controller Class (copied from previous example) ---
-# We use a class to create independent instances for each controller
+PAGE_ID = 'reg_cascade_oxigen'
+
+# --- PID Controller Class ---
 class PIDController:
     """A simple discrete PID controller class."""
 
@@ -16,45 +18,26 @@ class PIDController:
         self.Kd = Kd
         self.Ts = Ts
         self.setpoint = setpoint
-
         self.integral = 0.0
         self.prev_error = 0.0
-        self.prev_meas = 0.0 # Added for derivative on measurement
-
+        self.prev_meas = 0.0
         self.min_output, self.max_output = output_limits
 
     def compute(self, measured_value):
         """Calculates the controller output."""
         error = self.setpoint - measured_value
-
-        # Proportional term
         proportional = self.Kp * error
-
-        # Integral term (with anti-windup implicitly handled by output limits later)
         self.integral += self.Ki * error * self.Ts
-
-        # Derivative term (on measurement to reduce derivative kick)
         derivative = 0.0
-        if self.Ts > 1e-9: # Avoid division by zero
+        if self.Ts > 1e-9:
             derivative = self.Kd * (measured_value - self.prev_meas) / self.Ts
-
-        # Compute output
-        output = proportional + self.integral - derivative # Note the minus for derivative on measurement
-
-        # Store current error and measurement for next iteration
+        output = proportional + self.integral - derivative
         self.prev_error = error
         self.prev_meas = measured_value
-
-        # Apply output saturation (basic anti-windup)
         if self.min_output is not None:
             output = max(self.min_output, output)
         if self.max_output is not None:
             output = min(self.max_output, output)
-
-        # Optional: Clamp integral term if output is saturated (more robust anti-windup)
-        # if output != (proportional + self.integral - derivative):
-        #     self.integral -= self.Ki * error * self.Ts # Revert last integral step if saturated
-
         return output
 
     def update_setpoint(self, new_setpoint):
@@ -65,91 +48,151 @@ class PIDController:
         """Resets the integral and previous error/measurement."""
         self.integral = 0.0
         self.prev_error = 0.0
-        self.prev_meas = initial_measurement # Initialize prev_meas
+        self.prev_meas = initial_measurement
 
+#==========================================================================
+# DASH LAYOUTS
+#==========================================================================
+def get_params_layout():
+    """Parameters sidebar layout"""
+    return html.Div([
+        html.H4("Simulation Parameters", className="mb-3"),
+        
+        html.H6("1. Simulation Timing", className="mt-3"),
+        html.Label("Sample Time (Ts) [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-ts', type='number', value=1.0, min=0.1, max=10.0, step=0.1, className="form-control mb-2"),
+        html.Label("Final Simulation Time [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-tfinal', type='number', value=1000.0, min=100.0, max=5000.0, step=50.0, className="form-control mb-3"),
+        
+        html.H6("2. Process Models (First-Order)", className="mt-3"),
+        html.Label("Motor Gain (K_motor) [RPM/%Power]:"),
+        dcc.Input(id=f'{PAGE_ID}-k_motor', type='number', value=10.0, min=1.0, max=20.0, step=0.5, className="form-control mb-2"),
+        html.Label("Motor Time Constant (τ_motor) [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-tau_motor', type='number', value=10.0, min=1.0, max=50.0, step=1.0, className="form-control mb-2"),
+        html.Label("DO Process Gain (K_do) [%DO/RPM]:"),
+        dcc.Input(id=f'{PAGE_ID}-k_do', type='number', value=0.1, min=0.01, max=1.0, step=0.01, className="form-control mb-2"),
+        html.Label("DO Time Constant (τ_do) [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-tau_do', type='number', value=80.0, min=10.0, max=500.0, step=10.0, className="form-control mb-3"),
+        
+        html.H6("3. Sensor Models (First-Order)", className="mt-3"),
+        html.Label("RPM Sensor τ [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-tau_sens_rpm', type='number', value=2.0, min=0.1, max=20.0, step=0.5, className="form-control mb-2"),
+        html.Label("DO Sensor τ [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-tau_sens_do', type='number', value=15.0, min=1.0, max=60.0, step=1.0, className="form-control mb-3"),
+        
+        html.H6("4. PID Controllers", className="mt-3"),
+        html.Label("Outer Loop (DO → RPM_sp):"),
+        dcc.Input(id=f'{PAGE_ID}-kp_do', type='number', value=4.0, min=0.0, max=100.0, step=0.1, className="form-control mb-1", placeholder="Kp_DO"),
+        dcc.Input(id=f'{PAGE_ID}-ki_do', type='number', value=0.05, min=0.0, max=10.0, step=0.01, className="form-control mb-1", placeholder="Ki_DO"),
+        dcc.Input(id=f'{PAGE_ID}-kd_do', type='number', value=0.1, min=0.0, max=5.0, step=0.01, className="form-control mb-2", placeholder="Kd_DO"),
+        html.Label("RPM Output Limits:"),
+        dcc.Input(id=f'{PAGE_ID}-rpm_min', type='number', value=0.0, min=0.0, max=500.0, step=10.0, className="form-control mb-1", placeholder="Min RPM"),
+        dcc.Input(id=f'{PAGE_ID}-rpm_max', type='number', value=1000.0, min=100.0, max=1000.0, step=50.0, className="form-control mb-2", placeholder="Max RPM"),
+        
+        html.Label("Inner Loop (RPM → Power):"),
+        dcc.Input(id=f'{PAGE_ID}-kp_rpm', type='number', value=0.8, min=0.0, max=10.0, step=0.1, className="form-control mb-1", placeholder="Kp_RPM"),
+        dcc.Input(id=f'{PAGE_ID}-ki_rpm', type='number', value=0.2, min=0.0, max=5.0, step=0.05, className="form-control mb-1", placeholder="Ki_RPM"),
+        dcc.Input(id=f'{PAGE_ID}-kd_rpm', type='number', value=0.0, min=0.0, max=2.0, step=0.01, className="form-control mb-3", placeholder="Kd_RPM"),
+        
+        html.H6("5. Setpoint & Disturbance", className="mt-3"),
+        html.Label("Initial DO Setpoint [% Sat]:"),
+        dcc.Input(id=f'{PAGE_ID}-sp_init', type='number', value=10.0, min=0.0, max=100.0, step=1.0, className="form-control mb-2"),
+        html.Label("Final DO Setpoint [% Sat]:"),
+        dcc.Input(id=f'{PAGE_ID}-sp_final', type='number', value=30.0, min=0.0, max=100.0, step=1.0, className="form-control mb-2"),
+        html.Label("Setpoint Change Time [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-t_step', type='number', value=50.0, min=0.0, max=5000.0, step=10.0, className="form-control mb-2"),
+        html.Label("Disturbance Magnitude [% Power]:"),
+        dcc.Input(id=f'{PAGE_ID}-dist_mag', type='number', value=-20.0, min=-50.0, max=50.0, step=5.0, className="form-control mb-2"),
+        html.Label("Disturbance Start Time [s]:"),
+        dcc.Input(id=f'{PAGE_ID}-t_dist', type='number', value=700.0, min=0.0, max=5000.0, step=50.0, className="form-control mb-3"),
+        
+        dbc.Button("▶️ Run Cascade Simulation", id=f'{PAGE_ID}-btn-run', color="primary", className="w-100 mt-3")
+    ])
 
-# --- Main Streamlit Page Function ---
-def regulatorio_cascade_oxigen_page():
-    """
-    Streamlit page for simulating cascade control of Dissolved Oxygen (DO).
-    """
-    st.header("💧 Dissolved Oxygen Cascade Control Simulation")
-    st.markdown("""
-    This page simulates a **cascade control** strategy for Dissolved Oxygen (DO) in a bioreactor.
-    Cascade control is useful when the primary variable (DO) is slow, but its manipulated
-    variable (Agitation RPM) is faster and subject to its own disturbances.
+def get_content_layout():
+    """Main content layout"""
+    return html.Div([
+        html.H2("💧 Dissolved Oxygen Cascade Control Simulation", className="mb-3"),
+        dcc.Markdown("""
+        This page simulates a **cascade control** strategy for Dissolved Oxygen (DO) in a bioreactor.
+        Cascade control is useful when the primary variable (DO) is slow, but its manipulated
+        variable (Agitation RPM) is faster and subject to its own disturbances.
 
-    **Concept:**
-    1.  **Primary (Outer) Loop:** Controls the main objective, **DO**. It measures DO and compares it to the DO setpoint. Its output is *not* the final motor power, but the **setpoint for the Agitation (RPM)**. This loop is typically tuned slower.
-    2.  **Secondary (Inner) Loop:** Controls the **Agitation (RPM)**. It measures RPM and compares it to the RPM setpoint received from the outer loop. Its output *is* the **motor power**. This loop is tuned faster to quickly correct RPM deviations before they significantly affect DO.
+        **Concept:**
+        1. **Primary (Outer) Loop:** Controls the main objective, **DO**. It measures DO and compares it to the DO setpoint. 
+           Its output is the **setpoint for the Agitation (RPM)**. This loop is typically tuned slower.
+        2. **Secondary (Inner) Loop:** Controls the **Agitation (RPM)**. It measures RPM and compares it to the RPM setpoint 
+           received from the outer loop. Its output is the **motor power**. This loop is tuned faster to quickly correct RPM 
+           deviations before they significantly affect DO.
 
-    **Advantages:** The inner loop quickly rejects disturbances affecting the secondary variable (RPM), improving the stability and performance of the primary loop (DO).
-    """)
-    st.markdown("---")
+        **Advantages:** The inner loop quickly rejects disturbances affecting the secondary variable (RPM), improving the 
+        stability and performance of the primary loop (DO).
+        
+        **Mathematical Model:**
+        
+        Discrete first-order systems: $x[k+1] = \\alpha x[k] + (1-\\alpha) u[k]$ where $\\alpha = e^{-T_s/\\tau}$
+        
+        **Cascade Structure:**
+        - Outer loop: $RPM_{sp} = PID_{DO}(DO_{sp} - DO_{meas})$
+        - Inner loop: $Power = PID_{RPM}(RPM_{sp} - RPM_{meas})$
+        """, mathjax=True),
+        html.Hr(),
+        
+        html.Div(id=f'{PAGE_ID}-output', children=[
+            dbc.Alert("Set parameters and click 'Run Cascade Simulation' to start.", color="info")
+        ])
+    ])
 
-    # --- User Inputs in Sidebar ---
-    with st.sidebar:
-        st.header("Simulation Parameters")
-
-        with st.expander("1. Simulation Timing", expanded=True):
-            Ts_sim = st.number_input("Sample Time (Ts) [s]", 0.1, 10.0, 1.0, 0.1, key="cas_Ts")
-            t_final_sim = st.number_input("Final Simulation Time [s]", 100.0, 5000.0, 1000.0, 50.0, key="cas_tf")
-
-        with st.expander("2. Process Models (First-Order)", expanded=True):
-            st.markdown("**Motor (Power -> RPM)**")
-            K_motor = st.number_input("Motor Gain (K_motor) [RPM/%Power]", 1.0, 20.0, 10.0, 0.5, key="cas_kmot")
-            tau_motor = st.number_input("Motor Time Constant (τ_motor) [s]", 1.0, 50.0, 10.0, 1.0, key="cas_tmot")
-            st.markdown("**DO Process (RPM -> %DO)**")
-            K_do = st.number_input("DO Process Gain (K_do) [%DO/RPM]", 0.01, 1.0, 0.1, 0.01, key="cas_kdo")
-            tau_do = st.number_input("DO Time Constant (τ_do) [s]", 10.0, 500.0, 80.0, 10.0, key="cas_tdo")
-
-        with st.expander("3. Sensor Models (First-Order)", expanded=True):
-            tau_sensor_rpm = st.number_input("RPM Sensor Time Constant (τ_s_rpm) [s]", 0.1, 20.0, 2.0, 0.5, key="cas_tsrpm")
-            tau_sensor_do = st.number_input("DO Sensor Time Constant (τ_s_do) [s]", 1.0, 60.0, 15.0, 1.0, key="cas_tsdo")
-
-        with st.expander("4. PID Controllers", expanded=True):
-            st.markdown("**Outer Loop (DO -> RPM_sp)**")
-            Kp_DO = st.number_input("DO Kp", 0.0, 100.0, 4.0, 0.1, key="cas_kp_do")
-            Ki_DO = st.number_input("DO Ki", 0.0, 10.0, 0.05, 0.01, key="cas_ki_do")
-            Kd_DO = st.number_input("DO Kd", 0.0, 5.0, 0.1, 0.01, key="cas_kd_do")
-            rpm_min = st.number_input("Min RPM Output", 0.0, 500.0, 0.0, 10.0, key="cas_rpmmin")
-            rpm_max = st.number_input("Max RPM Output", 100.0, 1000.0, 1000.0, 50.0, key="cas_rpmmax")
-
-            st.markdown("**Inner Loop (RPM -> Power)**")
-            Kp_RPM = st.number_input("RPM Kp", 0.0, 10.0, 0.8, 0.1, key="cas_kp_rpm")
-            Ki_RPM = st.number_input("RPM Ki", 0.0, 5.0, 0.2, 0.05, key="cas_ki_rpm")
-            Kd_RPM = st.number_input("RPM Kd", 0.0, 2.0, 0.0, 0.01, key="cas_kd_rpm")
-            power_min = 0.0
-            power_max = 100.0
-            st.caption(f"Power Output Limits: [{power_min:.1f}%, {power_max:.1f}%]")
-
-        with st.expander("5. Setpoint & Disturbance", expanded=True):
-            st.markdown("**DO Setpoint**")
-            sp_initial_do = st.number_input("Initial DO Setpoint [% Sat]", 0.0, 100.0, 10.0, 1.0, key="cas_sp_init")
-            sp_final_do = st.number_input("Final DO Setpoint [% Sat]", 0.0, 100.0, 30.0, 1.0, key="cas_sp_final")
-            t_step_do = st.number_input("Setpoint Change Time [s]", 0.0, t_final_sim, 50.0, 10.0, key="cas_tstep")
-
-            st.markdown("**Power Disturbance**")
-            dist_mag = st.number_input("Disturbance Magnitude [% Power]", -50.0, 50.0, -20.0, 5.0, key="cas_dist_mag")
-            t_dist_start = st.number_input("Disturbance Start Time [s]", 0.0, t_final_sim, t_final_sim * 0.7, 50.0, key="cas_tdist")
-
-    # --- Simulation Area ---
-    st.subheader("Simulation")
-
-    if st.button("▶️ Run Cascade Simulation", key="run_cascade_sim"):
+#==========================================================================
+# DASH CALLBACKS
+#==========================================================================
+def register_callbacks(app):
+    @app.callback(
+        Output(f'{PAGE_ID}-output', 'children'),
+        Input(f'{PAGE_ID}-btn-run', 'n_clicks'),
+        [State(f'{PAGE_ID}-ts', 'value'),
+         State(f'{PAGE_ID}-tfinal', 'value'),
+         State(f'{PAGE_ID}-k_motor', 'value'),
+         State(f'{PAGE_ID}-tau_motor', 'value'),
+         State(f'{PAGE_ID}-k_do', 'value'),
+         State(f'{PAGE_ID}-tau_do', 'value'),
+         State(f'{PAGE_ID}-tau_sens_rpm', 'value'),
+         State(f'{PAGE_ID}-tau_sens_do', 'value'),
+         State(f'{PAGE_ID}-kp_do', 'value'),
+         State(f'{PAGE_ID}-ki_do', 'value'),
+         State(f'{PAGE_ID}-kd_do', 'value'),
+         State(f'{PAGE_ID}-rpm_min', 'value'),
+         State(f'{PAGE_ID}-rpm_max', 'value'),
+         State(f'{PAGE_ID}-kp_rpm', 'value'),
+         State(f'{PAGE_ID}-ki_rpm', 'value'),
+         State(f'{PAGE_ID}-kd_rpm', 'value'),
+         State(f'{PAGE_ID}-sp_init', 'value'),
+         State(f'{PAGE_ID}-sp_final', 'value'),
+         State(f'{PAGE_ID}-t_step', 'value'),
+         State(f'{PAGE_ID}-dist_mag', 'value'),
+         State(f'{PAGE_ID}-t_dist', 'value')],
+        prevent_initial_call=True
+    )
+    def simulate_cascade(n_clicks, Ts, t_final_sim, K_motor, tau_motor, K_do, tau_do,
+                        tau_sensor_rpm, tau_sensor_do, Kp_DO, Ki_DO, Kd_DO, rpm_min, rpm_max,
+                        Kp_RPM, Ki_RPM, Kd_RPM, sp_initial_do, sp_final_do, t_step_do, 
+                        dist_mag, t_dist_start):
+        if not n_clicks:
+            return dbc.Alert("Click the simulate button to start.", color="info")
+        
         try:
             # --- Simulation Setup ---
-            Ts = Ts_sim
             t = np.arange(0, t_final_sim + Ts, Ts)
             N = len(t)
 
-            # --- Discrete Process Models (First-Order Difference Equations) ---
+            # --- Discrete Process Models ---
             alpha_motor = np.exp(-Ts / max(1e-6, tau_motor))
             alpha_do = np.exp(-Ts / max(1e-6, tau_do))
             alpha_sensor_rpm = np.exp(-Ts / max(1e-6, tau_sensor_rpm))
             alpha_sensor_do = np.exp(-Ts / max(1e-6, tau_sensor_do))
 
             # --- Controller Initialization ---
+            power_min, power_max = 0.0, 100.0
             pid_DO = PIDController(Kp_DO, Ki_DO, Kd_DO, Ts, output_limits=(rpm_min, rpm_max))
             pid_RPM = PIDController(Kp_RPM, Ki_RPM, Kd_RPM, Ts, output_limits=(power_min, power_max))
 
@@ -164,18 +207,15 @@ def regulatorio_cascade_oxigen_page():
             Power_dist_vec = np.zeros(N)
 
             # --- Set Initial Conditions ---
-            DO_actual[0] = sp_initial_do # Start at initial setpoint
+            DO_actual[0] = sp_initial_do
             DO_meas[0] = DO_actual[0]
-            # Estimate initial RPM needed for this DO (steady state approx)
             RPM_actual[0] = DO_actual[0] / max(1e-6, K_do) if K_do != 0 else rpm_min
             RPM_actual[0] = np.clip(RPM_actual[0], rpm_min, rpm_max)
             RPM_meas[0] = RPM_actual[0]
             RPM_sp_vec[0] = RPM_actual[0]
-            # Estimate initial Power needed for this RPM (steady state approx)
             Power[0] = RPM_actual[0] / max(1e-6, K_motor) if K_motor != 0 else power_min
             Power[0] = np.clip(Power[0], power_min, power_max)
 
-            # Reset PIDs with initial measurements to avoid derivative kick
             pid_DO.reset(initial_measurement=DO_meas[0])
             pid_RPM.reset(initial_measurement=RPM_meas[0])
 
@@ -185,86 +225,66 @@ def regulatorio_cascade_oxigen_page():
             Power_dist_vec[t >= t_dist_start] = dist_mag
 
             # --- Main Simulation Loop ---
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
             for k in range(1, N):
-                # 1. Update Setpoints
                 pid_DO.update_setpoint(DO_sp_vec[k])
-
-                # 2. Outer Loop (DO) Calculation -> RPM Setpoint
                 RPM_sp_vec[k] = pid_DO.compute(DO_meas[k-1])
-
-                # 3. Inner Loop (RPM) Calculation -> Power Output
+                
                 pid_RPM.update_setpoint(RPM_sp_vec[k])
                 Power[k] = pid_RPM.compute(RPM_meas[k-1])
-
-                # 4. Process Simulation
-                # Apply disturbance to power
+                
                 power_with_disturbance = Power[k] + Power_dist_vec[k]
                 power_with_disturbance = np.clip(power_with_disturbance, power_min, power_max)
-
-                # 4a. Motor (Inner Process)
+                
                 RPM_actual[k] = alpha_motor * RPM_actual[k-1] + \
                                 (1 - alpha_motor) * K_motor * power_with_disturbance
-
-                # 4b. DO Process (Outer Process)
-                DO_actual[k] = alpha_do * DO_actual[k-1] + \
-                               (1 - alpha_do) * K_do * RPM_actual[k-1] # Depends on previous RPM
-
-                # 5. Sensor Simulation (with optional noise)
-                # Adding small noise example: np.random.randn() * noise_std_dev
-                RPM_meas[k] = alpha_sensor_rpm * RPM_meas[k-1] + \
-                              (1 - alpha_sensor_rpm) * RPM_actual[k] + np.random.randn() * 0.5 # Example noise
-
-                DO_meas[k] = alpha_sensor_do * DO_meas[k-1] + \
-                             (1 - alpha_sensor_do) * DO_actual[k] + np.random.randn() * 0.1 # Example noise
                 
-                # Update progress
-                progress = (k + 1) / N
-                progress_bar.progress(progress)
-                status_text.text(f"Simulation in progress: {progress * 100:.1f}%")
-            
-            status_text.text("Simulation completed.")
+                DO_actual[k] = alpha_do * DO_actual[k-1] + \
+                               (1 - alpha_do) * K_do * RPM_actual[k-1]
+                
+                RPM_meas[k] = alpha_sensor_rpm * RPM_meas[k-1] + \
+                              (1 - alpha_sensor_rpm) * RPM_actual[k] + np.random.randn() * 0.5
+                
+                DO_meas[k] = alpha_sensor_do * DO_meas[k-1] + \
+                             (1 - alpha_sensor_do) * DO_actual[k] + np.random.randn() * 0.1
 
+            # --- Create Plotly Figure ---
+            fig = make_subplots(
+                rows=3, cols=1,
+                subplot_titles=('Dissolved Oxygen (Primary Loop)', 'Agitation (Secondary Loop)', 
+                               'Motor Power (Final Control Output)'),
+                vertical_spacing=0.1
+            )
 
-            # --- Plot Results ---
-            st.subheader("Simulation Results")
-            plt.style.use('seaborn-v0_8-whitegrid')
-            fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
+            # Plot 1: DO
+            fig.add_trace(go.Scatter(x=t, y=DO_actual, mode='lines', name='DO Actual', 
+                                    line=dict(color='blue')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=t, y=DO_meas, mode='lines', name='DO Measured', 
+                                    line=dict(color='magenta', dash='dash'), opacity=0.7), row=1, col=1)
+            fig.add_trace(go.Scatter(x=t, y=DO_sp_vec, mode='lines', name='DO Setpoint', 
+                                    line=dict(color='red', dash='dot', width=2)), row=1, col=1)
 
-            # Plot 1: Dissolved Oxygen (Outer Loop)
-            axes[0].plot(t, DO_actual, 'b-', label='DO Actual')
-            axes[0].plot(t, DO_meas, 'm--', label='DO Measured', alpha=0.7)
-            axes[0].plot(t, DO_sp_vec, 'r:', label='DO Setpoint', linewidth=2)
-            axes[0].set_title('Cascade Control: Dissolved Oxygen (Primary Loop)', fontsize=14)
-            axes[0].set_ylabel('% Saturation')
-            axes[0].legend()
-            axes[0].grid(True)
+            # Plot 2: RPM
+            fig.add_trace(go.Scatter(x=t, y=RPM_actual, mode='lines', name='RPM Actual', 
+                                    line=dict(color='blue')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=t, y=RPM_meas, mode='lines', name='RPM Measured', 
+                                    line=dict(color='magenta', dash='dash'), opacity=0.7), row=2, col=1)
+            fig.add_trace(go.Scatter(x=t, y=RPM_sp_vec, mode='lines', name='RPM Setpoint (from DO)', 
+                                    line=dict(color='green', dash='dot', width=2)), row=2, col=1)
 
-            # Plot 2: Agitation (Inner Loop)
-            axes[1].plot(t, RPM_actual, 'b-', label='RPM Actual')
-            axes[1].plot(t, RPM_meas, 'm--', label='RPM Measured', alpha=0.7)
-            axes[1].plot(t, RPM_sp_vec, 'g:', label='RPM Setpoint (from DO)', linewidth=2)
-            axes[1].set_title('Agitation (Secondary Loop)', fontsize=14)
-            axes[1].set_ylabel('RPM')
-            axes[1].legend()
-            axes[1].grid(True)
+            # Plot 3: Power
+            fig.add_trace(go.Scatter(x=t, y=Power, mode='lines', name='PID Power Output', 
+                                    line=dict(color='black')), row=3, col=1)
+            fig.add_trace(go.Scatter(x=t, y=Power_dist_vec, mode='lines', name='Disturbance', 
+                                    line=dict(color='red', dash='dash')), row=3, col=1)
 
-            # Plot 3: Motor Power (Final Output)
-            axes[2].plot(t, Power, 'k-', label='PID Power Output')
-            axes[2].plot(t, Power_dist_vec, 'r--', label='Disturbance')
-            axes[2].set_title('Motor Power (Final Control Output)', fontsize=14)
-            axes[2].set_xlabel('Time (s)')
-            axes[2].set_ylabel('Power (%)')
-            axes[2].legend()
-            axes[2].grid(True)
+            fig.update_xaxes(title_text="Time (s)", row=3, col=1)
+            fig.update_yaxes(title_text="% Saturation", row=1, col=1)
+            fig.update_yaxes(title_text="RPM", row=2, col=1)
+            fig.update_yaxes(title_text="Power (%)", row=3, col=1)
+            fig.update_layout(height=900, showlegend=True, title_text="Cascade Control Simulation Results")
 
-            plt.tight_layout()
-            st.pyplot(fig)
-
-            # Optional: Display data table
-            df_results_cas = pd.DataFrame({
+            # --- Data Table ---
+            df_results = pd.DataFrame({
                 'Time (s)': t,
                 'DO Setpoint (%)': DO_sp_vec,
                 'DO Actual (%)': DO_actual,
@@ -275,22 +295,16 @@ def regulatorio_cascade_oxigen_page():
                 'Power Cmd (%)': Power,
                 'Power Dist (%)': Power_dist_vec
             })
-            with st.expander("View simulation data"):
-                 st.dataframe(df_results_cas.style.format({
-                    'Time (s)': '{:.1f}', 'DO Setpoint (%)': '{:.1f}', 'DO Actual (%)': '{:.2f}',
-                    'DO Measured (%)': '{:.2f}', 'RPM Setpoint': '{:.1f}', 'RPM Actual': '{:.1f}',
-                    'RPM Measured': '{:.1f}', 'Power Cmd (%)': '{:.1f}', 'Power Dist (%)': '{:.1f}'
-                 }))
 
+            return html.Div([
+                dbc.Alert("Simulation completed successfully!", color="success", className="mb-3"),
+                dcc.Graph(figure=fig),
+                html.Hr(),
+                html.H5("Simulation Data (first 100 points)", className="mt-4"),
+                html.Div([
+                    dcc.Markdown(df_results.head(100).to_markdown(index=False, floatfmt='.2f'))
+                ], style={'maxHeight': '400px', 'overflowY': 'scroll', 'fontSize': '12px'})
+            ])
+            
         except Exception as e:
-            st.error(f"An error occurred during the cascade simulation:")
-            st.exception(e) # Show traceback
-
-    else:
-        st.info("Set parameters in the sidebar and click 'Run Cascade Simulation'.")
-
-
-# --- Entry Point ---
-if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="DO Cascade Control")
-    regulatorio_cascade_oxigen_page()
+            return dbc.Alert(f"An error occurred during simulation: {str(e)}", color="danger")

@@ -1,158 +1,233 @@
-# reg_temperatura.py (o reg_temp.py)
-import streamlit as st
+import dash
+from dash import dcc, html, Input, Output, State, dash_table
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 try:
-    import control # Python Control Systems Library (necesita: pip install control)
+    import control
 except ImportError:
-    st.error("The 'python-control'library is not installed. Please, install it by running: pip install control")
-    st.stop() # Detener si falta la librería
-import pandas as pd # Opcional: para mostrar parámetros o resultados en tabla
-import traceback # Para mostrar errores detallados
+    control = None
 
-# --- Función Principal de la Página ---
-def regulatorio_temperatura_page():
-    """
-    Página de Streamlit para simular el control de temperatura de un biorreactor.
-    """
-    st.header("🌡️ Temperature Regulatory Control Simulation")
-    st.markdown("""
-    This page simulates a closed-loop temperature control system 
-    for a bioreactor. The system consists of:
-    * **Process (Bioreactor):** Modeled as a first-order system.
-    * **Final Control Element (Valve):** Modeled as a first-order system.
-    * **Temperature Sensor:** Modeled as a first-order system.
-    * **Controller:** A Proportional-Integral-Derivative (PID) controller.
-
-    You can modify the parameters of each component andthe controller
-    to observe how they affect the system's response to a change
-    in the temperature setpoint (desired value).
-    """)
-    st.markdown("---")
-
-    # --- Explicación de Funciones de Transferencia ---
-    st.subheader("System Transfer Functions")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.latex(r'G_p(s) = \frac{K_p}{\tau_p s + 1}')
-        st.caption("Process/Bioreactor")
-        st.latex(r'G_v(s) = \frac{K_v}{\tau_v s + 1}')
-        st.caption("Valve")
-    with col2:
-        st.latex(r'G_s(s) = \frac{K_s}{\tau_s s + 1}')
-        st.caption("Sensor")
-        st.latex(r'C(s) = K_{p_{pid}} + \frac{K_{i_{pid}}}{s} + K_{d_{pid}} s')
-        st.caption("PID Controller")
-
-    st.latex(r'G_{total}(s) = G_p(s) G_v(s) G_s(s)')
-    st.caption("Full Plant in Open-Loop (according to original example)")
-
-    st.latex(r'T(s) = \frac{C(s)G_{total}(s)}{1 + C(s)G_{total}(s)}')
-    st.caption("Closed-Loop System (with unit feedback after the sensor)")
-    st.markdown("---")
-
-    # --- Entradas del Usuario en la Barra Lateral ---
-    with st.sidebar:
-        st.header("Simulation Parameters")
-
-        with st.expander("1. Process Parameters (Bioreactor)", expanded=True):
-            Kp = st.number_input("Proces Gain (Kp)", min_value=0.1, value=2.0, step=0.1, format="%.2f", key="Kp")
-            tau_p = st.number_input("Process Time Constant (τp) [s]", min_value=1.0, value=50.0, step=1.0, format="%.1f", key="tau_p")
-
-        with st.expander("2. Valve Parameters", expanded=True):
-            Kv = st.number_input("Valve Gain (Kv)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Kv")
-            tau_v = st.number_input("Valve Time Constant (τv) [s]", min_value=0.1, value=5.0, step=0.1, format="%.1f", key="tau_v")
-
-        with st.expander("3. Sensor Parameters", expanded=True):
-            Ks_sens = st.number_input("Sensor Gain (Ks)", min_value=0.1, value=1.0, step=0.1, format="%.2f", key="Ks_sens")
-            tau_s = st.number_input("Sensor Time Constant (τs) [s]", min_value=0.1, value=2.0, step=0.1, format="%.1f", key="tau_s")
-
-        with st.expander("4. PID Controller Parameters", expanded=True):
-            Kp_pid = st.number_input("Proportional Gain (Kp_pid)", min_value=0.0, value=5.1, step=0.1, format="%.2f", key="Kp_pid")
-            Ki_pid = st.number_input("Integral Gain (Ki_pid)", min_value=0.0, value=0.0, step=0.01, format="%.3f", help="Set 0 for P or PD control", key="Ki_pid")
-            Kd_pid = st.number_input("Derivative Gain (Kd_pid)", min_value=0.0, value=0.0, step=0.5, format="%.2f", help="Set 0 for P or PI control", key="Kd_pid")
-
-        with st.expander("5. Simulation Configuration", expanded=True):
-            t_final = st.number_input("Final Time Simulation [s]", min_value=50.0, value=500.0, step=50.0, key="t_final")
-            st.markdown("Setpoint Configuration (Step Input)")
-            sp_initial = st.number_input("Initial Setpoint Value [°C]", value=0.0, step=1.0, key="sp_initial")
-            sp_final = st.number_input("Final Setpoint Value [°C]", value=30.0, step=1.0, key="sp_final")
-            t_step_value = st.number_input("Setpoint Change Time [s]", min_value=0.0, max_value=float(t_final), value=150.0, step=1.0, key="t_step")
+PAGE_ID = 'reg_temp'
 
 
-    # --- Simulación y Gráfica en el Área Principal ---
-    st.subheader("Control Simulation")
+def get_params_layout():
+    """Parameters layout for sidebar"""
+    return html.Div([
+        html.H6("1. Process Parameters (Bioreactor)", className="text-white-50 mt-3"),
+        html.Label("Process Gain (Kp)", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-kp', type='number', min=0.1, value=2.0, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Process Time Constant (τp) [s]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-taup', type='number', min=1.0, value=50.0, step=1.0,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        
+        html.Hr(style={"borderColor": "#4a6278"}),
+        html.H6("2. Valve Parameters", className="text-white-50"),
+        html.Label("Valve Gain (Kv)", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-kv', type='number', min=0.1, value=1.0, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Valve Time Constant (τv) [s]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-tauv', type='number', min=0.1, value=5.0, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        
+        html.Hr(style={"borderColor": "#4a6278"}),
+        html.H6("3. Sensor Parameters", className="text-white-50"),
+        html.Label("Sensor Gain (Ks)", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-ks', type='number', min=0.1, value=1.0, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Sensor Time Constant (τs) [s]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-taus', type='number', min=0.1, value=2.0, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        
+        html.Hr(style={"borderColor": "#4a6278"}),
+        html.H6("4. PID Controller Parameters", className="text-white-50"),
+        html.Label("Proportional Gain (Kp_pid)", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-kp-pid', type='number', min=0.0, value=5.1, step=0.1,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Integral Gain (Ki_pid)", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-ki-pid', type='number', min=0.0, value=0.0, step=0.01,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Small("Set 0 for P or PD control", className="text-muted"),
+        html.Label("Derivative Gain (Kd_pid)", className="text-white-50 small mt-2"),
+        dcc.Input(id=f'{PAGE_ID}-input-kd-pid', type='number', min=0.0, value=0.0, step=0.5,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Small("Set 0 for P or PI control", className="text-muted"),
+        
+        html.Hr(style={"borderColor": "#4a6278"}),
+        html.H6("5. Simulation Configuration", className="text-white-50"),
+        html.Label("Final Time [s]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-tfinal', type='number', min=50.0, value=500.0, step=50.0,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Initial Setpoint [°C]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-sp-initial', type='number', value=0.0, step=1.0,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Final Setpoint [°C]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-sp-final', type='number', value=30.0, step=1.0,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        html.Label("Setpoint Change Time [s]", className="text-white-50 small"),
+        dcc.Input(id=f'{PAGE_ID}-input-t-step', type='number', min=0.0, value=150.0, step=1.0,
+                  style={"width": "100%", "marginBottom": "8px"}),
+        
+        html.Button("▶ Simulate", id=f'{PAGE_ID}-run-btn', n_clicks=0,
+                    className='btn btn-success w-100 mt-3'),
+    ], style={"padding": "10px"})
 
-    if st.button("▶️ Simulate Temperature Control", key="run_temp_sim"):
+
+def get_content_layout():
+    """Main content layout"""
+    if control is None:
+        return html.Div([
+            dbc.Alert("The 'python-control' library is not installed. Please install it: pip install control",
+                      color="danger")
+        ])
+    
+    return html.Div([
+        html.H2("🌡️ Temperature Regulatory Control"),
+        dcc.Markdown("""
+        This page simulates a closed-loop temperature control system for a bioreactor. The system consists of:
+        * **Process (Bioreactor):** Modeled as a first-order system.
+        * **Final Control Element (Valve):** Modeled as a first-order system.
+        * **Temperature Sensor:** Modeled as a first-order system.
+        * **Controller:** A Proportional-Integral-Derivative (PID) controller.
+        
+        You can modify the parameters of each component and the controller to observe how they affect 
+        the system's response to a change in the temperature setpoint.
+        """),
+        html.Hr(),
+        
+        html.H4("System Transfer Functions"),
+        dbc.Row([
+            dbc.Col([
+                dcc.Markdown(r"$$G_p(s) = \frac{K_p}{\tau_p s + 1}$$", mathjax=True),
+                html.P("Process/Bioreactor", className="text-muted small"),
+                dcc.Markdown(r"$$G_v(s) = \frac{K_v}{\tau_v s + 1}$$", mathjax=True),
+                html.P("Valve", className="text-muted small"),
+            ], md=6),
+            dbc.Col([
+                dcc.Markdown(r"$$G_s(s) = \frac{K_s}{\tau_s s + 1}$$", mathjax=True),
+                html.P("Sensor", className="text-muted small"),
+                dcc.Markdown(r"$$C(s) = K_{p_{pid}} + \frac{K_{i_{pid}}}{s} + K_{d_{pid}} s$$", mathjax=True),
+                html.P("PID Controller", className="text-muted small"),
+            ], md=6),
+        ]),
+        dcc.Markdown(r"$$G_{total}(s) = G_p(s) G_v(s) G_s(s)$$", mathjax=True),
+        html.P("Full Plant in Open-Loop", className="text-muted small"),
+        dcc.Markdown(r"$$T(s) = \frac{C(s)G_{total}(s)}{1 + C(s)G_{total}(s)}$$", mathjax=True),
+        html.P("Closed-Loop System (with unit feedback after the sensor)", className="text-muted small"),
+        html.Hr(),
+        
+        html.Div(id=f'{PAGE_ID}-output-info'),
+        dcc.Loading(
+            id=f'{PAGE_ID}-loading',
+            type="default",
+            children=[
+                dcc.Graph(id=f'{PAGE_ID}-graph'),
+                html.Div(id=f'{PAGE_ID}-table-container')
+            ]
+        ),
+    ])
+
+
+def register_callbacks(app):
+    """Register Dash callbacks"""
+    
+    @app.callback(
+        [Output(f'{PAGE_ID}-output-info', 'children'),
+         Output(f'{PAGE_ID}-graph', 'figure'),
+         Output(f'{PAGE_ID}-table-container', 'children')],
+        [Input(f'{PAGE_ID}-run-btn', 'n_clicks')],
+        [State(f'{PAGE_ID}-input-kp', 'value'),
+         State(f'{PAGE_ID}-input-taup', 'value'),
+         State(f'{PAGE_ID}-input-kv', 'value'),
+         State(f'{PAGE_ID}-input-tauv', 'value'),
+         State(f'{PAGE_ID}-input-ks', 'value'),
+         State(f'{PAGE_ID}-input-taus', 'value'),
+         State(f'{PAGE_ID}-input-kp-pid', 'value'),
+         State(f'{PAGE_ID}-input-ki-pid', 'value'),
+         State(f'{PAGE_ID}-input-kd-pid', 'value'),
+         State(f'{PAGE_ID}-input-tfinal', 'value'),
+         State(f'{PAGE_ID}-input-sp-initial', 'value'),
+         State(f'{PAGE_ID}-input-sp-final', 'value'),
+         State(f'{PAGE_ID}-input-t-step', 'value')],
+        prevent_initial_call=True
+    )
+    def simulate_temperature_control(n_clicks, Kp, tau_p, Kv, tau_v, Ks_sens, tau_s,
+                                     Kp_pid, Ki_pid, Kd_pid, t_final, sp_initial, sp_final, t_step_value):
+        if n_clicks == 0 or control is None:
+            return "", {}, ""
+        
         try:
-            # 1. Definir funciones de transferencia
+            # 1. Define transfer functions
             s = control.tf('s')
             Gp = Kp / (tau_p * s + 1)
             Gv = Kv / (tau_v * s + 1)
             Gs = Ks_sens / (tau_s * s + 1)
             G_total = Gs * Gp * Gv
-
-            # 2. Definir controlador PID --- ¡CORRECCIÓN AQUÍ! ---
-            # C(s) = Kp + Ki/s + Kd*s = (Kd*s^2 + Kp*s + Ki) / s
+            
+            # 2. Define PID controller
             C_pid = control.tf([Kd_pid, Kp_pid, Ki_pid], [1, 0])
-            # Simplificar la FT resultante si Ki y Kd son cero
             if Ki_pid == 0 and Kd_pid == 0:
-                 C_pid = Kp_pid # Si es solo P, es una ganancia simple
-
-            st.write("Controller C(s):")
-            st.text(str(C_pid)) # Mostrar la FT del controlador
-
-            # 3. Calcular lazo cerrado
+                C_pid = Kp_pid
+            
+            # 3. Calculate closed loop
             T_cerrado = control.feedback(C_pid * G_total, 1)
-            st.write("Closed-Loop Transfer Function T(s):")
-            st.text(str(T_cerrado))
-
-
-            # 4. Preparar simulación
+            
+            # 4. Prepare simulation
             num_points = int(t_final * 5) + 1
             t = np.linspace(0, t_final, num_points)
             setpoint = np.ones_like(t) * sp_initial
             setpoint[t >= t_step_value] = sp_final
-
-            # 5. Simular respuesta
-            st.write(f"Simulating response from t = 0 to {t_final} s...")
+            
+            # 5. Simulate response
             T, yout = control.forced_response(T_cerrado, T=t, U=setpoint)
-            st.write("Simulation completed.")
-
-            # 6. Graficar resultados
-            st.subheader("System Response")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(T, setpoint, 'r--', linewidth=2, label='Setpoint (°C)')
-            ax.plot(T, yout, 'b-', linewidth=2, label='Controlled Temperature (°C)')
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Temperature (°C)')
-            ax.set_title('Bioreactor Response with PID Control')
-            ax.legend(loc='best')
-            ax.grid(True)
-            min_y = min(sp_initial, sp_final, np.min(yout) if len(yout)>0 else 0)
-            max_y = max(sp_initial, sp_final, np.max(yout) if len(yout)>0 else 30)
-            range_y = max(1, max_y - min_y) # Evitar rango cero
-            ax.set_ylim(bottom=min_y - range_y*0.1, top=max_y + range_y*0.1) # Ajuste dinámico de ylim
-            ax.set_xlim(0, t_final)
-            st.pyplot(fig)
-
-            # 7. Mostrar tabla de resultados (opcional)
-            df_results = pd.DataFrame({'Time (s)': T, 'Setpoint (°C)': setpoint, 'Temperature (°C)': yout})
-            with st.expander("View simulation data"):
-                st.dataframe(df_results.style.format({
-                    'Time (s)': '{:.1f}',
-                    'Setpoint (°C)': '{:.2f}',
-                    'Temperature (°C)': '{:.3f}'
-                }))
-
+            
+            # 6. Create figure
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=T, y=setpoint, mode='lines', name='Setpoint (°C)',
+                                    line=dict(color='red', dash='dash', width=2)))
+            fig.add_trace(go.Scatter(x=T, y=yout, mode='lines', name='Controlled Temperature (°C)',
+                                    line=dict(color='blue', width=2)))
+            
+            fig.update_layout(
+                title='Bioreactor Temperature Response with PID Control',
+                xaxis_title='Time (s)',
+                yaxis_title='Temperature (°C)',
+                hovermode='x unified',
+                template='plotly_white'
+            )
+            
+            # 7. Create data table
+            df_results = pd.DataFrame({
+                'Time (s)': T[::50],  # Subsample for display
+                'Setpoint (°C)': setpoint[::50],
+                'Temperature (°C)': yout[::50]
+            })
+            
+            table = html.Div([
+                html.H5("Simulation Data (sampled)", className="mt-4"),
+                dash_table.DataTable(
+                    data=df_results.round(3).to_dict('records'),
+                    columns=[{"name": i, "id": i} for i in df_results.columns],
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={'textAlign': 'left', 'padding': '8px'},
+                    style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'}
+                )
+            ])
+            
+            info = dbc.Alert([
+                html.H5("Simulation Complete", className="alert-heading"),
+                html.P(f"Controller: C(s) = {str(C_pid)[:100]}..."),
+                html.P(f"Closed-Loop: T(s) calculated successfully"),
+            ], color="success")
+            
+            return info, fig, table
+            
         except Exception as e:
-            st.error(f"An error occurred during the temperature simulation:")
-            st.exception(e)
-
-    else:
-        st.info("Set the parameters in the sidebar and click on 'Simulate Temperature Control'.")
-
-# --- Punto de Entrada ---
-if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="Temperature Control")
-    regulatorio_temperatura_page()
+            error_msg = dbc.Alert([
+                html.H5("Simulation Error", className="alert-heading"),
+                html.P(str(e)),
+            ], color="danger")
+            return error_msg, {}, ""

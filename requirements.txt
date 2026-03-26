@@ -13,4 +13,5 @@ xlsxwriter
 tensorflow
 scikit-fuzzy
 networkx
+streamlit
 # casadi ipopt

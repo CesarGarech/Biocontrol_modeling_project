@@ -1,276 +1,294 @@
-import streamlit as st
+# rto.py - RTO Feed Profile Optimization (Dash Version)
 import casadi as ca
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from dash import dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
 from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa
 
-def rto_page():
-    st.header("🧠 RTO Control -Feed Profile Optimization")
+PAGE_ID = 'rto'
 
-    with st.sidebar:
-        st.subheader("📌 Model Parameters")
-        mu_max = st.number_input("μmax [1/h]", value=0.6, min_value=0.01)
-        Ks = st.number_input("Ks [g/L]", value=0.2, min_value=0.01)
-        Ko = st.number_input("KO [g/L]", value=0.01, min_value=0.001)
-        KP = st.number_input("KP [g/L]", value=0.1, min_value=0.001)
-        Yxs = st.number_input("Yxs [g/g]", value=0.5, min_value=0.1, max_value=1.0)
-        Yxo = st.number_input("Yxo [g/g]", value=0.1, min_value=0.01, max_value=1.0)
-        Yps = st.number_input("Yps [g/g]", value=0.3, min_value=0.1, max_value=1.0)
-        Sf_input = st.number_input("Concentration of the feed Sf [g/L]", value=500.0)
-        V_max_input = st.number_input("Maximum reactor volume [L]", value=2.0)
+#==========================================================================
+# DASH LAYOUTS
+#==========================================================================
+def get_params_layout():
+    """Parameters sidebar layout"""
+    return html.Div([
+        html.H4("RTO Configuration", className="mb-3"),
+        
+        html.H6("Model Parameters", className="mt-3"),
+        html.Label("μmax [1/h]:"),
+        dcc.Input(id=f'{PAGE_ID}-mu_max', type='number', value=0.6, min=0.01, step=0.01, className="form-control mb-2"),
+        html.Label("Ks [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-Ks', type='number', value=0.2, min=0.01, step=0.01, className="form-control mb-2"),
+        html.Label("KO [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-Ko', type='number', value=0.01, min=0.001, step=0.001, className="form-control mb-2"),
+        html.Label("KP [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-KP', type='number', value=0.1, min=0.001, step=0.01, className="form-control mb-2"),
+        html.Label("Yxs [g/g]:"),
+        dcc.Input(id=f'{PAGE_ID}-Yxs', type='number', value=0.5, min=0.1, max=1.0, step=0.01, className="form-control mb-2"),
+        html.Label("Yxo [g/g]:"),
+        dcc.Input(id=f'{PAGE_ID}-Yxo', type='number', value=0.1, min=0.01, max=1.0, step=0.01, className="form-control mb-2"),
+        html.Label("Yps [g/g]:"),
+        dcc.Input(id=f'{PAGE_ID}-Yps', type='number', value=0.3, min=0.1, max=1.0, step=0.01, className="form-control mb-2"),
+        html.Label("Feed concentration Sf [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-Sf', type='number', value=500.0, min=1, className="form-control mb-2"),
+        html.Label("Max reactor volume [L]:"),
+        dcc.Input(id=f'{PAGE_ID}-Vmax', type='number', value=2.0, min=0.1, step=0.1, className="form-control mb-3"),
+        
+        html.Hr(),
+        html.H6("Initial Conditions", className="mt-3"),
+        html.Label("X0 [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-X0', type='number', value=1.0, min=0, step=0.1, className="form-control mb-2"),
+        html.Label("S0 [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-S0', type='number', value=20.0, min=0, className="form-control mb-2"),
+        html.Label("P0 [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-P0', type='number', value=0.0, min=0, className="form-control mb-2"),
+        html.Label("O0 [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-O0', type='number', value=0.08, min=0, step=0.01, className="form-control mb-2"),
+        html.Label("V0 [L]:"),
+        dcc.Input(id=f'{PAGE_ID}-V0', type='number', value=0.2, min=0.01, step=0.1, className="form-control mb-3"),
+        
+        html.Hr(),
+        html.H6("Time Configuration", className="mt-3"),
+        html.Label("Batch time [h]:"),
+        dcc.Input(id=f'{PAGE_ID}-tbatch', type='number', value=5.0, min=0, className="form-control mb-2"),
+        html.Label("Total process time [h]:"),
+        dcc.Input(id=f'{PAGE_ID}-ttotal', type='number', value=24.0, min=6, className="form-control mb-3"),
+        
+        html.Hr(),
+        html.H6("Operating Restrictions", className="mt-3"),
+        html.Label("Min Flow [L/h]:"),
+        dcc.Input(id=f'{PAGE_ID}-Fmin', type='number', value=0.0, min=0, step=0.01, className="form-control mb-2"),
+        html.Label("Max Flow [L/h]:"),
+        dcc.Input(id=f'{PAGE_ID}-Fmax', type='number', value=0.3, min=0, step=0.01, className="form-control mb-2"),
+        html.Label("Max Substrate [g/L]:"),
+        dcc.Input(id=f'{PAGE_ID}-Smax', type='number', value=30.0, min=0, className="form-control mb-3"),
+        
+        html.Hr(),
+        html.H6("Kinetic Model", className="mt-3"),
+        dcc.Dropdown(id=f'{PAGE_ID}-kinetic_model', options=[
+            {'label': 'Monod', 'value': 'Monod'},
+            {'label': 'Sigmoidal', 'value': 'Sigmoidal'},
+            {'label': 'Complete', 'value': 'Complete'}
+        ], value='Monod', clearable=False, className="mb-2"),
+        html.Div(id=f'{PAGE_ID}-n_sigmoidal_div', children=[
+            html.Label("n (Sigmoidal parameter):"),
+            dcc.Input(id=f'{PAGE_ID}-n_sigmoidal', type='number', value=2.0, min=1.0, step=0.1, className="form-control")
+        ], className="mb-3", style={'display': 'none'}),
+        
+        dbc.Button("🚀 Run RTO Optimization", id=f'{PAGE_ID}-btn-run', color="primary", className="w-100 mt-3")
+    ], style={'maxHeight': '80vh', 'overflowY': 'scroll'})
 
-        st.subheader("🎚 Initial Conditions")
-        X0 = st.number_input("X0 (Biomass) [g/L]", value=1.0)
-        S0 = st.number_input("S0 (Substrate) [g/L]", value=20.0)
-        P0 = st.number_input("P0 (Product) [g/L]", value=0.0)
-        O0 = st.number_input("O0 (Oxygen) [g/L]", value=0.08)
-        V0 = st.number_input("V0 (Volume) [L]", value=0.2)
+def get_content_layout():
+    """Main content layout"""
+    return html.Div([
+        html.H2("🧠 RTO Control - Feed Profile Optimization", className="mb-3"),
+        dcc.Markdown("""
+        This module implements **Real-Time Optimization (RTO)** for fed-batch bioreactor operation using 
+        orthogonal collocation on finite elements. The objective is to maximize the **total product mass** 
+        (P × V) at the end of the process.
 
-        st.subheader("⏳ Temporary Configuration")
-        t_batch = st.number_input("Batch time (t_batch) [h]", value=5.0, min_value=0.0)
-        t_total = st.number_input("Total process time [h]", value=24.0, min_value=t_batch + 1.0)
+        **Process Model:**
+        
+        The bioreactor operates in two phases:
+        1. **Batch phase** (0 to t_batch): F = 0, initial growth
+        2. **Fed-batch phase** (t_batch to t_total): F optimized using collocation
+        
+        **State equations:**
+        
+        $$\\frac{dX}{dt} = \\mu X - DX, \\quad \\frac{dS}{dt} = -\\frac{\\mu X}{Y_{XS}} + D(S_f - S), \\quad \\frac{dP}{dt} = Y_{PS}\\mu X - DP$$
+        
+        $$\\frac{dV}{dt} = F, \\quad D = \\frac{F}{V}$$
+        
+        **Optimization:**
+        - Objective: $\\max(P_{final} \\times V_{final})$
+        - Collocation method: Radau IIA (degree 2)
+        - Solver: IPOPT via CasADi
+        - Constraints: $F_{min} \\leq F \\leq F_{max}$, $S \\leq S_{max}$, $V \\leq V_{max}$
+        """, mathjax=True),
+        html.Hr(),
+        
+        html.Div(id=f'{PAGE_ID}-output', children=[
+            dbc.Alert("Configure parameters in the sidebar and click 'Run RTO Optimization'.", color="info")
+        ])
+    ])
 
-        st.subheader("🔧 Operating Restrictions")
-        F_min = st.number_input("Minimum Flow [L/h]", value=0.0, min_value=0.0)
-        F_max = st.number_input("Maximum Flow [L/h]", value=0.3, min_value=F_min)
-        S_max = st.number_input("Maximum subtrate allowed [g/L]", value=30.0)
-
-        st.subheader("🔬 Selection of the kinetic model")
-        kinetic_model = st.selectbox("Kinetic model", ["Monod", "Sigmoidal", "Complete"])
-        if kinetic_model == "Sigmoidal":
-            n_sigmoidal = st.number_input("n (for Sigmoidal Monod)", value=2.0, min_value=1.0)
-
-    if st.button("🚀 Run RTO Optimization"):
-        st.info("Optimizing feed profile...")
-
+#==========================================================================
+# DASH CALLBACKS
+#==========================================================================
+def register_callbacks(app):
+    # Show/hide sigmoidal parameter input
+    @app.callback(
+        Output(f'{PAGE_ID}-n_sigmoidal_div', 'style'),
+        Input(f'{PAGE_ID}-kinetic_model', 'value')
+    )
+    def toggle_sigmoidal(kinetic_model):
+        if kinetic_model == 'Sigmoidal':
+            return {'display': 'block'}
+        return {'display': 'none'}
+    
+    # Main RTO optimization callback
+    @app.callback(
+        Output(f'{PAGE_ID}-output', 'children'),
+        Input(f'{PAGE_ID}-btn-run', 'n_clicks'),
+        [State(f'{PAGE_ID}-mu_max', 'value'),
+         State(f'{PAGE_ID}-Ks', 'value'),
+         State(f'{PAGE_ID}-Ko', 'value'),
+         State(f'{PAGE_ID}-KP', 'value'),
+         State(f'{PAGE_ID}-Yxs', 'value'),
+         State(f'{PAGE_ID}-Yxo', 'value'),
+         State(f'{PAGE_ID}-Yps', 'value'),
+         State(f'{PAGE_ID}-Sf', 'value'),
+         State(f'{PAGE_ID}-Vmax', 'value'),
+         State(f'{PAGE_ID}-X0', 'value'),
+         State(f'{PAGE_ID}-S0', 'value'),
+         State(f'{PAGE_ID}-P0', 'value'),
+         State(f'{PAGE_ID}-O0', 'value'),
+         State(f'{PAGE_ID}-V0', 'value'),
+         State(f'{PAGE_ID}-tbatch', 'value'),
+         State(f'{PAGE_ID}-ttotal', 'value'),
+         State(f'{PAGE_ID}-Fmin', 'value'),
+         State(f'{PAGE_ID}-Fmax', 'value'),
+         State(f'{PAGE_ID}-Smax', 'value'),
+         State(f'{PAGE_ID}-kinetic_model', 'value'),
+         State(f'{PAGE_ID}-n_sigmoidal', 'value')],
+        prevent_initial_call=True
+    )
+    def run_rto(n_clicks, mu_max, Ks, Ko, KP, Yxs, Yxo, Yps, Sf_input, V_max_input,
+                X0, S0, P0, O0, V0, t_batch, t_total, F_min, F_max, S_max, kinetic_model, n_sigmoidal):
+        if not n_clicks:
+            return dbc.Alert("Click the button to run optimization.", color="info")
+        
         try:
             def radau_coefficients(d):
-                """
-                Retorna C_mat (shape (d+1, d)) y D_vec (shape d+1)
-                para la colocación de Radau IIA con grado d=2.
-                Estos valores son los correctos para Radau IIA order 3.
-                """
+                """Radau IIA collocation coefficients for d=2"""
                 if d == 2:
-                    C_mat = np.array([
-                        [-2.0,   2.0],
-                        [ 1.5,  -4.5],
-                        [ 0.5,   2.5]
-                    ])
+                    C_mat = np.array([[-2.0, 2.0], [1.5, -4.5], [0.5, 2.5]])
                     D_vec = np.array([0.0, 0.0, 1.0])
                     return C_mat, D_vec
                 else:
-                    raise NotImplementedError("Only implemented for d=2.")
-            # ====================================================
-            # 1) Definición de la función ODE BIO
-            # ====================================================
+                    raise NotImplementedError("Only d=2 implemented.")
+            
             def odefun(x, u):
-                """
-                Ecuaciones diferenciales Fed-Batch con O=constante.
-                - Divisiones con fmax(V, epsilon) para evitar 1/0.
-                """
-                # Parámetros
-                mu_max_local = mu_max
-                Ks_local = Ks
-                Ko_local = Ko
-                KP_local = KP
-                Yxs_local = Yxs
-                Yxo_local = Yxo
-                Yps_local = Yps
-                Sf_local = Sf_input
-                V_max_local = V_max_input
-
-                # Extraer variables de estado (evitar desempacado iterativo)
-                X_ = x[0]
-                S_ = x[1]
-                P_ = x[2]
-                O_ = x[3]
-                V_ = x[4]
-
-                # Tasa de crecimiento
+                """Fed-batch ODE model"""
+                X_, S_, P_, O_, V_ = x[0], x[1], x[2], x[3], x[4]
+                
                 if kinetic_model == "Monod":
-                    mu = mu_monod(S_, mu_max_local, Ks_local) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
+                    mu = mu_monod(S_, mu_max, Ks) * (O_ / (Ko + O_))
                 elif kinetic_model == "Sigmoidal":
-                    mu = mu_sigmoidal(S_, mu_max_local, Ks_local, n_sigmoidal) * (O_ / (Ko_local + O_)) # Assuming oxygen dependence
+                    mu = mu_sigmoidal(S_, mu_max, Ks, n_sigmoidal) * (O_ / (Ko + O_))
                 elif kinetic_model == "Complete":
-                    mu = mu_completa(S_, O_, P_, mu_max_local, Ks_local, Ko_local, KP_local)
+                    mu = mu_completa(S_, O_, P_, mu_max, Ks, Ko, KP)
                 else:
-                    raise ValueError("Kinetic model not selected correctly.")
-
-                # Tasa de dilución
+                    raise ValueError("Invalid kinetic model.")
+                
                 D = u / V_
-
                 dX = mu * X_ - D * X_
-                dS = -mu * X_ / Yxs_local + D * (Sf_local - S_)
-                dP = Yps_local * mu * X_ - D * P_
-                dO = 0.0   # asumiendo oxígeno constante
+                dS = -mu * X_ / Yxs + D * (Sf_input - S_)
+                dP = Yps * mu * X_ - D * P_
+                dO = 0.0
                 dV = u
-
                 return ca.vertcat(dX, dS, dP, dO, dV)
-
-            # ====================================================
-            # 3) Parámetros del proceso y condiciones iniciales
-            # ====================================================
-            n_fb_intervals = int((t_total - t_batch))
+            
+            # Batch phase integration
+            n_fb_intervals = int(t_total - t_batch)
             dt_fb = (t_total - t_batch) / n_fb_intervals if n_fb_intervals > 0 else 0.0
-
-            # ====================================================
-            # 4) Fase BATCH con F=0 (integración)
-            # ====================================================
+            
             x_sym = ca.MX.sym("x", 5)
             u_sym = ca.MX.sym("u")
             ode_expr = odefun(x_sym, u_sym)
-
-            batch_integrator = ca.integrator(
-                "batch_integrator", "idas",
-                {"x": x_sym, "p": u_sym, "ode": ode_expr},
-                {"t0": 0, "tf": t_batch}
-            )
-
+            
+            batch_integrator = ca.integrator("batch_int", "idas",
+                                            {"x": x_sym, "p": u_sym, "ode": ode_expr},
+                                            {"t0": 0, "tf": t_batch})
+            
             x0_np = np.array([X0, S0, P0, O0, V0])
             res_batch = batch_integrator(x0=x0_np, p=0.0)
             x_after_batch = np.array(res_batch['xf']).flatten()
-            st.info(f"[INFO] Status after batch phase: {x_after_batch}")
-
-            # ====================================================
-            # 5) Formulación de la fase Fed-Batch con colocación
-            # ====================================================
+            
+            # Fed-batch phase with collocation
             opti = ca.Opti()
-
             d = 2
             C_radau, D_radau = radau_coefficients(d)
             nx = 5
-
-            # Variables de estado y control
+            
             X_col = []
             F_col = []
-
+            
             for k in range(n_fb_intervals):
                 row_states = []
                 for j in range(d + 1):
                     if (k == 0 and j == 0):
-                        # Fijar el estado inicial del primer intervalo
-                        # con un "parameter" (no es variable)
                         xk0_param = opti.parameter(nx)
                         opti.set_value(xk0_param, x_after_batch)
                         row_states.append(xk0_param)
                     else:
-                        # variable
                         xk_j = opti.variable(nx)
                         row_states.append(xk_j)
-                        # Restricciones
-                        # no-negatividad:
                         opti.subject_to(xk_j >= 0)
-                        # S <= S_max
                         opti.subject_to(xk_j[1] <= S_max)
-                        # V <= V_max
                         opti.subject_to(xk_j[4] <= V_max_input)
                 X_col.append(row_states)
-
-                # Variable de control en cada intervalo
+                
                 Fk = opti.variable()
                 F_col.append(Fk)
                 opti.subject_to(Fk >= F_min)
                 opti.subject_to(Fk <= F_max)
-
-            # ====================================================
-            # 6) Ecuaciones de Colocación
-            # ====================================================
+            
+            # Collocation equations
             h = dt_fb
             for k in range(n_fb_intervals):
                 for j in range(1, d + 1):
-                    # xp_j = sum_{m=0..d} C_radau[m, j-1]* X_col[k][m]
                     xp_j = 0
                     for m in range(d + 1):
                         xp_j += C_radau[m, j - 1] * X_col[k][m]
-
-                    # f(Xk_j, Fk)
                     fkj = odefun(X_col[k][j], F_col[k])
-                    # Restricción => h*f - xp_j = 0
                     coll_eq = h * fkj - xp_j
                     opti.subject_to(coll_eq == 0)
-
-                # Continuidad al final del subintervalo
+                
                 Xk_end = 0
                 for m in range(d + 1):
                     Xk_end += D_radau[m] * X_col[k][m]
-
+                
                 if k < n_fb_intervals - 1:
-                    # Xk_end = X_{k+1}[0]
                     for i_ in range(nx):
                         opti.subject_to(Xk_end[i_] == X_col[k + 1][0][i_])
-
-            # Estado final global => X_final
+            
             X_final = X_col[-1][-1]
-
             P_final = X_final[2]
             V_final = X_final[4]
-
-            # ====================================================
-            # 7) Función objetivo => maximizar (P_final*V_final)
-            # ====================================================
+            
             opti.minimize(-(P_final * V_final))
-
-            # ====================================================
-            # 8) Guesses iniciales (importante para evitar NaNs)
-            # ====================================================
+            
+            # Initial guesses
             for k in range(n_fb_intervals):
                 opti.set_initial(F_col[k], 0.1)
                 for j in range(d + 1):
-                    # Si no es el primer "parameter"
                     if not (k == 0 and j == 0):
-                        # Como guess, usemos el estado final de batch (o algo similar)
                         opti.set_initial(X_col[k][j], x_after_batch)
-
-            # ====================================================
-            # 9) Configurar y resolver
-            # ====================================================
+            
             p_opts = {}
-            s_opts = {
-                "max_iter": 2000,
-                "print_level": 0,
-                "sb": 'yes',
-                "mu_strategy": "adaptive"
-            }
+            s_opts = {"max_iter": 2000, "print_level": 0, "sb": 'yes', "mu_strategy": "adaptive"}
             opti.solver("ipopt", p_opts, s_opts)
-
-            try:
-                sol = opti.solve()
-                st.success("[INFO] ¡Solution found!")
-            except RuntimeError as e:
-                st.error(f"[ERROR] No solution found: {e}")
-                try:
-                    # Mostrar infeasibilidades
-                    opti.debug.show_infeasibilities()
-                except:
-                    pass
-                st.stop()
-
+            
+            sol = opti.solve()
+            
             F_opt = [sol.value(fk) for fk in F_col]
             X_fin_val = sol.value(X_final)
             P_fin_val = X_fin_val[2]
             V_fin_val = X_fin_val[4]
-
-            st.info(f"Optimal feed flow (F_opt): {F_opt}")
-            st.info(f"Final state of the reactor: {X_fin_val}")
-            st.info(f"Final product concentration (P_final): {P_fin_val:.4f} g/L")
-            st.info(f"Final reactor volume (V_final): {V_fin_val:.4f} L")
-            st.info(f"Final total product: {(P_fin_val * V_fin_val):.4f} g")
-
-            # ====================================================
-            # 10) Reconstruir y graficar trayectoria
-            #     (batch + fed-batch)
-            # ====================================================
-            # a) Fase batch: con dt pequeño
+            
+            # Reconstruct trajectories for plotting
             N_batch_plot = 50
             t_batch_plot = np.linspace(0, t_batch, N_batch_plot)
-            dt_b = t_batch_plot[1] - t_batch_plot[0]
-
-            batch_plot_int = ca.integrator(
-                "batch_plot_int", "idas",
-                {"x": x_sym, "p": u_sym, "ode": ode_expr},
-                {"t0": 0, "tf": dt_b}
-            )
-
+            dt_b = t_batch_plot[1] - t_batch_plot[0] if N_batch_plot > 1 else t_batch
+            
+            batch_plot_int = ca.integrator("batch_plot", "idas",
+                                          {"x": x_sym, "p": u_sym, "ode": ode_expr},
+                                          {"t0": 0, "tf": dt_b})
+            
             xbatch_traj = [x0_np]
             xk_ = x0_np.copy()
             for _ in range(N_batch_plot - 1):
@@ -278,130 +296,122 @@ def rto_page():
                 xk_ = np.array(res_["xf"]).flatten()
                 xbatch_traj.append(xk_)
             xbatch_traj = np.array(xbatch_traj)
-
-            # b) Fase fed-batch: integrando de 5 a 24 h con dt fino
-            t_fb_plot = np.linspace(t_batch, t_total, 400)   # algo denso
-            dt_fb_plot = t_fb_plot[1] - t_fb_plot[0]
-
-            fb_plot_int = ca.integrator(
-                "fb_plot_int", "idas",
-                {"x": x_sym, "p": u_sym, "ode": ode_expr},
-                {"t0": 0, "tf": dt_fb_plot}
-            )
-
+            
+            t_fb_plot = np.linspace(t_batch, t_total, 400)
+            dt_fb_plot = t_fb_plot[1] - t_fb_plot[0] if len(t_fb_plot) > 1 else (t_total - t_batch)
+            
+            fb_plot_int = ca.integrator("fb_plot", "idas",
+                                       {"x": x_sym, "p": u_sym, "ode": ode_expr},
+                                       {"t0": 0, "tf": dt_fb_plot})
+            
             xfb_traj = []
             xk_ = xbatch_traj[-1].copy()
             for i, t_ in enumerate(t_fb_plot):
                 xfb_traj.append(xk_)
                 if i == len(t_fb_plot) - 1:
                     break
-                # Determinar en qué subintervalo k estamos
                 kk_ = int((t_ - t_batch) // dt_fb) if dt_fb > 0 else 0
-                kk_ = max(0, kk_)
-                kk_ = min(n_fb_intervals - 1, kk_)
-                # Tomar F correspondiente
+                kk_ = max(0, min(n_fb_intervals - 1, kk_))
                 F_now = sol.value(F_col[kk_]) if n_fb_intervals > 0 else 0.0
-                # Apagar F si V>=Vmax
                 if xk_[4] >= V_max_input:
                     F_now = 0.0
-                # Integrar
                 res_ = fb_plot_int(x0=xk_, p=F_now)
                 xk_ = np.array(res_["xf"]).flatten()
-
+            
             xfb_traj = np.array(xfb_traj)
-
-            # Unimos
+            
             t_full = np.concatenate([t_batch_plot, t_fb_plot])
             x_full = np.vstack([xbatch_traj, xfb_traj])
-
+            
             X_full = x_full[:, 0]
             S_full = x_full[:, 1]
             P_full = x_full[:, 2]
             O_full = x_full[:, 3]
             V_full = x_full[:, 4]
-
-            # Construir F para graficar
+            
             F_batch_plot = np.zeros_like(t_batch_plot)
             F_fb_plot = []
             for i, tt in enumerate(t_fb_plot):
                 kk_ = int((tt - t_batch) // dt_fb) if dt_fb > 0 else 0
-                kk_ = max(0, kk_)
-                kk_ = min(n_fb_intervals - 1, kk_)
+                kk_ = max(0, min(n_fb_intervals - 1, kk_))
                 valF = sol.value(F_col[kk_]) if n_fb_intervals > 0 else 0.0
                 if xfb_traj[i, 4] >= V_max_input:
                     valF = 0.0
                 F_fb_plot.append(valF)
             F_fb_plot = np.array(F_fb_plot)
-
+            
             F_plot = np.concatenate([F_batch_plot, F_fb_plot])
-
-            # ====================================================
-            # 11) Gráficas
-            # ====================================================
-            fig, axs = plt.subplots(2, 3, figsize=(14, 8), constrained_layout=True)
-            axs = axs.ravel()
-
-            # F
-            axs[0].plot(t_full, F_plot, linewidth=2)
-            axs[0].set_title("Feed flow F(t)")
-            axs[0].set_xlabel("Time (h)")
-            axs[0].set_ylabel("F (L/h)")
-            axs[0].grid(True)
-
-            # X
-            axs[1].plot(t_full, X_full, linewidth=2)
-            axs[1].set_title("Biomass X(t)")
-            axs[1].set_xlabel("Time (h)")
-            axs[1].set_ylabel("X (g/L)")
-            axs[1].grid(True)
-
-            # S
-            axs[2].plot(t_full, S_full, linewidth=2)
-            axs[2].axhline(S_max, color='r', linestyle='--', label="S_max")
-            axs[2].set_title("Substrate S(t)")
-            axs[2].set_xlabel("Time (h)")
-            axs[2].set_ylabel("S (g/L)")
-            axs[2].legend()
-            axs[2].grid(True)
-
-            # P
-            axs[3].plot(t_full, P_full, linewidth=2)
-            axs[3].set_title("Product P(t)")
-            axs[3].set_xlabel("Time (h)")
-            axs[3].set_ylabel("P (g/L)")
-            axs[3].grid(True)
-
-            # O
-            axs[4].plot(t_full, O_full, linewidth=2)
-            axs[4].set_title("Dissolved oxygen O(t) (constant)")
-            axs[4].set_xlabel("Time (h)")
-            axs[4].set_ylabel("O (g/L)")
-            axs[4].grid(True)
-
-            # V
-            axs[5].plot(t_full, V_full, linewidth=2)
-            axs[5].axhline(V_max_input, color='r', linestyle='--', label="V_max")
-            axs[5].set_title("Volume V(t)")
-            axs[5].set_xlabel("Time (h)")
-            axs[5].set_ylabel("V (L)")
-            axs[5].legend()
-            axs[5].grid(True)
-
-            st.pyplot(fig)
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total accumulated product", f"{P_fin_val * V_fin_val:.2f} g")
-                s_in_total = Sf_input * (V_fin_val - V0)
-                rend = (P_fin_val * V_fin_val) / s_in_total if s_in_total > 1e-9 else 0
-                st.metric("Product/Substrate Yield", f"{rend:.3f} g/g")
-            with col2:
-                st.metric("Total process time", f"{t_total:.2f} h")
-                st.metric("Final volume", f"{V_fin_val:.2f} L")
-
+            
+            # Create plots
+            fig = make_subplots(rows=2, cols=3,
+                               subplot_titles=('Feed Flow F(t)', 'Biomass X(t)', 'Substrate S(t)',
+                                             'Product P(t)', 'Oxygen O(t)', 'Volume V(t)'),
+                               vertical_spacing=0.12, horizontal_spacing=0.08)
+            
+            fig.add_trace(go.Scatter(x=t_full, y=F_plot, mode='lines', line=dict(color='blue', width=2)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=t_full, y=X_full, mode='lines', line=dict(color='green', width=2)), row=1, col=2)
+            fig.add_trace(go.Scatter(x=t_full, y=S_full, mode='lines', line=dict(color='orange', width=2)), row=1, col=3)
+            fig.add_trace(go.Scatter(x=[0, t_total], y=[S_max, S_max], mode='lines',
+                                    line=dict(color='red', dash='dash'), name='S_max'), row=1, col=3)
+            fig.add_trace(go.Scatter(x=t_full, y=P_full, mode='lines', line=dict(color='purple', width=2)), row=2, col=1)
+            fig.add_trace(go.Scatter(x=t_full, y=O_full, mode='lines', line=dict(color='brown', width=2)), row=2, col=2)
+            fig.add_trace(go.Scatter(x=t_full, y=V_full, mode='lines', line=dict(color='darkblue', width=2)), row=2, col=3)
+            fig.add_trace(go.Scatter(x=[0, t_total], y=[V_max_input, V_max_input], mode='lines',
+                                    line=dict(color='red', dash='dash'), name='V_max'), row=2, col=3)
+            
+            fig.update_xaxes(title_text="Time (h)")
+            fig.update_yaxes(title_text="F (L/h)", row=1, col=1)
+            fig.update_yaxes(title_text="X (g/L)", row=1, col=2)
+            fig.update_yaxes(title_text="S (g/L)", row=1, col=3)
+            fig.update_yaxes(title_text="P (g/L)", row=2, col=1)
+            fig.update_yaxes(title_text="O (g/L)", row=2, col=2)
+            fig.update_yaxes(title_text="V (L)", row=2, col=3)
+            fig.update_layout(height=700, showlegend=False, title_text="RTO Optimization Results")
+            
+            s_in_total = Sf_input * (V_fin_val - V0)
+            rend = (P_fin_val * V_fin_val) / s_in_total if s_in_total > 1e-9 else 0
+            
+            return html.Div([
+                dbc.Alert("✓ Optimization completed successfully!", color="success", className="mb-3"),
+                dcc.Graph(figure=fig),
+                html.Hr(),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Total Accumulated Product", className="card-title"),
+                                html.H3(f"{P_fin_val * V_fin_val:.2f} g", className="text-primary")
+                            ])
+                        ], className="mb-3")
+                    ]),
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Product/Substrate Yield", className="card-title"),
+                                html.H3(f"{rend:.3f} g/g", className="text-success")
+                            ])
+                        ], className="mb-3")
+                    ])
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Total Process Time", className="card-title"),
+                                html.H3(f"{t_total:.2f} h", className="text-info")
+                            ])
+                        ])
+                    ]),
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H5("Final Volume", className="card-title"),
+                                html.H3(f"{V_fin_val:.2f} L", className="text-warning")
+                            ])
+                        ])
+                    ])
+                ])
+            ])
+            
         except Exception as e:
-            st.error(f"Error in optimization: {str(e)}")
-            st.stop()
-
-if __name__ == '__main__':
-    rto_page()
+            return dbc.Alert(f"Error in optimization: {str(e)}", color="danger")
