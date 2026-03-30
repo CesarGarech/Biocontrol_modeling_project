@@ -15,6 +15,7 @@ The purpose of this project is to assist in teaching classical and advanced mode
 - **State Estimation:** Implement an Extended Kalman Filter (EKF) using CasADi to estimate unmeasurable states (Biomass, Substrate, Product) and parameters from noisy simulated measurements.
 - **Regulatory Process Control:** Simulate basic PID control loops for Temperature, pH (split-range), Dissolved Oxygen (via agitation), and On/Off substrate feeding.
 - **Advanced Process Control:** Implement Real-Time Optimization (RTO) and Nonlinear Model Predictive Control (NMPC) using CasADi and IPOPT to find optimal operating profiles (e.g., feed rate) subject to constraints.
+- **Digital Twin — Distillation Column:** End-to-end digital twin pipeline including DWSIM-compatible mock simulation, Excel sensor data ingestion, IQR outlier treatment, signal filtering (moving average / low-pass Butterworth), WLS data reconciliation, and KPI/adherence indicator dashboards.
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
 
 ## 📦 Installation
@@ -149,6 +150,68 @@ This project was primarily developed by César Augusto García Echeverry at the 
 
 
 We welcome contributions! Please refer to the contribution guidelines (if available) or open an issue/pull request.
+
+
+## 🏭 Digital Twin — Distillation Column
+
+The **Digital Twin** module (accessible via **🏭 Digital Twin** in the sidebar) provides a
+complete 5-step pipeline for process monitoring of a binary distillation column
+(ethanol-water separation).
+
+### Pipeline Steps
+
+| Step | Tab | Description |
+|------|-----|-------------|
+| 1 | 📁 Data Ingestion | Generate synthetic DWSIM mock data **or** upload an Excel sensor file |
+| 2 | 🔍 Outlier Treatment | IQR-based detection (k configurable) with before/after charts |
+| 3 | 📊 Signal Filtering | Moving average (window size) **or** Low-pass Butterworth (cutoff freq.) |
+| 4 | ⚖️ Data Reconciliation | WLS reconciliation enforcing mass & component balances |
+| 5 | 📈 KPIs & Adherence | ME, MAE, RMSE, adherence %, data availability — exportable to Excel |
+
+### Running the Digital Twin
+
+```bash
+streamlit run main.py
+# Then select "🏭 Digital Twin" from the sidebar
+```
+
+### Using your own Excel Data
+
+1. Click **⬇️ Download Example Excel Template** in Step 1.
+2. Fill in your sensor readings (same column names, same units).
+3. Upload the file in **Step 1 → Upload Excel File**.
+
+**Required columns:**
+
+| Column | Units | Description |
+|--------|-------|-------------|
+| Time   | min   | Time index |
+| F      | mol/min | Feed flow rate |
+| D      | mol/min | Distillate flow rate |
+| B      | mol/min | Bottoms flow rate |
+| zF     | mol frac | Feed composition |
+| xD     | mol frac | Distillate composition |
+| xB     | mol frac | Bottoms composition |
+| R      | —     | Reflux ratio |
+| QR     | kW    | Reboiler duty |
+| QC     | kW    | Condenser duty |
+| T_top  | °C    | Top stage temperature |
+| T_bot  | °C    | Bottom stage temperature |
+
+To enable sensor-vs-twin KPIs, add columns prefixed with `twin_`
+(e.g. `twin_F`, `twin_D`, …) containing the simulated (ideal) values.
+
+### Running the Tests
+
+```bash
+# From the repository root
+python -m pytest tests/test_digital_twin.py -v
+```
+
+### Output Files
+
+Results are exported to `Output/digital_twin/` and can also be downloaded
+directly from the **Step 5 — KPIs & Adherence** tab as a multi-sheet Excel report.
 
 
 ## 📚 Theoretical Background
