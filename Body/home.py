@@ -1,9 +1,8 @@
 # home_page.py
 import streamlit as st
 
-def home_page():
-    st.title("Bioprocess Modeling and Control")
 
+def home_page():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("images/Batch.png", use_container_width=True)
@@ -516,6 +515,7 @@ def home_page():
         - Chen, L., et al. (1996). "Fuzzy logic based control of dissolved oxygen in a bioprocess." 
           *Computers & Chemical Engineering*, 20, S1337-S1342.
         """)
+
 
 # To be able to run this page individually if necessary
 if __name__ == "__main__":
