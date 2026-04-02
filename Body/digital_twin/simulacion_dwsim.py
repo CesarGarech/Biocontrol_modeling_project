@@ -66,27 +66,27 @@ def simulacion_dwsim_page():
         with st.expander("1. Thermal Conditions", expanded=True):
             T_feed = st.number_input(
                 "Feed Temperature T (°C)", min_value=20.0, max_value=150.0,
-                value=80.0, step=1.0, key="dwsim_T"
+                value=30.0, step=1.0, key="dwsim_T"
             )
             P_feed = st.number_input(
                 "Feed Pressure P (kPa)", min_value=50.0, max_value=500.0,
-                value=101.325, step=1.0, key="dwsim_P"
+                value=100.0, step=1.0, key="dwsim_P"
             )
 
         with st.expander("2. Feed Flow Rate", expanded=True):
             F_feed_kmolh = st.number_input(
                 "Total Feed Flow (kmol/h)", min_value=1.0, max_value=5_000.0,
-                value=200.0, step=5.0, key="dwsim_F"
+                value=100.0, step=5.0, key="dwsim_F"
             )
 
         with st.expander("3. Molar Composition", expanded=True):
             st.markdown("Fractions must sum to **1.0**")
             x_eth = st.slider(
-                "Ethanol mole fraction", 0.0, 1.0, 0.10, 0.01, key="dwsim_xeth"
+                "Ethanol mole fraction", 0.0, 1.0, 0.40, 0.01, key="dwsim_xeth"
             )
             x_water = st.slider(
                 "Water mole fraction", 0.0, 1.0,
-                round(max(0.0, 1.0 - x_eth - 0.0), 2), 0.01, key="dwsim_xwat"
+                round(max(0.0, 1.0 - x_eth), 2), 0.01, key="dwsim_xwat"
             )
             x_other = round(max(0.0, 1.0 - x_eth - x_water), 4)
             st.info(f"Other (inerts) mole fraction: **{x_other:.4f}**")
