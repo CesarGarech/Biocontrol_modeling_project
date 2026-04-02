@@ -118,49 +118,92 @@ def simulacion_dwsim_page():
                 value=101.325, step=1.0, key="dwsim_Pcol"
             )
 
-    # ── Calculations ──────────────────────────────────────────────────────────
-    mw_feed = _average_mw(x_eth)           # g/mol
-    F_feed_kgh = F_feed_kmolh * mw_feed    # kg/h
+    # ── Run button ────────────────────────────────────────────────────────────
+    st.markdown("Set the feed conditions in the sidebar, then click **▶ Run Simulation** to compute results.")
+    if st.button("▶ Run Simulation", key="btn_dwsim_run"):
+        # ── Calculations ──────────────────────────────────────────────────────
+        mw_feed = _average_mw(x_eth)           # g/mol
+        F_feed_kgh = F_feed_kmolh * mw_feed    # kg/h
 
-    # Scale factor vs. DWSIM reference (mass-flow based)
-    scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
+        # Scale factor vs. DWSIM reference (mass-flow based)
+        scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
 
-    # Stream flows
-    F_top_kgh = F_feed_kgh * _SPLIT_TOP
-    F_bot_kgh = F_feed_kgh * _SPLIT_BOTTOM
-    mw_top = _average_mw(_TARGET_ETHANOL_TOP)
-    mw_bot = _average_mw(_TARGET_ETHANOL_BOTTOM)
-    F_top_kmolh = F_top_kgh / mw_top
-    F_bot_kmolh = F_bot_kgh / mw_bot
+        # Stream flows
+        F_top_kgh = F_feed_kgh * _SPLIT_TOP
+        F_bot_kgh = F_feed_kgh * _SPLIT_BOTTOM
+        mw_top = _average_mw(_TARGET_ETHANOL_TOP)
+        mw_bot = _average_mw(_TARGET_ETHANOL_BOTTOM)
+        F_top_kmolh = F_top_kgh / mw_top
+        F_bot_kmolh = F_bot_kgh / mw_bot
 
-    # Energy duties (linear scale)
-    Q_cond_kw = _Q_COND_BASE_KW * scale
-    Q_reb_kw = _Q_REB_BASE_KW * scale
+        # Energy duties (linear scale)
+        Q_cond_kw = _Q_COND_BASE_KW * scale
+        Q_reb_kw = _Q_REB_BASE_KW * scale
 
-    # Derived metrics
-    # Simplified reflux ratio estimate: L/D ≈ Q_cond / (ΔH_vap * D)
-    # Use energy per kmol of distillate as proxy
-    dh_vap_ethanol = 38.56     # kJ/mol  latent heat of vaporisation at 78 °C
-    dh_vap_water = 40.65       # kJ/mol
-    dh_vap_top = (
-        _TARGET_ETHANOL_TOP * dh_vap_ethanol
-        + (1 - _TARGET_ETHANOL_TOP) * dh_vap_water
-    )  # kJ/mol
-    V_vapour = Q_cond_kw / dh_vap_top   # kmol/h vapour from condenser
-    reflux_ratio = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
+        # Derived metrics
+        dh_vap_ethanol = 38.56     # kJ/mol  latent heat of vaporisation at 78 °C
+        dh_vap_water = 40.65       # kJ/mol
+        dh_vap_top = (
+            _TARGET_ETHANOL_TOP * dh_vap_ethanol
+            + (1 - _TARGET_ETHANOL_TOP) * dh_vap_water
+        )  # kJ/mol
+        V_vapour = Q_cond_kw / dh_vap_top   # kmol/h vapour from condenser
+        reflux_ratio = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
 
-    ethanol_recovery = (
-        F_top_kmolh * _TARGET_ETHANOL_TOP
-        / max(F_feed_kmolh * x_eth, 1e-9) * 100
-    )
+        ethanol_recovery = (
+            F_top_kmolh * _TARGET_ETHANOL_TOP
+            / max(F_feed_kmolh * x_eth, 1e-9) * 100
+        )
 
-    # Thermal condition (q-parameter)
-    T_bp = 78.4 + (P_feed - 101.325) * 0.03     # rough bubble-point shift
-    cp_liquid = 2.9     # kJ/(kg·K)  approximate
-    lambda_feed = dh_vap_top * mw_feed / 1000.0  # kJ/kg
-    q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
+        # Thermal condition (q-parameter)
+        T_bp = 78.4 + (P_feed - 101.325) * 0.03     # rough bubble-point shift
+        cp_liquid = 2.9     # kJ/(kg·K)  approximate
+        lambda_feed = dh_vap_top * mw_feed / 1000.0  # kJ/kg
+        q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
 
-    # ── Results Display ───────────────────────────────────────────────────────
+        # Store all computed results in session state
+        st.session_state["sim_results"] = {
+            "F_feed_kmolh": F_feed_kmolh,
+            "F_feed_kgh": F_feed_kgh,
+            "F_top_kgh": F_top_kgh,
+            "F_bot_kgh": F_bot_kgh,
+            "F_top_kmolh": F_top_kmolh,
+            "F_bot_kmolh": F_bot_kmolh,
+            "Q_cond_kw": Q_cond_kw,
+            "Q_reb_kw": Q_reb_kw,
+            "scale": scale,
+            "reflux_ratio": reflux_ratio,
+            "ethanol_recovery": ethanol_recovery,
+            "q": q,
+            "mw_feed": mw_feed,
+            "mw_top": mw_top,
+            "mw_bot": mw_bot,
+            "x_eth": x_eth,
+        }
+
+    # ── Results Display (only from stored state) ──────────────────────────────
+    if "sim_results" not in st.session_state:
+        st.info("👆 Configure the feed conditions and click **▶ Run Simulation** to see results.")
+        return
+
+    r = st.session_state["sim_results"]
+    F_feed_kmolh = r["F_feed_kmolh"]
+    F_feed_kgh = r["F_feed_kgh"]
+    F_top_kgh = r["F_top_kgh"]
+    F_bot_kgh = r["F_bot_kgh"]
+    F_top_kmolh = r["F_top_kmolh"]
+    F_bot_kmolh = r["F_bot_kmolh"]
+    Q_cond_kw = r["Q_cond_kw"]
+    Q_reb_kw = r["Q_reb_kw"]
+    scale = r["scale"]
+    reflux_ratio = r["reflux_ratio"]
+    ethanol_recovery = r["ethanol_recovery"]
+    q = r["q"]
+    mw_feed = r["mw_feed"]
+    mw_top = r["mw_top"]
+    mw_bot = r["mw_bot"]
+    x_eth_res = r["x_eth"]
+
     st.subheader("📊 Scaled Simulation Results")
 
     # Stream table
@@ -177,7 +220,7 @@ def simulacion_dwsim_page():
             f"{F_bot_kgh:,.1f}",
         ],
         "EtOH mol frac": [
-            f"{x_eth:.4f}",
+            f"{x_eth_res:.4f}",
             f"{_TARGET_ETHANOL_TOP:.4f}",
             f"{_TARGET_ETHANOL_BOTTOM:.4f}",
         ],
@@ -196,6 +239,11 @@ def simulacion_dwsim_page():
     c2.metric("Reboiler Duty", f"{Q_reb_kw:.1f} kW", delta=f"{(scale-1)*100:+.1f}% vs design")
     c3.metric("Reflux Ratio (L/D)", f"{reflux_ratio:.2f}")
     c4.metric("EtOH Recovery", f"{min(ethanol_recovery, 100.0):.1f} %")
+
+    st.caption(
+        "**Delta arrows**: ↑ green = operating above design point; ↓ red = operating below design point. "
+        "A higher EtOH Recovery (close to 100 %) indicates efficient separation."
+    )
 
     st.markdown("#### Feed Thermal Condition")
     c5, c6 = st.columns(2)

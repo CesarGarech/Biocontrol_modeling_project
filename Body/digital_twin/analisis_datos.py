@@ -34,6 +34,10 @@ _Q_REB_BASE = _cfg.Q_REB_BASE
 _DESIGN_ENERGY_RATIO = _Q_COND_BASE / _Q_REB_BASE
 _MAX_MASS_ERROR = _cfg.MAX_MASS_BALANCE_ERROR
 
+# Traffic-light thresholds (% of time steps that must pass the KPI target)
+_TL_GREEN = 80.0   # ≥ 80 %  → green
+_TL_YELLOW = 60.0  # 60–80 % → yellow  (< 60 % → red)
+
 
 # ── Helper: generate raw noisy data (no outliers) ────────────────────────────
 
@@ -391,9 +395,10 @@ def analisis_datos_page():
 
             # Outlier count table
             with st.expander("📌 Outlier Count per Sensor"):
+                import re as _re
                 out_cols = [c for c in df_iqr.columns if c.endswith("_outlier")]
                 summary = {
-                    c.replace("_raw_outlier", "").replace("_outlier", ""): int(df_iqr[c].sum())
+                    _re.sub(r"_raw_outlier$|_outlier$", "", c): int(df_iqr[c].sum())
                     for c in out_cols
                 }
                 st.table(pd.DataFrame.from_dict(summary, orient="index", columns=["Outliers (IQR)"]))
@@ -414,47 +419,80 @@ def analisis_datos_page():
                 df_final = _reconcile(df_filt, sigma_feed, sigma_top, sigma_bot)
             st.session_state["da_df_final"] = df_final
             st.session_state["da_df_filt"] = df_filt
+            # Snapshot the thresholds used for this run so display does not
+            # change when the user adjusts sidebar sliders without re-running.
+            st.session_state["da_thresholds"] = {
+                "target_sep": target_sep,
+                "target_energy": target_energy,
+                "threshold_mass": threshold_mass,
+            }
 
         if "da_df_final" in st.session_state:
             df_final = st.session_state["da_df_final"]
+            thr = st.session_state["da_thresholds"]
+            target_sep_disp = thr["target_sep"]
+            target_energy_disp = thr["target_energy"]
+            threshold_mass_disp = thr["threshold_mass"]
+
             st.success(f"Analysis complete — {len(df_final)} usable time steps after filtering.")
 
             # KPI metric cards
             avg_mass_err = df_final["Error_Mass_Before_%"].mean()
             avg_sep = df_final["KPI_Separation_%"].mean()
             avg_energy = df_final["KPI_Energy_%"].mean()
-            pct_sep_ok = (df_final["KPI_Separation_%"] >= target_sep).mean() * 100
-            pct_energy_ok = (df_final["KPI_Energy_%"] >= target_energy).mean() * 100
-            pct_mass_ok = (df_final["Error_Mass_Before_%"] <= threshold_mass).mean() * 100
+            pct_sep_ok = (df_final["KPI_Separation_%"] >= target_sep_disp).mean() * 100
+            pct_energy_ok = (df_final["KPI_Energy_%"] >= target_energy_disp).mean() * 100
+            pct_mass_ok = (df_final["Error_Mass_Before_%"] <= threshold_mass_disp).mean() * 100
 
-            def _traffic_light(val: float, green: float, yellow: float) -> str:
-                return "🟢" if val >= green else ("🟡" if val >= yellow else "🔴")
+            def _traffic_light(val: float) -> str:
+                return "🟢" if val >= _TL_GREEN else ("🟡" if val >= _TL_YELLOW else "🔴")
 
             c1, c2, c3 = st.columns(3)
             c1.metric(
-                f"{_traffic_light(pct_sep_ok, 80, 60)} Separation Adherence",
+                f"{_traffic_light(pct_sep_ok)} Separation Adherence",
                 f"{avg_sep:.1f} %",
-                delta=f"{avg_sep - target_sep:+.1f}% vs target",
-                help=f"{pct_sep_ok:.0f}% of steps ≥ {target_sep}%",
+                delta=f"{avg_sep - target_sep_disp:+.1f}% vs target",
+                help=f"{pct_sep_ok:.0f}% of steps ≥ {target_sep_disp}%",
             )
             c2.metric(
-                f"{_traffic_light(pct_energy_ok, 80, 60)} Energy Efficiency",
+                f"{_traffic_light(pct_energy_ok)} Energy Efficiency",
                 f"{avg_energy:.1f} %",
-                delta=f"{avg_energy - target_energy:+.1f}% vs target",
-                help=f"{pct_energy_ok:.0f}% of steps ≥ {target_energy}%",
+                delta=f"{avg_energy - target_energy_disp:+.1f}% vs target",
+                help=f"{pct_energy_ok:.0f}% of steps ≥ {target_energy_disp}%",
             )
             c3.metric(
-                f"{_traffic_light(pct_mass_ok, 80, 60)} Mass Balance Error",
+                f"{_traffic_light(pct_mass_ok)} Mass Balance Error",
                 f"{avg_mass_err:.2f} %",
-                delta=f"{avg_mass_err - threshold_mass:+.2f}% vs threshold",
+                delta=f"{avg_mass_err - threshold_mass_disp:+.2f}% vs threshold",
                 delta_color="inverse",
-                help=f"{pct_mass_ok:.0f}% of steps within ±{threshold_mass}%",
+                help=f"{pct_mass_ok:.0f}% of steps within ±{threshold_mass_disp}%",
             )
+
+            # ── KPI colour legend ─────────────────────────────────────────────
+            with st.expander("ℹ️ How to read these KPIs"):
+                st.markdown(f"""
+**Status icon** (header of each card):
+- 🟢 **Green** — KPI meets the target in **≥ {_TL_GREEN:.0f} %** of time steps. The process is operating well.
+- 🟡 **Yellow** — KPI meets the target in **{_TL_YELLOW:.0f}–{_TL_GREEN:.0f} %** of time steps. Monitor closely.
+- 🔴 **Red** — KPI meets the target in **< {_TL_YELLOW:.0f} %** of time steps. Attention required.
+
+**Delta arrow** (small number below the main value):
+- ↑ **Green delta** — the average KPI is *above* the target you set → favourable.
+- ↓ **Red delta** — the average KPI is *below* the target you set → needs improvement.
+- For **Mass Balance Error** the arrow is inverted: ↑ red means the error exceeds the threshold.
+
+**Individual KPI meanings**:
+- *Separation Adherence* — how closely the actual distillate split matches the design target ({_cfg.SPLIT_TOP*100:.0f} % of feed). 100 % = perfect adherence.
+- *Energy Efficiency* — how close the Q_cond / Q_reb ratio is to the design ratio. 100 % = operating at design conditions.
+- *Mass Balance Error* — percentage imbalance (F_feed − F_top − F_bottom) before reconciliation. Lower is better; target ≤ {threshold_mass_disp} %.
+
+> Results reflect the **last run**. Changing sidebar parameters requires clicking **▶ Run Analysis** again to update the display.
+""")
 
             st.markdown("---")
 
             # 4-panel dashboard
-            fig3 = _plot_dashboard(df_final, threshold_mass)
+            fig3 = _plot_dashboard(df_final, threshold_mass_disp)
             st.pyplot(fig3)
             plt.close(fig3)
 
