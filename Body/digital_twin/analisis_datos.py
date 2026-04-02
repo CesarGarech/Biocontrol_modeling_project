@@ -6,7 +6,10 @@ Three-step interactive pipeline:
   Step 2 — Inject outliers (manual time indices or random fraction) and
             display IQR-detected anomalies overlaid on the raw signal.
   Step 3 — Run the full analysis: MA filter → WLS reconciliation → KPIs.
+All design-point constants are sourced from Simulation/config.py.
 """
+import os
+import sys
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -14,16 +17,22 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.optimize import minimize
 
+# ── Import shared configuration from Simulation/config.py ───────────────────
+_SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
+if _SIM_DIR not in sys.path:
+    sys.path.insert(0, _SIM_DIR)
+import config as _cfg  # noqa: E402
+
 _EPSILON = 1e-9   # numerical guard against division by zero
 
-# ── Design-point constants (from Simulation/config.py / ethanol.dwxmz) ──────
-_FLOW_FEED_BASE = 10_000.0   # kg/h
-_SPLIT_TOP = 0.35
-_SPLIT_BOTTOM = 0.65
-_Q_COND_BASE = 1_207.87      # kW
-_Q_REB_BASE = 1_524.29       # kW
+# ── Design-point aliases (sourced from config) ───────────────────────────────
+_FLOW_FEED_BASE = _cfg.FLOW_FEED_BASE
+_SPLIT_TOP = _cfg.SPLIT_TOP
+_SPLIT_BOTTOM = _cfg.SPLIT_BOTTOM
+_Q_COND_BASE = _cfg.Q_COND_BASE
+_Q_REB_BASE = _cfg.Q_REB_BASE
 _DESIGN_ENERGY_RATIO = _Q_COND_BASE / _Q_REB_BASE
-_MAX_MASS_ERROR = 1.0        # tolerance reference (%)
+_MAX_MASS_ERROR = _cfg.MAX_MASS_BALANCE_ERROR
 
 
 # ── Helper: generate raw noisy data (no outliers) ────────────────────────────
@@ -210,7 +219,7 @@ def _plot_dashboard(df: pd.DataFrame, threshold_mass: float) -> plt.Figure:
     """4-panel reconciliation + KPI dashboard (style matches dashboard.plot_dashboard)."""
     fig, axs = plt.subplots(4, 1, figsize=(14, 14), sharex=True)
     fig.suptitle(
-        "Digital Twin Results — Ethanol Column SCOL-1",
+        f"Digital Twin Results — Ethanol Column {_cfg.TAG_COLUMN}",
         fontsize=13, fontweight="bold",
     )
 
@@ -240,7 +249,7 @@ def _plot_dashboard(df: pd.DataFrame, threshold_mass: float) -> plt.Figure:
     axs[2].plot(df["Timestamp"], df["KPI_Separation_%"],
                 color="purple", label="Separation Adherence")
     axs[2].axhline(y=100, color="gray", ls=":")
-    axs[2].set_title("KPI: Adherence to Target Distillate Split (35 %)")
+    axs[2].set_title(f"KPI: Adherence to Target Distillate Split ({_cfg.SPLIT_TOP*100:.0f} %)")
     axs[2].set_ylabel("Adherence (%)")
     axs[2].legend(fontsize=9)
     axs[2].grid(True)
@@ -275,15 +284,15 @@ def analisis_datos_page():
         st.header("🔧 Analysis Parameters")
 
         with st.expander("1. Data Generation", expanded=True):
-            n_points = st.slider("Number of SCADA points", 50, 300, 100, 10, key="da_n")
-            seed = int(st.number_input("Random seed", 0, 9999, 42, key="da_seed"))
+            n_points = st.slider("Number of SCADA points", 50, 300, _cfg.N_POINTS, 10, key="da_n")
+            seed = int(st.number_input("Random seed", 0, 9999, _cfg.SEED, key="da_seed"))
 
         with st.expander("2. Sensor Noise (σ)", expanded=True):
-            sigma_feed = st.number_input("σ Feed (kg/h)", 10.0, 1000.0, 350.0, 10.0, key="da_sf")
-            sigma_top = st.number_input("σ Distillate (kg/h)", 10.0, 500.0, 150.0, 10.0, key="da_st")
-            sigma_bot = st.number_input("σ Bottoms (kg/h)", 10.0, 500.0, 200.0, 10.0, key="da_sb")
-            sigma_qc = st.number_input("σ Q_cond (kW)", 1.0, 200.0, 40.0, 5.0, key="da_sqc")
-            sigma_qr = st.number_input("σ Q_reb (kW)", 1.0, 200.0, 50.0, 5.0, key="da_sqr")
+            sigma_feed = st.number_input("σ Feed (kg/h)", 10.0, 1000.0, float(_cfg.SIGMA_FEED), 10.0, key="da_sf")
+            sigma_top = st.number_input("σ Distillate (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_TOP), 10.0, key="da_st")
+            sigma_bot = st.number_input("σ Bottoms (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_BOTTOM), 10.0, key="da_sb")
+            sigma_qc = st.number_input("σ Q_cond (kW)", 1.0, 200.0, float(_cfg.SIGMA_Q_COND), 5.0, key="da_sqc")
+            sigma_qr = st.number_input("σ Q_reb (kW)", 1.0, 200.0, float(_cfg.SIGMA_Q_REB), 5.0, key="da_sqr")
 
         with st.expander("3. Outlier Injection", expanded=True):
             use_random = st.checkbox("Use random outliers", value=False, key="da_random_out")
@@ -302,7 +311,7 @@ def analisis_datos_page():
 
         with st.expander("4. Filter & Reconciliation", expanded=True):
             window = st.slider(
-                "Moving-average window W", 3, 21, 5, 2, key="da_win",
+                "Moving-average window W", 3, 21, _cfg.WINDOW_SIZE, 2, key="da_win",
                 help="Centred MA; even values rounded up to next odd"
             )
             if window % 2 == 0:
@@ -311,7 +320,10 @@ def analisis_datos_page():
         with st.expander("5. KPI Targets", expanded=True):
             target_sep = st.slider("Target Separation Adherence (%)", 70.0, 99.0, 90.0, 1.0, key="da_tsep")
             target_energy = st.slider("Target Energy Efficiency (%)", 70.0, 99.0, 85.0, 1.0, key="da_teng")
-            threshold_mass = st.slider("Max Mass Balance Error (%)", 0.5, 10.0, 2.0, 0.5, key="da_tmass")
+            threshold_mass = st.slider(
+                "Max Mass Balance Error (%)", 0.5, 10.0,
+                float(_cfg.MAX_MASS_BALANCE_ERROR), 0.5, key="da_tmass"
+            )
 
     # ── Step 1: Generate raw data ──────────────────────────────────────────────
     st.subheader("🔵 Step 1 — Generate Raw SCADA Data")

@@ -7,22 +7,33 @@ design point stored in Simulation/config.py.
 No DWSIM COM runtime is required; all calculations are analytic scale-ups of
 the reference design.
 """
+import os
+import sys
 import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-# ── Design-point constants (from Simulation/config.py / ethanol.dwxmz) ──────
-_FLOW_FEED_BASE_KGH = 10_000.0   # kg/h  (DWSIM reference)
-_SPLIT_TOP = 0.35                 # distillate / feed mass fraction
-_SPLIT_BOTTOM = 0.65             # bottoms / feed mass fraction
-_Q_COND_BASE_KW = 1_207.87      # kW   condenser duty at design
-_Q_REB_BASE_KW = 1_524.29       # kW   reboiler duty at design
-_TARGET_ETHANOL_TOP = 0.80       # mol fraction of ethanol in distillate
-_TARGET_ETHANOL_BOTTOM = 0.02    # mol fraction of ethanol in bottoms
+# ── Import shared configuration from Simulation/config.py ───────────────────
+_SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
+if _SIM_DIR not in sys.path:
+    sys.path.insert(0, _SIM_DIR)
+import config as _cfg  # noqa: E402
+
+# ── Local-only constants not defined in config.py ───────────────────────────
+_TARGET_ETHANOL_BOTTOM = 0.02    # mol fraction of ethanol in bottoms (design target)
 _MW_ETHANOL = 46.068             # g/mol
 _MW_WATER = 18.015               # g/mol
+
+# Convenient aliases matching config naming
+_FLOW_FEED_BASE_KGH = _cfg.FLOW_FEED_BASE
+_SPLIT_TOP = _cfg.SPLIT_TOP
+_SPLIT_BOTTOM = _cfg.SPLIT_BOTTOM
+_Q_COND_BASE_KW = _cfg.Q_COND_BASE
+_Q_REB_BASE_KW = _cfg.Q_REB_BASE
+_TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP
+
 _FLOW_FEED_BASE_KMOLH = _FLOW_FEED_BASE_KGH / (
     _TARGET_ETHANOL_TOP * _MW_ETHANOL + (1 - _TARGET_ETHANOL_TOP) * _MW_WATER
 )  # approximate kmol/h at base conditions
@@ -46,6 +57,12 @@ def simulacion_dwsim_page():
 
     # ── Transfer-function summary ─────────────────────────────────────────────
     st.subheader("Column Design Reference (DWSIM)")
+    st.caption(
+        f"Flowsheet: `ethanol.dwxmz` — Column tag: **{_cfg.TAG_COLUMN}** "
+        f"| Feed: `{_cfg.TAG_FEED}` | Top: `{_cfg.TAG_TOP}` "
+        f"| Bottom: `{_cfg.TAG_BOTTOM}` "
+        f"| Condenser: `{_cfg.TAG_R_COND}` | Reboiler: `{_cfg.TAG_Q_REB}`"
+    )
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.metric("Base Feed", f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
