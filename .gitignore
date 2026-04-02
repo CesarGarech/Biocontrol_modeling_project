@@ -88,7 +88,7 @@ test-results.xml
 # *.png
 *.jpg
 *.jpeg
-# *.pdf
+*.pdf
 figures/
 exports/
 outputs/
