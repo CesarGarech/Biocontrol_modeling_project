@@ -26,7 +26,8 @@ menu_structure = {
     "⚙️ Control": {
         "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
         "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC", "Fuzzy Control"]
-    }
+    },
+    "🏭 Digital Twin": None
 }
 
 def main():
@@ -164,6 +165,12 @@ def main():
         elif selected_page == "Fuzzy Control":
             from Body.control.avanzado import fuzzy_control
             fuzzy_control.fuzzy_control_page()
+
+        # --- DIGITAL TWIN ---
+        elif selected_page == "🏭 Digital Twin":
+            from Body.digital_twin import gemelo_digital
+            gemelo_digital.digital_twin_page()
+
         else:
             st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")
             from Body import home
