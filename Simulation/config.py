@@ -33,7 +33,7 @@ TAG_FEED = "Feed"
 TAG_TOP = "Top"
 TAG_BOTTOM = "Bottom"
 TAG_COLUMN = "SCOL-1"
-TAG_R_COND = "R_cond"     # Condenser duty (energy stream)
+TAG_R_COND = "Q_cond"     # Condenser duty (energy stream)
 TAG_Q_REB = "Q_reb"       # Reboiler duty (energy stream)
 
 # ==========================================

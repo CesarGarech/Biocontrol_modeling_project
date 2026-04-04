@@ -216,10 +216,16 @@ def set_feed_conditions(
     P_Pa = pressure_kPa * 1_000.0
     F_kgs = flow_kgh / 3_600.0
 
-    stream.SetTemperature(T_K)
-    stream.SetPressure(P_Pa)
-    stream.SetMassFlow(F_kgs)
-    stream.SetOverallMolarComposition([x_ethanol, x_water])
+    # DWSIM ISimulationObject API — conditions are set on Phase 0 (Mixed)
+    stream.Phases[0].Properties.temperature = T_K
+    stream.Phases[0].Properties.pressure = P_Pa
+    stream.Phases[0].Properties.massflow = F_kgs
+
+    # Molar composition — set each compound by name
+    compounds = getattr(_get_config(), "DWSIM_COMPOUNDS", ["Ethanol", "Water"])
+    fractions = [x_ethanol, x_water]
+    for name, frac in zip(compounds, fractions):
+        stream.Phases[0].Compounds[name].MoleFraction = frac
 
 
 # ---------------------------------------------------------------------------
@@ -323,25 +329,37 @@ def read_results(sim, tags: dict | None = None) -> dict:
     for role in ("feed", "top", "bottom"):
         tag = resolved[role]
         obj = sim.GetFlowsheetSimulationObject(tag)
-        mass_flow_kgs = obj.GetMassFlow()          # kg/s
-        molar_flow_mols = obj.GetMolarFlow()       # mol/s
-        temperature_K = obj.GetTemperature()       # K
-        pressure_Pa = obj.GetPressure()            # Pa
-        composition = list(obj.GetOverallMolarComposition())  # array
+
+        # DWSIM ISimulationObject API — read from Phase 0 (Mixed)
+        mass_flow_kgs   = obj.Phases[0].Properties.massflow    # kg/s
+        molar_flow_mols = obj.Phases[0].Properties.molarflow   # mol/s
+        temperature_K   = obj.Phases[0].Properties.temperature  # K
+        pressure_Pa     = obj.Phases[0].Properties.pressure     # Pa
+
+        # Molar composition — iterate compounds dict
+        composition = []
+        try:
+            for _name, compound in obj.Phases[0].Compounds.items():
+                composition.append(float(compound.MoleFraction or 0.0))
+        except Exception:
+            composition = []
 
         results[role] = {
-            "mass_flow_kgh":    mass_flow_kgs * 3_600.0,
-            "molar_flow_kmolh": molar_flow_mols * 3_600.0 / 1_000.0,
-            "temperature_C":    temperature_K - 273.15,
-            "pressure_kPa":     pressure_Pa / 1_000.0,
+            "mass_flow_kgh":    float(mass_flow_kgs or 0.0) * 3_600.0,
+            "molar_flow_kmolh": float(molar_flow_mols or 0.0) * 3_600.0 / 1_000.0,
+            "temperature_C":    float(temperature_K or 273.15) - 273.15,
+            "pressure_kPa":     float(pressure_Pa or 0.0) / 1_000.0,
             "composition":      composition,
         }
 
-    # Energy streams
+    # Energy streams — EnergyFlow property (W)
     for role in ("r_cond", "q_reb"):
         tag = resolved[role]
         obj = sim.GetFlowsheetSimulationObject(tag)
-        energy_W = obj.GetEnergyFlow()             # W
+        try:
+            energy_W = float(obj.EnergyFlow or 0.0)
+        except Exception:
+            energy_W = 0.0
         results[role] = {
             "energy_kw": energy_W / 1_000.0,
         }
