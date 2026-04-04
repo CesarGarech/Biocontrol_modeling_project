@@ -516,6 +516,153 @@ def home_page():
           *Computers & Chemical Engineering*, 20, S1337-S1342.
         """)
 
+    st.markdown("---")
+
+    # ========= DIGITAL TWIN THEORY SECTION =========
+    st.header("🏭 Digital Twins & Data Quality Fundamentals")
+    st.markdown("""
+        The **Digital Twin** section of this simulator implements a virtual replica of an ethanol
+        distillation column. The following concepts underpin the data pipeline used in that module.
+    """)
+
+    with st.expander("1. Digital Shadow vs. Digital Twin"):
+        st.markdown("""
+        ### Definitions
+
+        | Concept | Data Flow | Actuation |
+        |---------|-----------|-----------|
+        | **Digital Shadow** | Physical → Digital (one-way) | None — read-only replica |
+        | **Digital Twin** | Physical ↔ Digital (two-way) | Can send commands back to the physical asset |
+
+        A **Digital Shadow** passively mirrors the physical system: sensors stream data into
+        the virtual model, but no feedback loop exists.  
+        A **Digital Twin** goes further: the virtual model is continuously updated *and*
+        its outputs can actuate the physical process (set-point changes, alarms, optimisation).
+
+        ```
+        DIGITAL SHADOW                     DIGITAL TWIN
+        ──────────────────────             ──────────────────────────────────
+        Physical Asset                     Physical Asset
+             │  (sensors)                       │  (sensors)          ▲
+             ▼                                  ▼                     │ (actuators)
+        Virtual Model ──(analytics)──►    Virtual Model ──(decisions)─┘
+        ```
+
+        **References:**
+        - Grieves, M. (2014). *Digital Twin: Manufacturing Excellence through Virtual Factory Replication*. White Paper.
+        - Tao, F., et al. (2018). "Digital twin-driven product design, manufacturing and service." *International Journal of Advanced Manufacturing Technology*, 94, 3563–3576.
+        """)
+
+    with st.expander("2. Outlier Detection — IQR Method"):
+        st.markdown("""
+        Real industrial sensors produce occasional erroneous readings due to instrument faults,
+        electrical noise, or process upsets. The **Inter-Quartile Range (IQR)** method is a
+        robust, non-parametric technique to flag these anomalies.
+        """)
+        st.latex(r"Q_1 = \text{25th percentile of } y, \quad Q_3 = \text{75th percentile of } y")
+        st.latex(r"\text{IQR} = Q_3 - Q_1")
+        st.latex(r"\text{Lower bound} = Q_1 - 1.5 \cdot \text{IQR}")
+        st.latex(r"\text{Upper bound} = Q_3 + 1.5 \cdot \text{IQR}")
+        st.markdown(r"""
+        Any observation $y_t$ outside $[\text{Lower bound},\, \text{Upper bound}]$ is labelled
+        an **outlier** and replaced by linear interpolation between its neighbours.
+
+        **Why 1.5 × IQR?** For a Normal distribution this rule flags approximately 0.7 % of
+        observations — close to the ±2.7σ criterion — giving a practical balance between
+        sensitivity and false-positive rate (**Tukey, 1977**).
+
+        **Numeric example:**
+
+        | Point | Value | Q1 | Q3 | IQR | Lower | Upper | Outlier? |
+        |-------|-------|----|----|-----|-------|-------|----------|
+        | 1 | 10 200 | 9 800 | 10 500 | 700 | 8 750 | 11 550 | No |
+        | 2 | 18 000 | 9 800 | 10 500 | 700 | 8 750 | 11 550 | **Yes** |
+        | 3 | 10 050 | 9 800 | 10 500 | 700 | 8 750 | 11 550 | No |
+
+        **Reference:** Tukey, J. W. (1977). *Exploratory Data Analysis*. Addison-Wesley.
+        """)
+
+    with st.expander("3. Moving-Average (MA) Filter"):
+        st.markdown("""
+        After outlier removal, a **centred moving average** reduces high-frequency noise while
+        preserving the underlying process trend.
+        """)
+        st.latex(r"\bar{y}_t = \frac{1}{W} \sum_{i=-(W-1)/2}^{(W-1)/2} y_{t+i}")
+        st.markdown(r"""
+        where $W$ is the **window size** (odd integer).
+
+        | Window $W$ | Effect |
+        |------------|--------|
+        | Small (3–5) | Low smoothing, retains fast dynamics |
+        | Medium (7–11) | Good noise rejection, moderate lag |
+        | Large (15–21) | Strong smoothing, higher phase lag |
+
+        **Trade-off:** a larger $W$ suppresses more noise but introduces greater *latency*
+        (the filtered signal lags the true signal). In real-time control, excessive lag can
+        destabilise feedback loops.
+
+        **Reference:** Oppenheim, A. V., & Schafer, R. W. (2010). *Discrete-Time Signal Processing* (3rd ed.). Pearson.
+        """)
+
+    with st.expander("4. Data Reconciliation — Weighted Least Squares (WLS)"):
+        st.markdown("""
+        Even after filtering, sensor readings rarely satisfy conservation laws exactly because
+        of residual random errors. **Data Reconciliation** adjusts the measurements by the
+        *smallest* corrections (weighted by sensor precision) such that the adjusted values
+        satisfy the process constraints.
+        """)
+        st.latex(r"""
+        \min_{\hat{y}}\; \sum_{i=1}^{n} \frac{(y_i - \hat{y}_i)^2}{\sigma_i^2}
+        \quad \text{subject to } A\,\hat{y} = 0
+        """)
+        st.markdown(r"""
+        where:
+        * $y_i$ — filtered sensor reading for stream $i$
+        * $\hat{y}_i$ — reconciled (corrected) value
+        * $\sigma_i$ — standard deviation of sensor $i$ (uncertainty weight)
+        * $A\,\hat{y} = 0$ — linear balance constraints (mass / energy)
+
+        For the distillation column the mass-balance constraint is:
+
+        $$\hat{F}_{\text{feed}} - \hat{F}_{\text{top}} - \hat{F}_{\text{bottom}} = 0$$
+
+        The optimisation is solved with the **SLSQP** algorithm (Scipy).
+
+        **References:**
+        - Narasimhan, S., & Jordache, C. (2000). *Data Reconciliation and Gross Error Detection*. Gulf Publishing.
+        - Crowe, C. M. (1996). "Data reconciliation — progress and challenges." *Journal of Process Control*, 6(2–3), 89–98.
+        """)
+
+    with st.expander("5. Digital Twin KPIs"):
+        st.markdown("""
+        Three Key Performance Indicators (KPIs) quantify the health of the distillation process
+        in real time.
+        """)
+
+        st.subheader("KPI 1 — Mass Balance Closure Error (%)")
+        st.latex(r"""
+        \varepsilon_{\text{mass}} = \frac{|\hat{F}_{\text{feed}} - \hat{F}_{\text{top}} - \hat{F}_{\text{bottom}}|}
+                                         {\hat{F}_{\text{feed}}} \times 100
+        """)
+        st.markdown("A value close to **0 %** indicates perfect instrument consistency. Typical acceptance threshold: **±1 %**.")
+
+        st.subheader("KPI 2 — Separation Adherence (%)")
+        st.latex(r"""
+        \text{KPI}_{\text{sep}} = 100 - \frac{|\hat{F}_{\text{top}}/\hat{F}_{\text{feed}} - r^*|}{r^*} \times 100
+        """)
+        st.markdown(r"where $r^* = F_{\text{top}}^{\text{design}} / F_{\text{feed}}^{\text{design}}$ is the design split ratio. **100 %** = operating exactly at design.")
+
+        st.subheader("KPI 3 — Energy Efficiency (%)")
+        st.latex(r"""
+        \text{KPI}_{\text{energy}} = 100 - \frac{|Q_{\text{cond}}/Q_{\text{reb}} - (Q_{\text{cond}}/Q_{\text{reb}})^*|}
+                                                 {(Q_{\text{cond}}/Q_{\text{reb}})^*} \times 100
+        """)
+        st.markdown("Compares the actual condenser-to-reboiler duty ratio against the DWSIM design ratio. Deviations indicate fouling, flooding, or control drift.")
+
+        st.markdown("""
+        **Reference:** Veverka, V. V., & Madron, F. (1997). *Material and Energy Balancing in the Process Industries*. Elsevier.
+        """)
+
 
 # To be able to run this page individually if necessary
 if __name__ == "__main__":
