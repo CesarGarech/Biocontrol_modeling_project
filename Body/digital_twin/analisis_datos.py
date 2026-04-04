@@ -22,6 +22,7 @@ _SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "
 if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
+import dwsim_interface as _dwsim  # noqa: E402  (import-safe; check _dwsim.DWSIM_AVAILABLE)
 
 _EPSILON = 1e-9   # numerical guard against division by zero
 
@@ -329,6 +330,21 @@ def analisis_datos_page():
                 float(_cfg.MAX_MASS_BALANCE_ERROR), 0.5, key="da_tmass"
             )
 
+        with st.expander("6. Batch Simulation Feed", expanded=False):
+            st.markdown("Feed conditions used for the point-by-point simulation.")
+            batch_T_feed = st.number_input(
+                "Feed Temperature (°C)", 20.0, 150.0, 30.0, 1.0, key="da_bT"
+            )
+            batch_P_feed = st.number_input(
+                "Feed Pressure (kPa)", 50.0, 500.0, 100.0, 1.0, key="da_bP"
+            )
+            batch_x_eth = st.slider(
+                "Ethanol mole fraction", 0.0, 1.0,
+                0.40,
+                0.01, key="da_bxeth"
+            )
+            batch_x_water = round(max(0.0, 1.0 - batch_x_eth), 4)
+
     # ── Step 1: Generate raw data ──────────────────────────────────────────────
     st.subheader("🔵 Step 1 — Generate Raw SCADA Data")
     if st.button("▶ Generate Raw Data", key="btn_gen"):
@@ -522,6 +538,95 @@ def analisis_datos_page():
                     "⬇️ Download CSV", data=csv,
                     file_name="digital_twin_results.csv", mime="text/csv",
                 )
+
+            # ── Step 4: Batch Simulation ──────────────────────────────────────
+            st.markdown("---")
+            st.subheader("🔵 Step 4 — Point-by-Point Simulation (DWSIM / Scaling)")
+
+            if _dwsim.DWSIM_AVAILABLE:
+                st.success(
+                    "🟢 **DWSIM available** — batch simulation will use DWSIM for each point "
+                    "(falls back to scaling on per-row errors)."
+                )
+            else:
+                st.warning(
+                    "🟡 **DWSIM not available** — batch simulation will use the linear-scaling "
+                    "fallback for each data point."
+                )
+
+            st.markdown(
+                "Runs a simulation for **every filtered/reconciled data point**, using the "
+                "reconciled feed flow (`F_feed_rec`) and the feed conditions from the sidebar "
+                "*(Section 6)*. The predicted stream flows and duties are then compared with the "
+                "SCADA measurements."
+            )
+
+            if st.button("▶ Run Batch Simulation", key="btn_batch_sim"):
+                interf = st.session_state.get("dwsim_interf")
+                sim_obj = st.session_state.get("dwsim_sim")
+
+                # If DWSIM objects are not already in session state, try to initialise
+                if _dwsim.DWSIM_AVAILABLE and (interf is None or sim_obj is None):
+                    with st.spinner("Initialising DWSIM…"):
+                        try:
+                            interf = _dwsim.init_dwsim()
+                            sim_obj = _dwsim.load_simulation(interf)
+                            st.session_state["dwsim_interf"] = interf
+                            st.session_state["dwsim_sim"] = sim_obj
+                        except Exception as exc:
+                            st.warning(f"DWSIM init failed ({exc}); using scaling fallback.")
+                            interf = None
+                            sim_obj = None
+
+                progress = st.progress(0)
+                with st.spinner(f"Simulating {len(df_final)} data points…"):
+                    df_batch = _run_batch_simulation(
+                        df_final,
+                        T_feed=batch_T_feed,
+                        P_feed=batch_P_feed,
+                        x_eth=batch_x_eth,
+                        x_water=batch_x_water,
+                        interf=interf,
+                        sim=sim_obj,
+                        progress_bar=progress,
+                    )
+                progress.empty()
+                st.session_state["da_df_batch"] = df_batch
+
+            if "da_df_batch" in st.session_state:
+                df_batch = st.session_state["da_df_batch"]
+                modes = df_batch["sim_mode"].value_counts().to_dict()
+                mode_str = ", ".join(f"{v} {k}" for k, v in modes.items())
+                st.success(f"Batch simulation complete — {len(df_batch)} points ({mode_str}).")
+
+                fig4 = _plot_comparison(df_batch)
+                st.pyplot(fig4)
+                plt.close(fig4)
+
+                with st.expander("📋 View Batch Simulation Data"):
+                    batch_cols = [
+                        "Timestamp", "F_feed_rec",
+                        "F_top_rec", "sim_F_top_kgh",
+                        "F_bottom_rec", "sim_F_bot_kgh",
+                        "Q_cond_filtered", "sim_Q_cond_kw",
+                        "Q_reb_filtered",  "sim_Q_reb_kw",
+                        "sim_mode",
+                    ]
+                    avail = [c for c in batch_cols if c in df_batch.columns]
+                    st.dataframe(
+                        df_batch[avail].style.format(
+                            {c: "{:.1f}" for c in avail
+                             if c not in ("Timestamp", "sim_mode")}
+                        ),
+                        use_container_width=True,
+                    )
+                    csv_b = df_batch[avail].to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "⬇️ Download Batch Results CSV", data=csv_b,
+                        file_name="batch_simulation_results.csv", mime="text/csv",
+                    )
+            else:
+                st.info("👆 Click **▶ Run Batch Simulation** to compare SCADA data with simulation predictions.")
         else:
             st.info("👆 Click **Run Analysis** to see reconciliation results and KPIs.")
 
@@ -539,3 +644,129 @@ def _add_iqr_flags(df: pd.DataFrame) -> pd.DataFrame:
         lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
         df_c[f"{col}_outlier"] = (df_c[col] < lo) | (df_c[col] > hi)
     return df_c
+
+
+# ── Batch simulation helpers ──────────────────────────────────────────────────
+
+_MW_ETHANOL = 46.068
+_MW_WATER = 18.015
+
+
+def _scaling_row(F_feed_kgh: float, x_eth: float) -> dict:
+    """Compute predicted top/bottom flows and duties via linear scaling."""
+    scale = F_feed_kgh / (_FLOW_FEED_BASE + _EPSILON)
+    return {
+        "sim_F_top_kgh":   F_feed_kgh * _SPLIT_TOP,
+        "sim_F_bot_kgh":   F_feed_kgh * _SPLIT_BOTTOM,
+        "sim_Q_cond_kw":   _Q_COND_BASE * scale,
+        "sim_Q_reb_kw":    _Q_REB_BASE * scale,
+        "sim_mode":        "scaling",
+    }
+
+
+def _run_batch_simulation(
+    df_rec: pd.DataFrame,
+    T_feed: float,
+    P_feed: float,
+    x_eth: float,
+    x_water: float,
+    interf=None,
+    sim=None,
+    progress_bar=None,
+) -> pd.DataFrame:
+    """
+    Run a simulation (DWSIM or scaling fallback) for every row in *df_rec*.
+
+    Parameters
+    ----------
+    df_rec : pd.DataFrame
+        Reconciled SCADA data; must contain ``F_feed_rec`` column (kg/h).
+    T_feed, P_feed, x_eth, x_water : float
+        Feed temperature (°C), pressure (kPa), ethanol and water mole fractions.
+    interf, sim : optional
+        DWSIM automation objects.  When both are supplied DWSIM is used row-by-row,
+        with scaling as fall-back on any per-row exception.
+    progress_bar : st.progress or None
+        Streamlit progress bar updated after each row.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same length as *df_rec* with additional columns:
+        ``sim_F_top_kgh``, ``sim_F_bot_kgh``, ``sim_Q_cond_kw``,
+        ``sim_Q_reb_kw``, ``sim_mode``.
+    """
+    use_dwsim = (interf is not None and sim is not None
+                 and _dwsim.DWSIM_AVAILABLE)
+    rows_out = []
+    n = len(df_rec)
+
+    for i, (_, row) in enumerate(df_rec.iterrows()):
+        F_feed = float(row["F_feed_rec"])
+
+        if use_dwsim:
+            try:
+                _dwsim.set_feed_conditions(
+                    sim,
+                    temperature_C=T_feed,
+                    pressure_kPa=P_feed,
+                    flow_kgh=F_feed,
+                    x_ethanol=x_eth,
+                    x_water=x_water,
+                )
+                _dwsim.run_simulation(interf, sim)
+                raw = _dwsim.read_results(sim)
+                top = raw.get("top", {})
+                bot = raw.get("bottom", {})
+                cond = raw.get("r_cond", {})
+                reb = raw.get("q_reb", {})
+                rows_out.append({
+                    "sim_F_top_kgh":  top.get("mass_flow_kgh", 0.0),
+                    "sim_F_bot_kgh":  bot.get("mass_flow_kgh", 0.0),
+                    "sim_Q_cond_kw":  abs(cond.get("energy_kw", 0.0)),
+                    "sim_Q_reb_kw":   abs(reb.get("energy_kw", 0.0)),
+                    "sim_mode":       "dwsim",
+                })
+            except Exception:
+                rows_out.append(_scaling_row(F_feed, x_eth))
+        else:
+            rows_out.append(_scaling_row(F_feed, x_eth))
+
+        if progress_bar is not None:
+            progress_bar.progress((i + 1) / n)
+
+    df_sim = pd.DataFrame(rows_out)
+    return pd.concat(
+        [df_rec.reset_index(drop=True), df_sim.reset_index(drop=True)], axis=1
+    )
+
+
+def _plot_comparison(df: pd.DataFrame) -> plt.Figure:
+    """2×2 chart comparing SCADA measurements vs simulation predictions."""
+    fig, axs = plt.subplots(2, 2, figsize=(14, 8), sharex=True)
+    fig.suptitle(
+        "Digital Twin — SCADA Measurements vs Simulation Predictions",
+        fontsize=13, fontweight="bold",
+    )
+
+    pairs = [
+        (axs[0, 0], "F_top_rec",      "sim_F_top_kgh",  "Distillate Flow",    "Flow (kg/h)"),
+        (axs[0, 1], "F_bottom_rec",    "sim_F_bot_kgh",  "Bottoms Flow",       "Flow (kg/h)"),
+        (axs[1, 0], "Q_cond_filtered", "sim_Q_cond_kw",  "Condenser Duty",     "Duty (kW)"),
+        (axs[1, 1], "Q_reb_filtered",  "sim_Q_reb_kw",   "Reboiler Duty",      "Duty (kW)"),
+    ]
+    ts = df["Timestamp"] if "Timestamp" in df.columns else df.index
+
+    for ax, meas_col, sim_col, title, ylabel in pairs:
+        ax.plot(ts, df[meas_col], color="steelblue", alpha=0.8, label="SCADA (reconciled/filtered)")
+        if sim_col in df.columns:
+            ax.plot(ts, df[sim_col], color="tomato", ls="--", label="Simulation")
+        ax.set_title(title)
+        ax.set_ylabel(ylabel)
+        ax.legend(fontsize=8)
+        ax.grid(True, ls="--", alpha=0.5)
+
+    for ax in axs[1]:
+        ax.set_xlabel("Time")
+    fig.tight_layout()
+    return fig
