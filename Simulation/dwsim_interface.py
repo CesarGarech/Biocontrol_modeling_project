@@ -216,32 +216,60 @@ def set_feed_conditions(
     P_Pa = pressure_kPa * 1_000.0
     F_kgs = flow_kgh / 3_600.0
 
-    # DWSIM ISimulationObject property-bag API (works without concrete-type cast)
-    stream.SetPropertyValue("temperature", T_K)
-    stream.SetPropertyValue("pressure", P_Pa)
-    stream.SetPropertyValue("massflow", F_kgs)
+    # ── APPROACH 1: direct Phases[0].Properties access ─────────────────────
+    # This is the primary DWSIM automation API: Phases[0] is the overall (mixed)
+    # phase; Properties holds temperature (K), pressure (Pa), massflow (kg/s).
+    _scalar_set = False
+    try:
+        stream.Phases[0].Properties.temperature = T_K
+        stream.Phases[0].Properties.pressure = P_Pa
+        stream.Phases[0].Properties.massflow = F_kgs
+        _scalar_set = True
+    except Exception:
+        pass
 
-    # Molar composition — SetOverallComposition requires a .NET Double[].
-    # Explicitly marshal via System.Array to avoid pythonnet marshalling issues.
+    # ── APPROACH 2: property-bag fallback (SetPropertyValue) ───────────────
+    if not _scalar_set:
+        try:
+            stream.SetPropertyValue("temperature", T_K)
+            stream.SetPropertyValue("pressure", P_Pa)
+            stream.SetPropertyValue("massflow", F_kgs)
+        except Exception:
+            pass
+
+    # ── COMPOSITION ─────────────────────────────────────────────────────────
     compounds = getattr(_get_config(), "DWSIM_COMPOUNDS", ["Ethanol", "Water"])
     fractions = [x_ethanol, x_water]
+
+    # Approach 1: per-compound MoleFraction via Phases[0].Compounds
     _comp_set = False
     try:
-        import System  # noqa: PLC0415
-        fracs_net = System.Array[System.Double](fractions)
-        stream.SetOverallComposition(fracs_net)
+        for name, frac in zip(compounds, fractions):
+            stream.Phases[0].Compounds[name].MoleFraction = frac
         _comp_set = True
     except Exception:
         pass
+
     if not _comp_set:
-        # Fallback: plain Python list (works in some pythonnet versions)
+        # Approach 2: SetOverallComposition with explicit .NET Double[] marshal
+        try:
+            import System  # noqa: PLC0415
+            fracs_net = System.Array[System.Double](fractions)
+            stream.SetOverallComposition(fracs_net)
+            _comp_set = True
+        except Exception:
+            pass
+
+    if not _comp_set:
+        # Approach 3: plain Python list (works on some pythonnet versions)
         try:
             stream.SetOverallComposition(fractions)
             _comp_set = True
         except Exception:
             pass
+
     if not _comp_set:
-        # Last-resort: per-compound property-bag entry
+        # Approach 4: individual property-bag entries
         for name, frac in zip(compounds, fractions):
             try:
                 stream.SetPropertyValue(f"fraction[{name}]", frac)
@@ -346,39 +374,67 @@ def read_results(sim, tags: dict | None = None) -> dict:
 
     results: dict = {}
 
-    def _pv(obj, prop):
-        """Safely read a .NET property value as float; returns None when unavailable."""
+    # ── Helper: safe float conversion ────────────────────────────────────────
+    def _sf(v, default=None):
+        """Convert a .NET or Python value to float; return *default* on failure."""
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except Exception:
+            return default
+
+    # ── Helper: read a scalar property from a material-stream object ─────────
+    def _phase_prop(obj, prop, default=None):
+        """
+        Try ``obj.Phases[0].Properties.<prop>`` first (direct access).
+        Fall back to ``obj.GetPropertyValue(prop)`` (property-bag API).
+        """
+        try:
+            v = getattr(obj.Phases[0].Properties, prop)
+            result = _sf(v)
+            if result is not None:
+                return result
+        except Exception:
+            pass
         try:
             v = obj.GetPropertyValue(prop)
-            return float(v) if v is not None else None
+            return _sf(v, default)
         except Exception:
-            return None
+            return default
 
     # Material streams
     for role in ("feed", "top", "bottom"):
         tag = resolved[role]
         obj = sim.GetFlowsheetSimulationObject(tag)
 
-        # DWSIM ISimulationObject property-bag API (no concrete-type cast needed).
-        # GetPropertyValue returns SI-unit values; None if the stream is unsolved.
-        mass_flow_kgs   = _pv(obj, "massflow")    or 0.0   # kg/s
-        molar_flow_mols = _pv(obj, "molarflow")   or 0.0   # mol/s
-        temperature_K   = _pv(obj, "temperature")          # K  — keep None to detect unsolved
-        pressure_Pa     = _pv(obj, "pressure")    or 0.0   # Pa
+        mass_flow_kgs   = _phase_prop(obj, "massflow",    0.0)   # kg/s
+        molar_flow_mols = _phase_prop(obj, "molarflow",   0.0)   # mol/s
+        temperature_K   = _phase_prop(obj, "temperature", None)   # K
+        pressure_Pa     = _phase_prop(obj, "pressure",    0.0)   # Pa
 
-        # Molar composition — GetOverallComposition returns a float array
+        # Molar composition — try Phases[0].Compounds, then GetOverallComposition
         composition = []
+        cfg2 = _get_config()
+        compounds = getattr(cfg2, "DWSIM_COMPOUNDS", ["Ethanol", "Water"])
+        _read_comp = False
         try:
-            composition = [float(v) for v in obj.GetOverallComposition()]
-        except Exception:
-            # Fallback: read per-compound fractions via property bag
-            compounds = getattr(_get_config(), "DWSIM_COMPOUNDS", ["Ethanol", "Water"])
             for name in compounds:
-                fv = _pv(obj, f"fraction[{name}]")
-                composition.append(fv if fv is not None else 0.0)
+                frac = _sf(obj.Phases[0].Compounds[name].MoleFraction, 0.0)
+                composition.append(frac)
+            _read_comp = True
+        except Exception:
+            pass
+        if not _read_comp:
+            try:
+                raw_comp = obj.GetOverallComposition()
+                composition = [_sf(v, 0.0) for v in raw_comp]
+                _read_comp = True
+            except Exception:
+                pass
+        if not _read_comp:
+            composition = [0.0] * len(compounds)
 
-        # temperature_K=None means the stream is unsolved; surface -273.15°C so it is
-        # immediately obvious rather than the misleading 0°C produced by a 273.15 default.
         t_K = temperature_K if temperature_K is not None else 0.0
 
         results[role] = {
@@ -389,11 +445,22 @@ def read_results(sim, tags: dict | None = None) -> dict:
             "composition":      composition,
         }
 
-    # Energy streams — heatflow property (W) via the ISimulationObject property bag
+    # Energy streams — try EnergyFlow direct property, then heatflow property-bag
     for role in ("r_cond", "q_reb"):
         tag = resolved[role]
         obj = sim.GetFlowsheetSimulationObject(tag)
-        energy_W = _pv(obj, "heatflow") or 0.0
+        energy_W = 0.0
+        try:
+            energy_W = _sf(obj.EnergyFlow, None)
+            if energy_W is None:
+                energy_W = 0.0
+        except Exception:
+            pass
+        if energy_W == 0.0:
+            try:
+                energy_W = _sf(obj.GetPropertyValue("heatflow"), 0.0)
+            except Exception:
+                energy_W = 0.0
         results[role] = {
             "energy_kw": energy_W / 1_000.0,
         }
