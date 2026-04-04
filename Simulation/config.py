@@ -71,3 +71,20 @@ SEED = 42               # Random seed for reproducibility
 # ==========================================
 MAX_MASS_BALANCE_ERROR = 1.0    # Max tolerable mass balance error (%)
 MAX_ENERGY_BALANCE_ERROR = 2.0  # Max tolerable energy balance error (%)
+
+# ==========================================
+# 7. DWSIM API CONFIGURATION
+# ==========================================
+# Enable/disable live DWSIM integration (set to True to use live simulations)
+USE_DWSIM_LIVE = False
+
+# Full path to the DWSIM.Automation.dll (derived from the install path above)
+DWSIM_DLL_PATH = os.path.join(DWSIM_INSTALL_PATH, "DWSIM.Automation.dll")
+
+# Properties to extract from DWSIM streams and equipment
+STREAM_PROPERTIES = ["MassFlow", "Temperature", "Pressure", "MolarFlow"]
+EQUIPMENT_PROPERTIES = ["DutyCondenser", "DutyReboiler", "RefluxRatio"]
+
+# Perturbation settings for dynamic simulation
+PERTURBATION_TYPE = "sinusoidal"   # "sinusoidal", "step", "ramp"
+PERTURBATION_AMPLITUDE = 500.0     # kg/h applied to feed flow
