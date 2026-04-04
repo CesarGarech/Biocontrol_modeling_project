@@ -10,8 +10,12 @@ import os
 # ==========================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# DWSIM installation path (adjust to your system)
-DWSIM_INSTALL_PATH = r"C:\\Users\\cesar\\AppData\\Local\\DWSIM\\"
+# DWSIM installation path — checks DWSIM_PATH env var first (Docker-friendly).
+# Leave empty to force explicit configuration via the DWSIM_PATH environment variable.
+DWSIM_INSTALL_PATH = os.environ.get(
+    "DWSIM_PATH",
+    r"C:\Users\cesar\AppData\Local\DWSIM"
+)
 
 # DWSIM simulation file
 SIMULATION_FILE = os.path.join(CURRENT_DIR, "ethanol.dwxmz")
@@ -71,3 +75,9 @@ SEED = 42               # Random seed for reproducibility
 # ==========================================
 MAX_MASS_BALANCE_ERROR = 1.0    # Max tolerable mass balance error (%)
 MAX_ENERGY_BALANCE_ERROR = 2.0  # Max tolerable energy balance error (%)
+
+# ==========================================
+# 7. DWSIM AUTOMATION SETTINGS
+# ==========================================
+DWSIM_TIMEOUT = 120                          # Solver timeout in seconds
+DWSIM_COMPOUNDS = ["Ethanol", "Water"]       # Compound order in the flowsheet

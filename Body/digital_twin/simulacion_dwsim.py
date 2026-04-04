@@ -1,11 +1,14 @@
 """
-Digital Twin — Sub-page 1: DWSIM Design-Point Simulation
-=========================================================
-Allows the user to specify feed conditions (T, P, composition, flow rate)
-and computes the expected column performance by scaling the DWSIM steady-state
-design point stored in Simulation/config.py.
-No DWSIM COM runtime is required; all calculations are analytic scale-ups of
-the reference design.
+Digital Twin — Sub-page 1: DWSIM Rigorous Simulation
+=====================================================
+Executes a rigorous steady-state DWSIM simulation of the ethanol
+distillation column.  If DWSIM / pythonnet is not available the page
+gracefully falls back to the original linear-scaling approximation so the
+app never crashes.
+
+Simulation mode indicator
+  🟢  DWSIM Rigorous  — real DWSIM COM automation via pythonnet
+  🟡  Scaling Fallback — analytic scale-up of the DWSIM design point
 """
 import os
 import sys
@@ -13,20 +16,22 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
-# ── Import shared configuration from Simulation/config.py ───────────────────
+# ── Shared configuration from Simulation/config.py ──────────────────────────
 _SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
 if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
 
-# ── Local-only constants not defined in config.py ───────────────────────────
+# ── DWSIM interface module ───────────────────────────────────────────────────
+import dwsim_interface as _dwsim  # noqa: E402
+
+# ── Local-only constants ─────────────────────────────────────────────────────
 _TARGET_ETHANOL_BOTTOM = 0.02    # mol fraction of ethanol in bottoms (design target)
 _MW_ETHANOL = 46.068             # g/mol
 _MW_WATER = 18.015               # g/mol
 
-# Convenient aliases matching config naming
+# Convenient aliases matching config naming (used by scaling fallback)
 _FLOW_FEED_BASE_KGH = _cfg.FLOW_FEED_BASE
 _SPLIT_TOP = _cfg.SPLIT_TOP
 _SPLIT_BOTTOM = _cfg.SPLIT_BOTTOM
@@ -34,28 +39,213 @@ _Q_COND_BASE_KW = _cfg.Q_COND_BASE
 _Q_REB_BASE_KW = _cfg.Q_REB_BASE
 _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP
 
-_FLOW_FEED_BASE_KMOLH = _FLOW_FEED_BASE_KGH / (
-    _TARGET_ETHANOL_TOP * _MW_ETHANOL + (1 - _TARGET_ETHANOL_TOP) * _MW_WATER
-)  # approximate kmol/h at base conditions
-
 
 def _average_mw(x_eth: float) -> float:
     """Mean molecular weight for an ethanol-water mixture."""
     return x_eth * _MW_ETHANOL + (1.0 - x_eth) * _MW_WATER
 
 
+# ── DWSIM session-state helpers ──────────────────────────────────────────────
+
+def _get_dwsim_objects():
+    """Return (interf, sim) from session state, or (None, None)."""
+    return (
+        st.session_state.get("dwsim_interf"),
+        st.session_state.get("dwsim_sim"),
+    )
+
+
+def _init_dwsim_session():
+    """
+    Initialise DWSIM interf + sim and cache in session_state.
+    Returns (interf, sim, error_message).
+    """
+    interf, sim = _get_dwsim_objects()
+    if interf is not None and sim is not None:
+        return interf, sim, ""
+
+    try:
+        interf = _dwsim.init_dwsim()
+        sim = _dwsim.load_simulation(interf)
+        st.session_state["dwsim_interf"] = interf
+        st.session_state["dwsim_sim"] = sim
+        return interf, sim, ""
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+# ── Scaling fallback calculation ─────────────────────────────────────────────
+
+def _run_scaling(F_feed_kmolh, x_eth, T_feed, P_feed):
+    """Compute stream flows / duties by linear scaling from the DWSIM design point."""
+    mw_feed = _average_mw(x_eth)
+    F_feed_kgh = F_feed_kmolh * mw_feed
+    scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
+
+    F_top_kgh = F_feed_kgh * _SPLIT_TOP
+    F_bot_kgh = F_feed_kgh * _SPLIT_BOTTOM
+    mw_top = _average_mw(_TARGET_ETHANOL_TOP)
+    mw_bot = _average_mw(_TARGET_ETHANOL_BOTTOM)
+    F_top_kmolh = F_top_kgh / mw_top
+    F_bot_kmolh = F_bot_kgh / mw_bot
+
+    Q_cond_kw = _Q_COND_BASE_KW * scale
+    Q_reb_kw = _Q_REB_BASE_KW * scale
+
+    dh_vap_ethanol = 38.56
+    dh_vap_water = 40.65
+    dh_vap_top = (
+        _TARGET_ETHANOL_TOP * dh_vap_ethanol
+        + (1 - _TARGET_ETHANOL_TOP) * dh_vap_water
+    )
+    V_vapour = Q_cond_kw / dh_vap_top
+    reflux_ratio = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
+    ethanol_recovery = (
+        F_top_kmolh * _TARGET_ETHANOL_TOP
+        / max(F_feed_kmolh * x_eth, 1e-9) * 100
+    )
+    T_bp = 78.4 + (P_feed - 101.325) * 0.03
+    cp_liquid = 2.9
+    lambda_feed = dh_vap_top * mw_feed / 1000.0
+    q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
+
+    return {
+        "F_feed_kmolh": F_feed_kmolh,
+        "F_feed_kgh": F_feed_kgh,
+        "F_top_kgh": F_top_kgh,
+        "F_bot_kgh": F_bot_kgh,
+        "F_top_kmolh": F_top_kmolh,
+        "F_bot_kmolh": F_bot_kmolh,
+        "Q_cond_kw": Q_cond_kw,
+        "Q_reb_kw": Q_reb_kw,
+        "scale": scale,
+        "reflux_ratio": reflux_ratio,
+        "ethanol_recovery": ethanol_recovery,
+        "q": q,
+        "mw_feed": mw_feed,
+        "mw_top": mw_top,
+        "mw_bot": mw_bot,
+        "x_eth": x_eth,
+        "x_top_eth": _TARGET_ETHANOL_TOP,
+        "x_bot_eth": _TARGET_ETHANOL_BOTTOM,
+        "mode": "scaling",
+        "converged": True,
+        "solver_status": "N/A (scaling fallback)",
+    }
+
+
+def _run_dwsim(interf, sim, T_feed, P_feed, F_feed_kmolh, x_eth, x_water):
+    """Run the real DWSIM simulation and return a results dict."""
+    mw_feed = _average_mw(x_eth)
+    F_feed_kgh = F_feed_kmolh * mw_feed
+
+    # Set feed conditions
+    _dwsim.set_feed_conditions(
+        sim,
+        temperature_C=T_feed,
+        pressure_kPa=P_feed,
+        flow_kgh=F_feed_kgh,
+        x_ethanol=x_eth,
+        x_water=x_water,
+    )
+
+    # Solve
+    converged, err_msg = _dwsim.run_simulation(
+        interf, sim, timeout_seconds=getattr(_cfg, "DWSIM_TIMEOUT", 120)
+    )
+
+    # Read results
+    raw = _dwsim.read_results(sim)
+
+    feed_res = raw.get("feed", {})
+    top_res = raw.get("top", {})
+    bot_res = raw.get("bottom", {})
+    cond_res = raw.get("r_cond", {})
+    reb_res = raw.get("q_reb", {})
+
+    F_top_kgh = top_res.get("mass_flow_kgh", 0.0)
+    F_bot_kgh = bot_res.get("mass_flow_kgh", 0.0)
+    F_top_kmolh = top_res.get("molar_flow_kmolh", 0.0)
+    F_bot_kmolh = bot_res.get("molar_flow_kmolh", 0.0)
+    Q_cond_kw = abs(cond_res.get("energy_kw", 0.0))
+    Q_reb_kw = abs(reb_res.get("energy_kw", 0.0))
+
+    top_comp = top_res.get("composition", [_TARGET_ETHANOL_TOP, 1 - _TARGET_ETHANOL_TOP])
+    bot_comp = bot_res.get("composition", [_TARGET_ETHANOL_BOTTOM, 1 - _TARGET_ETHANOL_BOTTOM])
+    x_top_eth = top_comp[0] if len(top_comp) > 0 else _TARGET_ETHANOL_TOP
+    x_bot_eth = bot_comp[0] if len(bot_comp) > 0 else _TARGET_ETHANOL_BOTTOM
+
+    mw_top = _average_mw(x_top_eth)
+    mw_bot = _average_mw(x_bot_eth)
+
+    scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
+
+    dh_vap_ethanol = 38.56
+    dh_vap_water = 40.65
+    dh_vap_top = x_top_eth * dh_vap_ethanol + (1 - x_top_eth) * dh_vap_water
+    V_vapour = Q_cond_kw / dh_vap_top if dh_vap_top > 0 else 0.0
+    reflux_ratio = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
+    ethanol_recovery = (
+        F_top_kmolh * x_top_eth / max(F_feed_kmolh * x_eth, 1e-9) * 100
+    )
+    T_bp = 78.4 + (P_feed - 101.325) * 0.03
+    cp_liquid = 2.9
+    lambda_feed = dh_vap_top * mw_feed / 1000.0
+    q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
+
+    return {
+        "F_feed_kmolh": F_feed_kmolh,
+        "F_feed_kgh": F_feed_kgh,
+        "F_top_kgh": F_top_kgh,
+        "F_bot_kgh": F_bot_kgh,
+        "F_top_kmolh": F_top_kmolh,
+        "F_bot_kmolh": F_bot_kmolh,
+        "Q_cond_kw": Q_cond_kw,
+        "Q_reb_kw": Q_reb_kw,
+        "scale": scale,
+        "reflux_ratio": reflux_ratio,
+        "ethanol_recovery": ethanol_recovery,
+        "q": q,
+        "mw_feed": mw_feed,
+        "mw_top": mw_top,
+        "mw_bot": mw_bot,
+        "x_eth": x_eth,
+        "x_top_eth": x_top_eth,
+        "x_bot_eth": x_bot_eth,
+        "mode": "dwsim",
+        "converged": converged,
+        "solver_status": "Converged" if converged else f"Not converged: {err_msg}",
+        "dwsim_raw": raw,
+    }
+
+
+# ── Main page ─────────────────────────────────────────────────────────────────
+
 def simulacion_dwsim_page():
-    st.header("⚙️ DWSIM Design-Point Simulation")
+    # ── Simulation mode indicator ─────────────────────────────────────────────
+    if _dwsim.DWSIM_AVAILABLE:
+        st.success("🟢 **DWSIM Rigorous** — pythonnet detected; real DWSIM simulation available.")
+    else:
+        st.warning(
+            "🟡 **Scaling Fallback** — DWSIM/pythonnet not available.  "
+            "Results are analytic scale-ups of the design point.  \n"
+            "To enable rigorous simulation: `pip install pythonnet` and set "
+            "the `DWSIM_PATH` environment variable to your DWSIM installation."
+        )
+
+    st.header("⚙️ DWSIM Distillation Simulation")
     st.markdown("""
-    This page scales the **DWSIM steady-state design** of a continuous ethanol
-    distillation column to the feed conditions you specify.
-    The reference flowsheet (`ethanol.dwxmz`) defines the base split ratios
-    and energy duties; all results are linearly scaled to the new feed.
+    This page runs a **rigorous steady-state DWSIM simulation** of the ethanol
+    distillation column when DWSIM is available, or falls back to a linear
+    scaling approximation of the DWSIM design point.
+
+    The reference flowsheet (`ethanol.dwxmz`) defines the base configuration;
+    you can override the feed conditions in the sidebar.
     """)
 
     st.markdown("---")
 
-    # ── Transfer-function summary ─────────────────────────────────────────────
+    # ── Column design reference ───────────────────────────────────────────────
     st.subheader("Column Design Reference (DWSIM)")
     st.caption(
         f"Flowsheet: `ethanol.dwxmz` — Column tag: **{_cfg.TAG_COLUMN}** "
@@ -66,13 +256,13 @@ def simulacion_dwsim_page():
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.metric("Base Feed", f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
-        st.metric("Distillate split", f"{_SPLIT_TOP*100:.0f} %")
+        st.metric("Distillate split", f"{_SPLIT_TOP * 100:.0f} %")
     with col_b:
         st.metric("Condenser duty (base)", f"{_Q_COND_BASE_KW:,.2f} kW")
         st.metric("Reboiler duty (base)", f"{_Q_REB_BASE_KW:,.2f} kW")
     with col_c:
-        st.metric("Target EtOH in distillate", f"{_TARGET_ETHANOL_TOP*100:.0f} mol%")
-        st.metric("Target EtOH in bottoms", f"{_TARGET_ETHANOL_BOTTOM*100:.0f} mol%")
+        st.metric("Target EtOH in distillate", f"{_TARGET_ETHANOL_TOP * 100:.0f} mol%")
+        st.metric("Target EtOH in bottoms", f"{_TARGET_ETHANOL_BOTTOM * 100:.0f} mol%")
 
     st.markdown("---")
 
@@ -119,126 +309,90 @@ def simulacion_dwsim_page():
             )
 
     # ── Run button ────────────────────────────────────────────────────────────
-    st.markdown("Set the feed conditions in the sidebar, then click **▶ Run Simulation** to compute results.")
+    st.markdown(
+        "Set the feed conditions in the sidebar, then click **▶ Run Simulation** to compute results."
+    )
+
     if st.button("▶ Run Simulation", key="btn_dwsim_run"):
-        # ── Calculations ──────────────────────────────────────────────────────
-        mw_feed = _average_mw(x_eth)           # g/mol
-        F_feed_kgh = F_feed_kmolh * mw_feed    # kg/h
+        use_dwsim = _dwsim.DWSIM_AVAILABLE
 
-        # Scale factor vs. DWSIM reference (mass-flow based)
-        scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
+        if use_dwsim:
+            with st.spinner("Initialising DWSIM and solving flowsheet…"):
+                interf, sim, init_err = _init_dwsim_session()
+                if init_err:
+                    st.error(
+                        f"⚠️ DWSIM initialisation failed — falling back to scaling.\n\n{init_err}"
+                    )
+                    use_dwsim = False
+                else:
+                    try:
+                        results = _run_dwsim(
+                            interf, sim, T_feed, P_feed, F_feed_kmolh, x_eth, x_water
+                        )
+                        if not results["converged"]:
+                            st.warning(
+                                f"⚠️ Solver did not converge: {results['solver_status']}\n\n"
+                                "Showing last-iteration values."
+                            )
+                    except Exception as exc:
+                        st.error(
+                            f"⚠️ DWSIM simulation error — falling back to scaling.\n\n{exc}"
+                        )
+                        use_dwsim = False
 
-        # Stream flows
-        F_top_kgh = F_feed_kgh * _SPLIT_TOP
-        F_bot_kgh = F_feed_kgh * _SPLIT_BOTTOM
-        mw_top = _average_mw(_TARGET_ETHANOL_TOP)
-        mw_bot = _average_mw(_TARGET_ETHANOL_BOTTOM)
-        F_top_kmolh = F_top_kgh / mw_top
-        F_bot_kmolh = F_bot_kgh / mw_bot
+        if not use_dwsim:
+            results = _run_scaling(F_feed_kmolh, x_eth, T_feed, P_feed)
 
-        # Energy duties (linear scale)
-        Q_cond_kw = _Q_COND_BASE_KW * scale
-        Q_reb_kw = _Q_REB_BASE_KW * scale
+        st.session_state["sim_results"] = results
 
-        # Derived metrics
-        dh_vap_ethanol = 38.56     # kJ/mol  latent heat of vaporisation at 78 °C
-        dh_vap_water = 40.65       # kJ/mol
-        dh_vap_top = (
-            _TARGET_ETHANOL_TOP * dh_vap_ethanol
-            + (1 - _TARGET_ETHANOL_TOP) * dh_vap_water
-        )  # kJ/mol
-        V_vapour = Q_cond_kw / dh_vap_top   # kmol/h vapour from condenser
-        reflux_ratio = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
-
-        ethanol_recovery = (
-            F_top_kmolh * _TARGET_ETHANOL_TOP
-            / max(F_feed_kmolh * x_eth, 1e-9) * 100
-        )
-
-        # Thermal condition (q-parameter)
-        T_bp = 78.4 + (P_feed - 101.325) * 0.03     # rough bubble-point shift
-        cp_liquid = 2.9     # kJ/(kg·K)  approximate
-        lambda_feed = dh_vap_top * mw_feed / 1000.0  # kJ/kg
-        q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
-
-        # Store all computed results in session state
-        st.session_state["sim_results"] = {
-            "F_feed_kmolh": F_feed_kmolh,
-            "F_feed_kgh": F_feed_kgh,
-            "F_top_kgh": F_top_kgh,
-            "F_bot_kgh": F_bot_kgh,
-            "F_top_kmolh": F_top_kmolh,
-            "F_bot_kmolh": F_bot_kmolh,
-            "Q_cond_kw": Q_cond_kw,
-            "Q_reb_kw": Q_reb_kw,
-            "scale": scale,
-            "reflux_ratio": reflux_ratio,
-            "ethanol_recovery": ethanol_recovery,
-            "q": q,
-            "mw_feed": mw_feed,
-            "mw_top": mw_top,
-            "mw_bot": mw_bot,
-            "x_eth": x_eth,
-        }
-
-    # ── Results Display (only from stored state) ──────────────────────────────
+    # ── Results display ───────────────────────────────────────────────────────
     if "sim_results" not in st.session_state:
         st.info("👆 Configure the feed conditions and click **▶ Run Simulation** to see results.")
         return
 
     r = st.session_state["sim_results"]
-    F_feed_kmolh = r["F_feed_kmolh"]
-    F_feed_kgh = r["F_feed_kgh"]
-    F_top_kgh = r["F_top_kgh"]
-    F_bot_kgh = r["F_bot_kgh"]
-    F_top_kmolh = r["F_top_kmolh"]
-    F_bot_kmolh = r["F_bot_kmolh"]
-    Q_cond_kw = r["Q_cond_kw"]
-    Q_reb_kw = r["Q_reb_kw"]
-    scale = r["scale"]
-    reflux_ratio = r["reflux_ratio"]
-    ethanol_recovery = r["ethanol_recovery"]
-    q = r["q"]
-    mw_feed = r["mw_feed"]
-    mw_top = r["mw_top"]
-    mw_bot = r["mw_bot"]
-    x_eth_res = r["x_eth"]
+    is_dwsim_mode = r.get("mode") == "dwsim"
 
-    st.subheader("📊 Scaled Simulation Results")
+    st.subheader("📊 Simulation Results")
 
     # Stream table
+    x_top_eth_res = r.get("x_top_eth", _TARGET_ETHANOL_TOP)
+    x_bot_eth_res = r.get("x_bot_eth", _TARGET_ETHANOL_BOTTOM)
     stream_data = {
         "Stream": ["Feed", "Distillate (Top)", "Bottoms"],
         "Flow (kmol/h)": [
-            f"{F_feed_kmolh:.2f}",
-            f"{F_top_kmolh:.2f}",
-            f"{F_bot_kmolh:.2f}",
+            f"{r['F_feed_kmolh']:.2f}",
+            f"{r['F_top_kmolh']:.2f}",
+            f"{r['F_bot_kmolh']:.2f}",
         ],
         "Flow (kg/h)": [
-            f"{F_feed_kgh:,.1f}",
-            f"{F_top_kgh:,.1f}",
-            f"{F_bot_kgh:,.1f}",
+            f"{r['F_feed_kgh']:,.1f}",
+            f"{r['F_top_kgh']:,.1f}",
+            f"{r['F_bot_kgh']:,.1f}",
         ],
         "EtOH mol frac": [
-            f"{x_eth_res:.4f}",
-            f"{_TARGET_ETHANOL_TOP:.4f}",
-            f"{_TARGET_ETHANOL_BOTTOM:.4f}",
+            f"{r['x_eth']:.4f}",
+            f"{x_top_eth_res:.4f}",
+            f"{x_bot_eth_res:.4f}",
         ],
         "Avg MW (g/mol)": [
-            f"{mw_feed:.3f}",
-            f"{mw_top:.3f}",
-            f"{mw_bot:.3f}",
+            f"{r['mw_feed']:.3f}",
+            f"{r['mw_top']:.3f}",
+            f"{r['mw_bot']:.3f}",
         ],
     }
     st.dataframe(pd.DataFrame(stream_data), use_container_width=True)
 
     # KPI metrics
+    scale = r["scale"]
     st.markdown("#### Key Process Metrics")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Condenser Duty", f"{Q_cond_kw:.1f} kW", delta=f"{(scale-1)*100:+.1f}% vs design")
-    c2.metric("Reboiler Duty", f"{Q_reb_kw:.1f} kW", delta=f"{(scale-1)*100:+.1f}% vs design")
-    c3.metric("Reflux Ratio (L/D)", f"{reflux_ratio:.2f}")
-    c4.metric("EtOH Recovery", f"{min(ethanol_recovery, 100.0):.1f} %")
+    c1.metric("Condenser Duty", f"{r['Q_cond_kw']:.1f} kW",
+              delta=f"{(scale - 1) * 100:+.1f}% vs design")
+    c2.metric("Reboiler Duty", f"{r['Q_reb_kw']:.1f} kW",
+              delta=f"{(scale - 1) * 100:+.1f}% vs design")
+    c3.metric("Reflux Ratio (L/D)", f"{r['reflux_ratio']:.2f}")
+    c4.metric("EtOH Recovery", f"{min(r['ethanol_recovery'], 100.0):.1f} %")
 
     st.caption(
         "**Delta arrows**: ↑ green = operating above design point; ↓ red = operating below design point. "
@@ -247,17 +401,16 @@ def simulacion_dwsim_page():
 
     st.markdown("#### Feed Thermal Condition")
     c5, c6 = st.columns(2)
-    c5.metric("q-parameter", f"{q:.3f}",
+    c5.metric("q-parameter", f"{r['q']:.3f}",
               help="q=1: saturated liquid; q>1: sub-cooled liquid; q<1: partial vapour")
-    c6.metric("Feed MW", f"{mw_feed:.3f} g/mol")
+    c6.metric("Feed MW", f"{r['mw_feed']:.3f} g/mol")
 
-    # ── Visual: Stream Sankey-style bar chart ─────────────────────────────────
+    # Stream flow bar charts
     st.markdown("#### Stream Flow Breakdown")
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
 
-    # Left: mass flows
     labels = ["Feed", "Distillate", "Bottoms"]
-    values_kgh = [F_feed_kgh, F_top_kgh, F_bot_kgh]
+    values_kgh = [r["F_feed_kgh"], r["F_top_kgh"], r["F_bot_kgh"]]
     colors = ["#4C72B0", "#55A868", "#C44E52"]
     axes[0].barh(labels, values_kgh, color=colors)
     axes[0].set_xlabel("Flow (kg/h)")
@@ -265,9 +418,8 @@ def simulacion_dwsim_page():
     for i, v in enumerate(values_kgh):
         axes[0].text(v * 1.01, i, f"{v:,.0f}", va="center", fontsize=9)
 
-    # Right: energy duties
     duty_labels = ["Condenser", "Reboiler"]
-    duty_vals = [Q_cond_kw, Q_reb_kw]
+    duty_vals = [r["Q_cond_kw"], r["Q_reb_kw"]]
     duty_colors = ["#8172B2", "#CCB974"]
     axes[1].bar(duty_labels, duty_vals, color=duty_colors, width=0.4)
     axes[1].set_ylabel("Duty (kW)")
@@ -279,16 +431,38 @@ def simulacion_dwsim_page():
     st.pyplot(fig)
     plt.close(fig)
 
-    # ── Theory / equations ────────────────────────────────────────────────────
-    with st.expander("📐 Scaling Equations Used"):
-        st.latex(r"\dot{F}_{\text{scaled}} = \dot{F}_{\text{design}} \times \alpha, "
-                 r"\quad \alpha = \frac{\dot{m}_{\text{feed}}}{\dot{m}_{\text{feed,design}}}")
-        st.latex(r"\dot{Q}_{\text{cond/reb,scaled}} = \dot{Q}_{\text{cond/reb,design}} \times \alpha")
-        st.latex(r"\frac{L}{D} \approx \frac{\dot{V} - \dot{D}}{\dot{D}}, "
-                 r"\quad \dot{V} = \frac{\dot{Q}_{\text{cond}}}{\Delta H_{\text{vap,top}}}")
-        st.latex(r"q = 1 + \frac{c_{p,L}\,(T_{\text{bubble}} - T_{\text{feed}})}{\lambda_{\text{feed}}}")
-        st.markdown("""
-        These are **first-order scaling relationships** valid near the design point.
-        Large departures from the base composition or flow would require a full
-        rigorous simulation in DWSIM or Aspen.
-        """)
+    # ── Details expander ──────────────────────────────────────────────────────
+    if is_dwsim_mode:
+        with st.expander("🔬 DWSIM Simulation Details"):
+            st.markdown(f"**Flowsheet file:** `{_cfg.SIMULATION_FILE}`")
+            st.markdown(f"**Solver status:** {r.get('solver_status', 'N/A')}")
+            compounds = getattr(_cfg, "DWSIM_COMPOUNDS", ["Ethanol", "Water"])
+            st.markdown(f"**Compounds:** {', '.join(compounds)}")
+            st.markdown(f"**Timeout:** {getattr(_cfg, 'DWSIM_TIMEOUT', 120)} s")
+            raw = r.get("dwsim_raw")
+            if raw:
+                safe_raw = {}
+                for k, v in raw.items():
+                    if isinstance(v, dict):
+                        safe_raw[k] = {
+                            kk: (round(vv, 4) if isinstance(vv, float) else vv)
+                            for kk, vv in v.items()
+                            if kk != "composition"
+                        }
+                    else:
+                        safe_raw[k] = v
+                st.json(safe_raw)
+    else:
+        with st.expander("📐 Scaling Equations Used"):
+            st.latex(r"\dot{F}_{\text{scaled}} = \dot{F}_{\text{design}} \times \alpha, "
+                     r"\quad \alpha = \frac{\dot{m}_{\text{feed}}}{\dot{m}_{\text{feed,design}}}")
+            st.latex(r"\dot{Q}_{\text{cond/reb,scaled}} = \dot{Q}_{\text{cond/reb,design}} \times \alpha")
+            st.latex(r"\frac{L}{D} \approx \frac{\dot{V} - \dot{D}}{\dot{D}}, "
+                     r"\quad \dot{V} = \frac{\dot{Q}_{\text{cond}}}{\Delta H_{\text{vap,top}}}")
+            st.latex(r"q = 1 + \frac{c_{p,L}\,(T_{\text{bubble}} - T_{\text{feed}})}{\lambda_{\text{feed}}}")
+            st.markdown("""
+            These are **first-order scaling relationships** valid near the design point.
+            Large departures from the base composition or flow would require a full
+            rigorous simulation in DWSIM or Aspen.
+            """)
+

@@ -7,13 +7,21 @@ WORKDIR /app
 # 3. Instalar dependencias del sistema operativo
 # Incluye build-essential para librerías de C/C++ (necesario a veces por CasADi/SciPy)
 # e incluye una distribución básica de TeX Live para la generación de reportes LaTeX/PDF
+# mono-complete es necesario para pythonnet (interfaz DWSIM) en Linux/Docker
 RUN apt-get update && apt-get install -y \
     build-essential \
     texlive-latex-base \
     texlive-fonts-recommended \
     texlive-fonts-extra \
     texlive-latex-extra \
+    mono-complete \
     && rm -rf /var/lib/apt/lists/*
+
+# --- DWSIM preparation (uncomment when DWSIM is added to the image) ---
+# ENV DWSIM_PATH=/opt/dwsim
+# COPY dwsim/ /opt/dwsim/
+# Set to empty string so the app falls back to scaling mode when DWSIM is not present
+ENV DWSIM_PATH=""
 
 # 4. Copiar primero el archivo de requerimientos
 # Esto optimiza el caché de Docker. Si cambias el código pero no los requerimientos, 

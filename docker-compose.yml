@@ -8,9 +8,11 @@ services:
       - "8501:8501"
     volumes:
       - .:/app
+      # - /path/to/local/dwsim:/opt/dwsim:ro   # Uncomment to mount DWSIM installation
     environment:
       - PYTHONUNBUFFERED=1
       - STREAMLIT_SERVER_ENABLE_CORS=false
       - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
       - STREAMLIT_SERVER_HEADLESS=true
       # Eliminamos STREAMLIT_SERVER_FILE_WATCHER_TYPE=none para recuperar el hot-reload
+      - DWSIM_PATH=/opt/dwsim   # Set to the DWSIM installation path inside the container
