@@ -100,17 +100,17 @@ REFLUX_RATIO_RANGE = (0.5, 3.0)     # dimensionless
 
 # Default feed conditions for quick setup
 DEFAULT_FEED_CONDITIONS = {
-    "molar_flow": 100,   # kmol/h
-    "temperature": 30,   # °C
+    "molar_flow": 500,   # kmol/h
+    "temperature": 80,   # °C
     "pressure": 10,      # bar
-    "composition": {"Ethanol": 0.1, "Water": 0.9},
+    "composition": {"Ethanol": 0.4, "Water": 0.6},
 }
 
 # Default column parameters for quick setup
 DEFAULT_COLUMN_PARAMETERS = {
     "light_key": "Ethanol",
     "heavy_key": "Water",
-    "lk_bottoms": 0.05,
+    "lk_bottoms": 0.01,
     "hk_distillate": 0.1,
     "reflux_ratio": 1.1,
 }
