@@ -154,6 +154,7 @@ class TestDWSIMInterface(unittest.TestCase):
             iface._loaded_file = None
             iface._initialised = True
             iface._compounds_cache = None
+            iface._material_stream_class = None
 
         return iface, automation_mock, flowsheet_mock
 

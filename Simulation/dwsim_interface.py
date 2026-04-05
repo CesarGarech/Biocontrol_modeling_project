@@ -87,9 +87,17 @@ class DWSIMInterface:
             # Also load DWSIM.Objects so MaterialStream is available for casting.
             # This assembly is required when GetFlowsheetSimulationObject() returns
             # ISimulationObject and a cast to MaterialStream is needed to access Phases.
+            # In Python.NET 3, clr.AddReference(full_path) is more reliable than
+            # clr.AddReference(name) because the .NET assembly resolver does not
+            # necessarily search sys.path for indirect dependencies.
+            _dwsim_objects_dll = os.path.join(self.install_path, "DWSIM.Objects.dll")
             try:
-                _clr.AddReference("DWSIM.Objects")
-                logger.debug("DWSIM.Objects assembly loaded.")
+                if os.path.isfile(_dwsim_objects_dll):
+                    _clr.AddReference(_dwsim_objects_dll)
+                    logger.debug("DWSIM.Objects assembly loaded from %r.", _dwsim_objects_dll)
+                else:
+                    _clr.AddReference("DWSIM.Objects")
+                    logger.debug("DWSIM.Objects assembly loaded by name.")
             except Exception:
                 logger.debug(
                     "DWSIM.Objects assembly not loaded — stream casting will be "
@@ -923,10 +931,16 @@ class DWSIMInterface:
             try:
                 import clr as _clr  # noqa: PLC0415
 
-                try:
+                # Python.NET 3 resolves assemblies by full file path more reliably
+                # than by name alone, because the .NET runtime's assembly resolver
+                # may not search sys.path for indirect dependencies.
+                # Pass the full path to clr.AddReference when the DLL is present.
+                _dll_path = os.path.join(self.install_path, "DWSIM.Objects.dll")
+                if os.path.isfile(_dll_path):
+                    _clr.AddReference(_dll_path)
+                else:
+                    # Fallback: try by name (works if DLL is in GAC or already loaded)
                     _clr.AddReference("DWSIM.Objects")
-                except Exception:
-                    pass  # may already be loaded
 
                 from DWSIM.Objects.Streams import MaterialStream  # type: ignore[import]
 
