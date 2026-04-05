@@ -1,12 +1,13 @@
 """
 Digital Twin — Sub-page 2: SCADA Data Generation & Analysis
 ============================================================
-Pipeline interactivo de tres pasos:
-  Paso 1 — Generar datos SCADA con ruido (desde DWSIM o sintéticos) y visualizarlos.
-  Paso 2 — Inyectar outliers (índices manuales o fracción aleatoria) y mostrar
-            anomalías detectadas por IQR superpuestas a la señal raw.
-  Paso 3 — Análisis completo: filtro MA → reconciliación WLS → KPIs.
-Las constantes del punto de diseño se importan desde Simulation/config.py.
+Interactive three-step pipeline:
+  Step 1 — Generate SCADA data with noise (from DWSIM or synthetic) and
+            visualise raw signals.
+  Step 2 — Inject outliers (manual indices or random fraction) and display
+            anomalies detected by IQR superimposed on the raw signal.
+  Step 3 — Full analysis: MA filter → WLS reconciliation → KPIs.
+Design-point constants are imported from Simulation/config.py.
 """
 import os
 import sys
@@ -16,13 +17,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
-# ── Importar configuración compartida desde Simulation/config.py ─────────────
+# ── Import shared configuration from Simulation/config.py ────────────────────
 _SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
 if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
 
-# ── Importar generador de datos DWSIM (con fallback seguro) ──────────────────
+# ── Import DWSIM data generator (with safe fallback) ─────────────────────────
 try:
     from dwsim_data_generator import (  # noqa: E402
         generate_dwsim_data,
@@ -33,12 +34,12 @@ except Exception:
     _DWSIM_GENERATOR_OK = False
 
     def validate_dwsim_installation():  # type: ignore[misc]
-        """Stub cuando los módulos DWSIM no están disponibles."""
-        return False, "Módulos DWSIM no pudieron importarse."
+        """Stub when DWSIM modules are not available."""
+        return False, "DWSIM modules could not be imported."
 
     def generate_dwsim_data(n_points, perturbations=None):  # type: ignore[misc]
-        """Stub — nunca se llama en producción cuando _DWSIM_GENERATOR_OK es False."""
-        raise RuntimeError("dwsim_data_generator no disponible.")
+        """Stub — never called in production when _DWSIM_GENERATOR_OK is False."""
+        raise RuntimeError("dwsim_data_generator is not available.")
 
 _EPSILON = 1e-9   # numerical guard against division by zero
 
@@ -292,108 +293,108 @@ def _plot_dashboard(df: pd.DataFrame, threshold_mass: float) -> plt.Figure:
 # ── Streamlit page ────────────────────────────────────────────────────────────
 
 def analisis_datos_page():
-    """Página del pipeline de análisis de datos SCADA de la columna de destilación."""
+    """Main page for the SCADA data analysis pipeline of the distillation column."""
     st.header("📡 SCADA Data Generation & Analysis")
     st.markdown("""
-    Siga los **tres pasos** a continuación.  
-    Cada paso usa los resultados del anterior — los cambios en parámetros del
-    panel lateral solo surten efecto al presionar el botón correspondiente.
+    Follow the **three steps** below.  
+    Each step uses the results of the previous one — changes to sidebar
+    parameters only take effect when the corresponding button is pressed.
     """)
     st.markdown("---")
 
-    # ── Verificar disponibilidad de DWSIM ────────────────────────────────────
+    # ── Check DWSIM availability ──────────────────────────────────────────────
     dwsim_ok, dwsim_msg = validate_dwsim_installation()
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.header("🔧 Parámetros de Análisis")
+        st.header("🔧 Analysis Parameters")
 
-        with st.expander("1. Generación de Datos", expanded=True):
+        with st.expander("1. Data Generation", expanded=True):
             use_dwsim_gen = st.checkbox(
-                "Usar DWSIM para generación de datos",
+                "Use DWSIM for data generation",
                 value=False,
                 key="da_use_dwsim",
-                help="Requiere DWSIM instalado. Si no está disponible se usará generación sintética.",
+                help="Requires DWSIM to be installed. Falls back to synthetic generation if unavailable.",
                 disabled=not (dwsim_ok and _DWSIM_GENERATOR_OK),
             )
-            n_points = st.slider("Número de puntos SCADA", 50, 300, _cfg.N_POINTS, 10, key="da_n")
-            seed = int(st.number_input("Semilla aleatoria", 0, 9999, _cfg.SEED, key="da_seed"))
+            n_points = st.slider("Number of SCADA points", 50, 300, _cfg.N_POINTS, 10, key="da_n")
+            seed = int(st.number_input("Random seed", 0, 9999, _cfg.SEED, key="da_seed"))
 
-        with st.expander("2. Ruido de Sensores (σ)", expanded=True):
+        with st.expander("2. Sensor Noise (σ)", expanded=True):
             sigma_feed = st.number_input("σ Feed (kg/h)", 10.0, 1000.0, float(_cfg.SIGMA_FEED), 10.0, key="da_sf")
-            sigma_top = st.number_input("σ Destilado (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_TOP), 10.0, key="da_st")
-            sigma_bot = st.number_input("σ Fondos (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_BOTTOM), 10.0, key="da_sb")
+            sigma_top = st.number_input("σ Distillate (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_TOP), 10.0, key="da_st")
+            sigma_bot = st.number_input("σ Bottoms (kg/h)", 10.0, 500.0, float(_cfg.SIGMA_BOTTOM), 10.0, key="da_sb")
             sigma_qc = st.number_input("σ Q_cond (kW)", 1.0, 200.0, float(_cfg.SIGMA_Q_COND), 5.0, key="da_sqc")
             sigma_qr = st.number_input("σ Q_reb (kW)", 1.0, 200.0, float(_cfg.SIGMA_Q_REB), 5.0, key="da_sqr")
 
-        with st.expander("3. Inyección de Outliers", expanded=True):
-            use_random = st.checkbox("Usar outliers aleatorios", value=False, key="da_random_out")
+        with st.expander("3. Outlier Injection", expanded=True):
+            use_random = st.checkbox("Use random outliers", value=False, key="da_random_out")
             if use_random:
                 outlier_frac = st.slider(
-                    "Fracción de outliers", 0.0, 0.20, 0.05, 0.01, key="da_outfrac"
+                    "Outlier fraction", 0.0, 0.20, 0.05, 0.01, key="da_outfrac"
                 )
                 outlier_indices_str = None
             else:
-                st.markdown("Índices de tiempo (base 0, separados por coma):")
+                st.markdown("Time indices (0-based, comma-separated):")
                 outlier_indices_str = st.text_input(
-                    "Índices de outliers", value="12, 22, 30, 48, 55, 67, 75, 85, 92",
+                    "Outlier indices", value="12, 22, 30, 48, 55, 67, 75, 85, 92",
                     key="da_out_idx"
                 )
                 outlier_frac = None
 
-        with st.expander("4. Filtrado y Reconciliación", expanded=True):
+        with st.expander("4. Filtering & Reconciliation", expanded=True):
             window = st.slider(
-                "Ventana de media móvil W", 3, 21, _cfg.WINDOW_SIZE, 2, key="da_win",
-                help="MA centrada; valores pares se redondean al siguiente impar"
+                "Moving average window W", 3, 21, _cfg.WINDOW_SIZE, 2, key="da_win",
+                help="Centred MA; even values are rounded up to the next odd number"
             )
             if window % 2 == 0:
                 window += 1
 
-        with st.expander("5. Objetivos de KPI", expanded=True):
-            target_sep = st.slider("Target Adherencia Separación (%)", 70.0, 99.0, 90.0, 1.0, key="da_tsep")
-            target_energy = st.slider("Target Eficiencia Energética (%)", 70.0, 99.0, 85.0, 1.0, key="da_teng")
+        with st.expander("5. KPI Targets", expanded=True):
+            target_sep = st.slider("Separation Adherence Target (%)", 70.0, 99.0, 90.0, 1.0, key="da_tsep")
+            target_energy = st.slider("Energy Efficiency Target (%)", 70.0, 99.0, 85.0, 1.0, key="da_teng")
             threshold_mass = st.slider(
-                "Error Máx. Balance de Masa (%)", 0.5, 10.0,
+                "Max. Mass Balance Error (%)", 0.5, 10.0,
                 float(_cfg.MAX_MASS_BALANCE_ERROR), 0.5, key="da_tmass"
             )
 
-    # ── Paso 1: Generar datos raw ─────────────────────────────────────────────
-    st.subheader("🔵 Paso 1 — Generar Datos SCADA")
+    # ── Step 1: Generate raw data ─────────────────────────────────────────────
+    st.subheader("🔵 Step 1 — Generate SCADA Data")
 
-    # Mostrar estado de DWSIM
+    # Show DWSIM status
     if use_dwsim_gen and dwsim_ok and _DWSIM_GENERATOR_OK:
-        st.info(f"🔬 Modo DWSIM activo. {dwsim_msg}")
+        st.info(f"🔬 DWSIM mode active. {dwsim_msg}")
         btn_label = "📊 Generate DWSIM Data"
     elif use_dwsim_gen and not (dwsim_ok and _DWSIM_GENERATOR_OK):
         st.warning(
-            f"⚠️ DWSIM no disponible. Se usará generación sintética.  \nDetalle: {dwsim_msg}"
+            f"⚠️ DWSIM not available. Synthetic generation will be used.  \nDetail: {dwsim_msg}"
         )
-        btn_label = "▶ Generar Datos Sintéticos"
+        btn_label = "▶ Generate Synthetic Data"
     else:
         btn_label = "▶ Generate Raw Data"
 
     if st.button(btn_label, key="btn_gen"):
-        # Validar que ventana sea menor que n_points
+        # Validate that window is smaller than n_points
         if n_points < window:
             st.error(
-                f"❌ El número de puntos ({n_points}) debe ser mayor que "
-                f"la ventana de filtro ({window})."
+                f"❌ Number of points ({n_points}) must be greater than "
+                f"the filter window ({window})."
             )
         else:
             use_live_dwsim = use_dwsim_gen and dwsim_ok and _DWSIM_GENERATOR_OK
             if use_live_dwsim:
-                with st.spinner("Ejecutando simulaciones DWSIM para generar datos…"):
+                with st.spinner("Running DWSIM simulations to generate data…"):
                     try:
-                        # Perturbaciones sinusoidales en el flujo másico de alimentación
+                        # Sinusoidal perturbations on the feed mass flow
                         perturbations = (
                             np.sin(np.linspace(0, np.pi, n_points))
                             * _cfg.PERTURBATION_AMPLITUDE
                         )
                         df_raw = generate_dwsim_data(n_points, perturbations=perturbations)
-                        st.success("✅ Datos generados desde DWSIM exitosamente.")
+                        st.success("✅ Data generated from DWSIM successfully.")
                     except Exception as exc:
                         st.warning(
-                            f"⚠️ DWSIM falló ({exc}). Usando generación sintética."
+                            f"⚠️ DWSIM failed ({exc}). Using synthetic generation."
                         )
                         df_raw = _generate_raw_data(
                             n_points, sigma_feed, sigma_top, sigma_bot, sigma_qc, sigma_qr, seed,
@@ -404,32 +405,32 @@ def analisis_datos_page():
                     sigma_qc, sigma_qr, seed,
                 )
             st.session_state["da_df_raw"] = df_raw
-            # Limpiar resultados de pasos siguientes al regenerar datos
+            # Clear downstream step results when data is regenerated
             st.session_state.pop("da_df_with_outliers", None)
             st.session_state.pop("da_df_final", None)
 
     if "da_df_raw" in st.session_state:
         df_raw = st.session_state["da_df_raw"]
-        st.success(f"Datos generados — {len(df_raw)} puntos temporales.")
-        fig1 = _plot_raw_signals(df_raw, " — Señales con Ruido Gaussiano")
+        st.success(f"Data generated — {len(df_raw)} time points.")
+        fig1 = _plot_raw_signals(df_raw, " — Signals with Gaussian Noise")
         st.pyplot(fig1)
         plt.close(fig1)
     else:
-        st.info("👆 Presione el botón para generar datos.")
+        st.info("👆 Press the button to generate data.")
 
     st.markdown("---")
 
-    # ── Paso 2: Inyectar outliers & visualizar ────────────────────────────────
-    st.subheader("🟡 Paso 2 — Inyección de Outliers y Detección IQR")
+    # ── Step 2: Inject outliers & visualise ───────────────────────────────────
+    st.subheader("🟡 Step 2 — Outlier Injection and IQR Detection")
 
     if "da_df_raw" not in st.session_state:
-        st.info("Complete el Paso 1 primero.")
+        st.info("Complete Step 1 first.")
     else:
         if st.button("⚠️ Inject Outliers", key="btn_outlier"):
             df_raw = st.session_state["da_df_raw"]
             n_pts_actual = len(df_raw)
 
-            # Resolver índices de outliers
+            # Resolve outlier indices
             if use_random:
                 rng_tmp = np.random.default_rng(seed + 1)
                 n_out = max(1, int(n_pts_actual * outlier_frac))
@@ -438,12 +439,12 @@ def analisis_datos_page():
                 try:
                     indices = [int(x.strip()) for x in outlier_indices_str.split(",") if x.strip()]
                 except ValueError:
-                    st.error("Lista de índices inválida — use enteros separados por coma: 10, 25, 40")
+                    st.error("Invalid index list — use integers separated by commas: 10, 25, 40")
                     indices = []
 
             df_with_out = _inject_outliers(df_raw, indices, seed)
 
-            # Detección IQR sobre los datos con outliers inyectados
+            # IQR detection on the data with injected outliers
             df_iqr = _add_iqr_flags(df_with_out)
             st.session_state["da_df_with_outliers"] = df_with_out
             st.session_state["da_df_iqr"] = df_iqr
@@ -454,15 +455,15 @@ def analisis_datos_page():
             df_iqr = st.session_state["da_df_iqr"]
             indices = st.session_state.get("da_outlier_indices", [])
             st.success(
-                f"Outliers inyectados en índices: {indices}  |  "
-                f"IQR detectó: {sum(df_iqr[[c for c in df_iqr.columns if c.endswith('_outlier')]].any(axis=1))} filas afectadas"
+                f"Outliers injected at indices: {indices}  |  "
+                f"IQR detected: {sum(df_iqr[[c for c in df_iqr.columns if c.endswith('_outlier')]].any(axis=1))} affected rows"
             )
-            fig2 = _plot_raw_signals(df_iqr, " — Detección de Anomalías IQR")
+            fig2 = _plot_raw_signals(df_iqr, " — IQR Anomaly Detection")
             st.pyplot(fig2)
             plt.close(fig2)
 
-            # Tabla de conteo de outliers
-            with st.expander("📌 Conteo de Outliers por Sensor"):
+            # Outlier count table
+            with st.expander("📌 Outlier Count per Sensor"):
                 import re as _re
                 out_cols = [c for c in df_iqr.columns if c.endswith("_outlier")]
                 summary = {
@@ -471,23 +472,23 @@ def analisis_datos_page():
                 }
                 st.table(pd.DataFrame.from_dict(summary, orient="index", columns=["Outliers (IQR)"]))
         else:
-            st.info("👆 Presione **⚠️ Inject Outliers** para continuar.")
+            st.info("👆 Press **⚠️ Inject Outliers** to continue.")
 
     st.markdown("---")
 
-    # ── Paso 3: Pipeline de análisis completo ─────────────────────────────────
-    st.subheader("🟢 Paso 3 — Filtro MA → Reconciliación WLS → KPIs")
+    # ── Step 3: Full analysis pipeline ───────────────────────────────────────
+    st.subheader("🟢 Step 3 — MA Filter → WLS Reconciliation → KPIs")
 
     if "da_df_with_outliers" not in st.session_state:
-        st.info("Complete los Pasos 1 y 2 primero.")
+        st.info("Complete Steps 1 and 2 first.")
     else:
         if st.button("⚖️ Run Analysis", key="btn_analyze"):
-            with st.spinner("Aplicando filtro MA y reconciliación WLS…"):
+            with st.spinner("Applying MA filter and WLS reconciliation…"):
                 df_filt = _clean_and_filter(st.session_state["da_df_with_outliers"], window)
                 df_final = _reconcile(df_filt, sigma_feed, sigma_top, sigma_bot)
             st.session_state["da_df_final"] = df_final
             st.session_state["da_df_filt"] = df_filt
-            # Guardar umbrales usados para que el display no cambie al mover sliders
+            # Save thresholds so the display does not change when sliders are moved
             st.session_state["da_thresholds"] = {
                 "target_sep": target_sep,
                 "target_energy": target_energy,
@@ -501,9 +502,9 @@ def analisis_datos_page():
             target_energy_disp = thr["target_energy"]
             threshold_mass_disp = thr["threshold_mass"]
 
-            st.success(f"Análisis completo — {len(df_final)} pasos temporales utilizables tras el filtrado.")
+            st.success(f"Analysis complete — {len(df_final)} usable time steps after filtering.")
 
-            # Tarjetas de métricas KPI
+            # KPI metric cards
             avg_mass_err = df_final["Error_Mass_Before_%"].mean()
             avg_sep = df_final["KPI_Separation_%"].mean()
             avg_energy = df_final["KPI_Energy_%"].mean()
@@ -516,55 +517,55 @@ def analisis_datos_page():
 
             c1, c2, c3 = st.columns(3)
             c1.metric(
-                f"{_traffic_light(pct_sep_ok)} Adherencia Separación",
+                f"{_traffic_light(pct_sep_ok)} Separation Adherence",
                 f"{avg_sep:.1f} %",
-                delta=f"{avg_sep - target_sep_disp:+.1f}% vs objetivo",
-                help=f"{pct_sep_ok:.0f}% de pasos ≥ {target_sep_disp}%",
+                delta=f"{avg_sep - target_sep_disp:+.1f}% vs target",
+                help=f"{pct_sep_ok:.0f}% of steps ≥ {target_sep_disp}%",
             )
             c2.metric(
-                f"{_traffic_light(pct_energy_ok)} Eficiencia Energética",
+                f"{_traffic_light(pct_energy_ok)} Energy Efficiency",
                 f"{avg_energy:.1f} %",
-                delta=f"{avg_energy - target_energy_disp:+.1f}% vs objetivo",
-                help=f"{pct_energy_ok:.0f}% de pasos ≥ {target_energy_disp}%",
+                delta=f"{avg_energy - target_energy_disp:+.1f}% vs target",
+                help=f"{pct_energy_ok:.0f}% of steps ≥ {target_energy_disp}%",
             )
             c3.metric(
-                f"{_traffic_light(pct_mass_ok)} Error Balance de Masa",
+                f"{_traffic_light(pct_mass_ok)} Mass Balance Error",
                 f"{avg_mass_err:.2f} %",
-                delta=f"{avg_mass_err - threshold_mass_disp:+.2f}% vs umbral",
+                delta=f"{avg_mass_err - threshold_mass_disp:+.2f}% vs threshold",
                 delta_color="inverse",
-                help=f"{pct_mass_ok:.0f}% de pasos dentro de ±{threshold_mass_disp}%",
+                help=f"{pct_mass_ok:.0f}% of steps within ±{threshold_mass_disp}%",
             )
 
-            # ── Leyenda de KPIs ───────────────────────────────────────────────
-            with st.expander("ℹ️ Cómo interpretar estos KPIs"):
+            # ── KPI legend ────────────────────────────────────────────────────
+            with st.expander("ℹ️ How to interpret these KPIs"):
                 st.markdown(f"""
-**Indicador de semáforo** (encabezado de cada tarjeta):
-- 🟢 **Verde** — KPI cumple el objetivo en **≥ {_TL_GREEN:.0f} %** de los pasos. El proceso opera bien.
-- 🟡 **Amarillo** — KPI cumple el objetivo en **{_TL_YELLOW:.0f}–{_TL_GREEN:.0f} %** de los pasos. Monitoreo cercano recomendado.
-- 🔴 **Rojo** — KPI cumple el objetivo en **< {_TL_YELLOW:.0f} %** de los pasos. Se requiere atención.
+**Traffic-light indicator** (card heading):
+- 🟢 **Green** — KPI meets the target in **≥ {_TL_GREEN:.0f} %** of steps. Process operating well.
+- 🟡 **Yellow** — KPI meets the target in **{_TL_YELLOW:.0f}–{_TL_GREEN:.0f} %** of steps. Close monitoring recommended.
+- 🔴 **Red** — KPI meets the target in **< {_TL_YELLOW:.0f} %** of steps. Attention required.
 
-**Flecha delta** (número pequeño debajo del valor principal):
-- ↑ **Delta verde** — el KPI promedio es *superior* al objetivo fijado → favorable.
-- ↓ **Delta rojo** — el KPI promedio es *inferior* al objetivo fijado → requiere mejora.
-- Para **Error de Balance de Masa** la flecha está invertida: ↑ rojo significa que el error supera el umbral.
+**Delta arrow** (small number below the main value):
+- ↑ **Green delta** — average KPI is *above* the set target → favourable.
+- ↓ **Red delta** — average KPI is *below* the set target → improvement needed.
+- For **Mass Balance Error** the arrow is inverted: ↑ red means the error exceeds the threshold.
 
-**Significado de cada KPI**:
-- *Adherencia Separación* — qué tan cerca está el split real del destilado al objetivo de diseño ({_cfg.SPLIT_TOP*100:.0f} % del feed). 100 % = adherencia perfecta.
-- *Eficiencia Energética* — qué tan cercana está la razón Q_cond / Q_reb al valor de diseño. 100 % = operación en condiciones de diseño.
-- *Error Balance de Masa* — desbalance porcentual (F_feed − F_top − F_bottom) antes de la reconciliación. Menor es mejor; objetivo ≤ {threshold_mass_disp} %.
+**KPI definitions**:
+- *Separation Adherence* — how close the actual distillate split is to the design target ({_cfg.SPLIT_TOP*100:.0f} % of feed). 100 % = perfect adherence.
+- *Energy Efficiency* — how close the Q_cond / Q_reb ratio is to the design value. 100 % = operating at design conditions.
+- *Mass Balance Error* — percentage imbalance (F_feed − F_top − F_bottom) before reconciliation. Lower is better; target ≤ {threshold_mass_disp} %.
 
-> Los resultados reflejan la **última ejecución**. Cambiar parámetros del panel lateral requiere presionar **⚖️ Run Analysis** nuevamente.
+> Results reflect the **last run**. Changing sidebar parameters requires pressing **⚖️ Run Analysis** again.
 """)
 
             st.markdown("---")
 
-            # Dashboard de 4 paneles
+            # 4-panel dashboard
             fig3 = _plot_dashboard(df_final, threshold_mass_disp)
             st.pyplot(fig3)
             plt.close(fig3)
 
-            # Tabla de datos reconciliados
-            with st.expander("📋 Ver Tabla de Datos Reconciliados"):
+            # Reconciled data table
+            with st.expander("📋 View Reconciled Data Table"):
                 display_cols = [
                     "Timestamp", "F_feed_rec", "F_top_rec", "F_bottom_rec",
                     "Q_cond_filtered", "Q_reb_filtered",
@@ -590,7 +591,7 @@ def analisis_datos_page():
                     file_name="digital_twin_results.csv", mime="text/csv",
                 )
         else:
-            st.info("👆 Presione **⚖️ Run Analysis** para ver resultados de reconciliación y KPIs.")
+            st.info("👆 Press **⚖️ Run Analysis** to view reconciliation results and KPIs.")
 
 
 # ── IQR flag helper (no in-place modification) ───────────────────────────────

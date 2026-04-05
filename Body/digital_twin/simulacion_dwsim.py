@@ -1,10 +1,10 @@
 """
 Digital Twin — Sub-page 1: DWSIM Interactive Simulation
 ========================================================
-Permite al usuario especificar condiciones de la corriente de alimentación
-y parámetros de la columna de destilación.  Al presionar "🚀 Run Simulation"
-se intenta conectar con DWSIM vía DWSIMInterface; si DWSIM no está disponible
-se usa el escalado analítico del punto de diseño como alternativa.
+Lets the user specify feed-stream conditions and distillation-column
+parameters.  Pressing "🚀 Run Simulation" attempts to connect to DWSIM
+via DWSIMInterface; if DWSIM is unavailable, analytic design-point
+scaling is used as a fallback.
 """
 import os
 import sys
@@ -13,13 +13,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# ── Agregar carpeta Simulation al path ───────────────────────────────────────
+# ── Add Simulation folder to Python path ─────────────────────────────────────
 _SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
 if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
 
-# ── Importar interfaz DWSIM (con manejo seguro si pythonnet no está disponible)
+# ── Import DWSIM interface (safe import when pythonnet is unavailable) ────────
 try:
     from dwsim_interface import DWSIMInterface, DWSIMInterfaceError  # noqa: E402
     from dwsim_data_generator import validate_dwsim_installation     # noqa: E402
@@ -30,11 +30,11 @@ except Exception:
     DWSIMInterfaceError = RuntimeError  # type: ignore[assignment,misc]
 
     def validate_dwsim_installation():  # type: ignore[misc]
-        """Stub cuando los módulos DWSIM no están disponibles."""
-        return False, "Módulos DWSIM no pudieron importarse."
+        """Stub when DWSIM modules are not available."""
+        return False, "DWSIM modules could not be imported."
 
-# ── Constantes locales ────────────────────────────────────────────────────────
-_TARGET_ETHANOL_BOTTOM = 0.02    # fracción molar de etanol en fondos (diseño)
+# ── Local constants ───────────────────────────────────────────────────────────
+_TARGET_ETHANOL_BOTTOM = 0.02    # ethanol mole fraction in bottoms (design)
 _MW_ETHANOL = 46.068             # g/mol
 _MW_WATER = 18.015               # g/mol
 
@@ -47,7 +47,7 @@ _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP
 
 
 def _average_mw(x_eth: float) -> float:
-    """Peso molecular promedio para mezcla etanol-agua."""
+    """Average molecular weight for an ethanol-water mixture."""
     return x_eth * _MW_ETHANOL + (1.0 - x_eth) * _MW_WATER
 
 
@@ -59,24 +59,24 @@ def _run_analytic_simulation(
     reflux_ratio_col: float,
 ) -> dict:
     """
-    Calcula resultados de la columna usando escalado analítico del punto de diseño.
+    Compute column results using analytic design-point scaling.
 
-    Parámetros
+    Parameters
     ----------
     F_feed_kmolh : float
-        Flujo molar de alimentación (kmol/h).
+        Feed molar flow rate (kmol/h).
     T_feed : float
-        Temperatura de alimentación (°C).
+        Feed temperature (°C).
     P_feed_bar : float
-        Presión de alimentación (bar).
+        Feed pressure (bar).
     x_eth : float
-        Fracción molar de etanol en la alimentación.
+        Ethanol mole fraction in the feed.
     reflux_ratio_col : float
-        Razón de reflujo de la columna.
+        Column reflux ratio.
 
-    Retorna
+    Returns
     -------
-    dict con resultados del escalado.
+    dict with scaled results.
     """
     mw_feed = _average_mw(x_eth)
     F_feed_kgh = F_feed_kmolh * mw_feed
@@ -111,11 +111,11 @@ def _run_analytic_simulation(
     lambda_feed = dh_vap_top * mw_feed / 1000.0
     q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
 
-    # Estimación de etapas teóricas: aproximación simplificada de Fenske
-    # N ≈ 10 × (R / R_min); R_min ≈ rr_calc calculado sobre el diseño base
-    _R_MIN_FACTOR = 10.0   # factor de proporcionalidad Fenske simplificado
-    _R_MIN_FLOOR = 0.1     # piso para R_min para evitar división por cero
-    _N_STAGES_MIN = 5      # mínimo de etapas teóricas (límite práctico)
+    # Theoretical stage estimate: simplified Fenske approximation
+    # N ≈ 10 × (R / R_min); R_min ≈ rr_calc computed at the design base
+    _R_MIN_FACTOR = 10.0   # Fenske proportionality factor (simplified)
+    _R_MIN_FLOOR = 0.1     # floor for R_min to avoid division by zero
+    _N_STAGES_MIN = 5      # minimum theoretical stages (practical lower limit)
     n_stages = max(_N_STAGES_MIN, int(_R_MIN_FACTOR * reflux_ratio_col / max(rr_calc, _R_MIN_FLOOR)))
 
     return {
@@ -162,28 +162,28 @@ def _run_dwsim_simulation(
     reflux_ratio_col: float,
 ) -> dict:
     """
-    Ejecuta la simulación real en DWSIM usando DWSIMInterface.
+    Run a live simulation in DWSIM using DWSIMInterface.
 
-    Parámetros
+    Parameters
     ----------
-    F_feed_kmolh : float  — Flujo molar alimentación (kmol/h)
-    T_feed       : float  — Temperatura alimentación (°C)
-    P_feed_bar   : float  — Presión alimentación (bar)
-    x_eth        : float  — Fracción molar etanol en alimentación
-    x_water      : float  — Fracción molar agua en alimentación
-    lk           : str    — Compuesto clave ligero
-    hk           : str    — Compuesto clave pesado
-    lk_bottoms   : float  — Fracción molar LK en fondos
-    hk_distillate: float  — Fracción molar HK en destilado
-    reflux_ratio_col : float — Razón de reflujo
+    F_feed_kmolh     : float  — Feed molar flow rate (kmol/h)
+    T_feed           : float  — Feed temperature (°C)
+    P_feed_bar       : float  — Feed pressure (bar)
+    x_eth            : float  — Ethanol mole fraction in the feed
+    x_water          : float  — Water mole fraction in the feed
+    lk               : str    — Light-key compound
+    hk               : str    — Heavy-key compound
+    lk_bottoms       : float  — Light-key mole fraction in bottoms
+    hk_distillate    : float  — Heavy-key mole fraction in distillate
+    reflux_ratio_col : float  — Column reflux ratio
 
-    Retorna
+    Returns
     -------
-    dict con resultados extraídos de DWSIM.
+    dict with results extracted from DWSIM.
 
-    Lanza
-    -----
-    DWSIMInterfaceError si la simulación falla.
+    Raises
+    ------
+    DWSIMInterfaceError if the simulation fails.
     """
     _KG_S_TO_KG_H = 3600.0
     _W_TO_KW = 1e-3
@@ -192,7 +192,7 @@ def _run_dwsim_simulation(
     with DWSIMInterface(_cfg.DWSIM_INSTALL_PATH) as dwsim:
         dwsim.load_simulation(_cfg.SIMULATION_FILE)
 
-        # Configurar corriente de alimentación
+        # Set feed stream conditions
         dwsim.set_stream_conditions(
             _cfg.TAG_FEED,
             molar_flow=F_feed_kmolh,
@@ -201,7 +201,7 @@ def _run_dwsim_simulation(
             composition={"Ethanol": x_eth, "Water": x_water},
         )
 
-        # Configurar parámetros de columna
+        # Set column parameters
         dwsim.set_column_parameters(
             _cfg.TAG_COLUMN,
             light_key=lk,
@@ -211,10 +211,10 @@ def _run_dwsim_simulation(
             reflux_ratio=reflux_ratio_col,
         )
 
-        # Ejecutar simulación
+        # Run simulation
         dwsim.run_simulation()
 
-        # Extraer propiedades de corrientes
+        # Extract stream properties
         feed_mflow = dwsim.get_stream_property(_cfg.TAG_FEED, "MassFlow") * _KG_S_TO_KG_H
         top_mflow  = dwsim.get_stream_property(_cfg.TAG_TOP, "MassFlow") * _KG_S_TO_KG_H
         bot_mflow  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MassFlow") * _KG_S_TO_KG_H
@@ -231,7 +231,7 @@ def _run_dwsim_simulation(
         top_P  = dwsim.get_stream_property(_cfg.TAG_TOP, "Pressure") / 1e5
         bot_P  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "Pressure") / 1e5
 
-        # Composiciones
+        # Compositions
         x_eth_feed = dwsim.get_stream_property(_cfg.TAG_FEED, "MoleFraction", "Ethanol")
         x_eth_top  = dwsim.get_stream_property(_cfg.TAG_TOP, "MoleFraction", "Ethanol")
         x_eth_bot  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Ethanol")
@@ -239,7 +239,7 @@ def _run_dwsim_simulation(
         x_wat_top  = dwsim.get_stream_property(_cfg.TAG_TOP, "MoleFraction", "Water")
         x_wat_bot  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Water")
 
-        # Propiedades de equipo
+        # Equipment properties
         q_cond = abs(dwsim.get_equipment_property(_cfg.TAG_COLUMN, "DutyCondenser")) * _W_TO_KW
         q_reb  = abs(dwsim.get_equipment_property(_cfg.TAG_COLUMN, "DutyReboiler")) * _W_TO_KW
         rr     = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "RefluxRatio")
@@ -287,88 +287,88 @@ def _run_dwsim_simulation(
 
 
 def simulacion_dwsim_page():
-    """Página principal del simulador DWSIM interactivo."""
+    """Main page for the interactive DWSIM simulator."""
     st.header("⚙️ DWSIM Interactive Simulation")
     st.markdown("""
-    Configure las condiciones de **alimentación** y **columna** en el panel lateral,
-    luego presione **🚀 Run Simulation**.  Si DWSIM está instalado se ejecutará la
-    simulación real; de lo contrario se usará el escalado analítico del punto de diseño.
+    Configure **feed** conditions and **column** parameters in the sidebar,
+    then press **🚀 Run Simulation**.  If DWSIM is installed the live
+    simulation will run; otherwise analytic design-point scaling is used.
     """)
 
-    # ── Verificar disponibilidad de DWSIM ────────────────────────────────────
+    # ── Check DWSIM availability ──────────────────────────────────────────────
     dwsim_ok, dwsim_msg = validate_dwsim_installation()
     if dwsim_ok:
-        st.success(f"✅ DWSIM disponible — {dwsim_msg}")
+        st.success(f"✅ DWSIM available — {dwsim_msg}")
     else:
         st.warning(
-            f"⚠️ DWSIM no disponible (se usará escalado analítico como alternativa).  \n"
-            f"Detalle: {dwsim_msg}"
+            f"⚠️ DWSIM not available (analytic scaling will be used as fallback).  \n"
+            f"Detail: {dwsim_msg}"
         )
 
     st.markdown("---")
 
-    # ── Referencia de diseño ─────────────────────────────────────────────────
-    st.subheader("Referencia de Diseño DWSIM")
+    # ── Design reference ──────────────────────────────────────────────────────
+    st.subheader("DWSIM Design Reference")
     st.caption(
-        f"Flowsheet: `ethanol.dwxmz` — Columna: **{_cfg.TAG_COLUMN}** "
+        f"Flowsheet: `ethanol.dwxmz` — Column: **{_cfg.TAG_COLUMN}** "
         f"| Feed: `{_cfg.TAG_FEED}` | Top: `{_cfg.TAG_TOP}` "
         f"| Bottom: `{_cfg.TAG_BOTTOM}` "
-        f"| Condensador: `{_cfg.TAG_R_COND}` | Rehervidor: `{_cfg.TAG_Q_REB}`"
+        f"| Condenser: `{_cfg.TAG_R_COND}` | Reboiler: `{_cfg.TAG_Q_REB}`"
     )
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        st.metric("Alimentación base", f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
-        st.metric("Split destilado", f"{_SPLIT_TOP*100:.0f} %")
+        st.metric("Base Feed Flow", f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
+        st.metric("Distillate Split", f"{_SPLIT_TOP*100:.0f} %")
     with col_b:
-        st.metric("Deber condensador (base)", f"{_Q_COND_BASE_KW:,.2f} kW")
-        st.metric("Deber rehervidor (base)", f"{_Q_REB_BASE_KW:,.2f} kW")
+        st.metric("Condenser Duty (base)", f"{_Q_COND_BASE_KW:,.2f} kW")
+        st.metric("Reboiler Duty (base)", f"{_Q_REB_BASE_KW:,.2f} kW")
     with col_c:
-        st.metric("EtOH obj. destilado", f"{_TARGET_ETHANOL_TOP*100:.0f} mol%")
-        st.metric("EtOH obj. fondos", f"{_TARGET_ETHANOL_BOTTOM*100:.0f} mol%")
+        st.metric("EtOH target distillate", f"{_TARGET_ETHANOL_TOP*100:.0f} mol%")
+        st.metric("EtOH target bottoms", f"{_TARGET_ETHANOL_BOTTOM*100:.0f} mol%")
 
     st.markdown("---")
 
-    # ── Sidebar: parámetros de entrada ───────────────────────────────────────
+    # ── Sidebar: input parameters ─────────────────────────────────────────────
     with st.sidebar:
-        st.header("🔧 Parámetros de Entrada")
+        st.header("🔧 Input Parameters")
 
-        # ── Corriente de alimentación ─────────────────────────────────────────
-        with st.expander("1. Corriente de Alimentación (Feed)", expanded=True):
+        # ── Feed stream ───────────────────────────────────────────────────────
+        with st.expander("1. Feed Stream", expanded=True):
             F_feed_kmolh = st.number_input(
-                "Flujo molar (kmol/h)", min_value=1.0, max_value=5_000.0,
+                "Molar flow (kmol/h)", min_value=1.0, max_value=5_000.0,
                 value=float(_cfg.DEFAULT_FEED_CONDITIONS["molar_flow"]),
                 step=5.0, key="dwsim_F",
             )
             T_feed = st.number_input(
-                "Temperatura (°C)", min_value=20.0, max_value=150.0,
+                "Temperature (°C)", min_value=20.0, max_value=150.0,
                 value=float(_cfg.DEFAULT_FEED_CONDITIONS["temperature"]),
                 step=1.0, key="dwsim_T",
             )
             P_feed_bar = st.number_input(
-                "Presión (bar)", min_value=0.5, max_value=50.0,
+                "Pressure (bar)", min_value=0.5, max_value=50.0,
                 value=float(_cfg.DEFAULT_FEED_CONDITIONS["pressure"]),
                 step=0.5, key="dwsim_P",
             )
 
-        with st.expander("2. Composición Molar", expanded=True):
-            st.markdown("Las fracciones deben sumar **1.0**")
+        with st.expander("2. Molar Composition", expanded=True):
+            st.markdown("Fractions must sum to **1.0**")
             x_eth = st.slider(
-                "Etanol (fracción molar)", 0.0, 1.0,
+                "Ethanol (mole fraction)", 0.0, 1.0,
                 float(_cfg.DEFAULT_FEED_CONDITIONS["composition"]["Ethanol"]),
                 0.01, key="dwsim_xeth",
             )
             x_water = st.slider(
-                "Agua (fracción molar)", 0.0, 1.0,
+                "Water (mole fraction)", 0.0, 1.0,
                 round(max(0.0, 1.0 - x_eth), 2), 0.01, key="dwsim_xwat",
             )
             comp_sum = round(x_eth + x_water, 4)
             if abs(comp_sum - 1.0) > 1e-3:
-                st.error(f"⚠️ Suma de composiciones = {comp_sum:.4f}  (debe ser 1.0)")
+                st.error(f"⚠️ Composition sum = {comp_sum:.4f}  (must be 1.0)")
             else:
-                st.success(f"Suma composiciones: {comp_sum:.4f} ✓")
+                st.success(f"Composition sum: {comp_sum:.4f} ✓")
 
-        # ── Parámetros de columna ─────────────────────────────────────────────
-        with st.expander("3. Parámetros de Columna", expanded=True):
+        # ── Column parameters ─────────────────────────────────────────────────
+        with st.expander("3. Column Parameters", expanded=True):
             col_defaults = _cfg.DEFAULT_COLUMN_PARAMETERS
             lk = st.selectbox(
                 "Light Key Compound (LK)", ["Ethanol", "Water"],
@@ -381,7 +381,7 @@ def simulacion_dwsim_page():
                 key="dwsim_hk",
             )
             if lk == hk:
-                st.error("⚠️ LK y HK deben ser compuestos distintos.")
+                st.error("⚠️ LK and HK must be different compounds.")
 
             lk_bottoms = st.number_input(
                 "LK Mole Fraction in Bottoms", min_value=0.0, max_value=1.0,
@@ -399,103 +399,103 @@ def simulacion_dwsim_page():
                 format="%.2f", key="dwsim_rr",
             )
             if reflux_ratio_col <= 0:
-                st.error("⚠️ La razón de reflujo debe ser mayor que 0.")
+                st.error("⚠️ Reflux ratio must be greater than 0.")
 
-    # ── Botón de ejecución ────────────────────────────────────────────────────
+    # ── Run button ────────────────────────────────────────────────────────────
     st.markdown(
-        "Configure los parámetros en el panel lateral y presione el botón para ejecutar la simulación."
+        "Configure parameters in the sidebar and press the button to run the simulation."
     )
 
     run_clicked = st.button("🚀 Run Simulation", key="btn_dwsim_run", type="primary")
 
     if run_clicked:
-        # ── Validaciones ──────────────────────────────────────────────────────
+        # ── Validation ────────────────────────────────────────────────────────
         errors = []
         if abs(x_eth + x_water - 1.0) > 1e-3:
-            errors.append(f"La suma de composiciones es {x_eth + x_water:.4f}; debe ser 1.0 ± 0.001.")
+            errors.append(f"Composition sum is {x_eth + x_water:.4f}; must be 1.0 ± 0.001.")
         if lk == hk:
-            errors.append("Light Key y Heavy Key deben ser compuestos distintos.")
+            errors.append("Light Key and Heavy Key must be different compounds.")
         if reflux_ratio_col <= 0:
-            errors.append("La razón de reflujo debe ser mayor que 0.")
+            errors.append("Reflux ratio must be greater than 0.")
         if not (0.0 <= lk_bottoms <= 1.0):
-            errors.append("LK Mole Fraction in Bottoms debe estar entre 0 y 1.")
+            errors.append("LK Mole Fraction in Bottoms must be between 0 and 1.")
         if not (0.0 <= hk_distillate <= 1.0):
-            errors.append("HK Mole Fraction in Distillate debe estar entre 0 y 1.")
+            errors.append("HK Mole Fraction in Distillate must be between 0 and 1.")
 
         if errors:
             for e in errors:
                 st.error(f"❌ {e}")
         else:
-            # Limpiar resultados previos
+            # Clear any previous results
             st.session_state.pop("sim_results", None)
 
             if dwsim_ok and _DWSIM_IMPORTS_OK:
-                # ── Intentar simulación real con DWSIM ────────────────────────
-                with st.spinner("Conectando con DWSIM y ejecutando simulación…"):
+                # ── Attempt live DWSIM simulation ─────────────────────────────
+                with st.spinner("Connecting to DWSIM and running simulation…"):
                     try:
                         results = _run_dwsim_simulation(
                             F_feed_kmolh, T_feed, P_feed_bar, x_eth, x_water,
                             lk, hk, lk_bottoms, hk_distillate, reflux_ratio_col,
                         )
-                        st.success("✅ Simulación DWSIM completada exitosamente.")
-                    except Exception as exc:  # DWSIMInterfaceError o cualquier otra
+                        st.success("✅ DWSIM simulation completed successfully.")
+                    except Exception as exc:  # DWSIMInterfaceError or any other
                         st.warning(
-                            f"⚠️ DWSIM falló ({exc}). Usando escalado analítico como alternativa."
+                            f"⚠️ DWSIM failed ({exc}). Using analytic scaling as fallback."
                         )
                         results = _run_analytic_simulation(
                             F_feed_kmolh, T_feed, P_feed_bar, x_eth, reflux_ratio_col,
                         )
             else:
-                # ── Fallback: escalado analítico ──────────────────────────────
-                with st.spinner("Calculando resultados (escalado analítico)…"):
+                # ── Fallback: analytic scaling ────────────────────────────────
+                with st.spinner("Computing results (analytic scaling)…"):
                     results = _run_analytic_simulation(
                         F_feed_kmolh, T_feed, P_feed_bar, x_eth, reflux_ratio_col,
                     )
-                st.info("ℹ️ Resultados obtenidos mediante escalado analítico del punto de diseño.")
+                st.info("ℹ️ Results obtained via analytic scaling of the design point.")
 
             st.session_state["sim_results"] = results
 
-    # ── Mostrar resultados (solo si existen en session_state) ─────────────────
+    # ── Display results (only if present in session_state) ────────────────────
     if "sim_results" not in st.session_state:
-        st.info("👆 Configure los parámetros y presione **🚀 Run Simulation** para ver resultados.")
+        st.info("👆 Configure parameters and press **🚀 Run Simulation** to view results.")
         return
 
     r = st.session_state["sim_results"]
-    _source_label = "🔬 DWSIM (real)" if r.get("source") == "dwsim" else "📐 Escalado analítico"
-    st.caption(f"Fuente de resultados: **{_source_label}**")
+    _source_label = "🔬 DWSIM (live)" if r.get("source") == "dwsim" else "📐 Analytic scaling"
+    st.caption(f"Results source: **{_source_label}**")
 
-    st.subheader("📊 Resultados de la Simulación")
+    st.subheader("📊 Simulation Results")
 
-    # ── Tabla de corrientes ───────────────────────────────────────────────────
-    st.markdown("#### Tabla de Corrientes")
+    # ── Stream table ──────────────────────────────────────────────────────────
+    st.markdown("#### Stream Table")
     stream_df = pd.DataFrame({
-        "Corriente": ["Feed", "Destilado (Top)", "Fondos (Bottom)"],
-        "Flujo molar (kmol/h)": [
+        "Stream": ["Feed", "Distillate (Top)", "Bottoms (Bottom)"],
+        "Molar Flow (kmol/h)": [
             f"{r['F_feed_kmolh']:.2f}",
             f"{r['F_top_kmolh']:.2f}",
             f"{r['F_bot_kmolh']:.2f}",
         ],
-        "Flujo másico (kg/h)": [
+        "Mass Flow (kg/h)": [
             f"{r['F_feed_kgh']:,.1f}",
             f"{r['F_top_kgh']:,.1f}",
             f"{r['F_bot_kgh']:,.1f}",
         ],
-        "Temperatura (°C)": [
+        "Temperature (°C)": [
             f"{r['T_feed_C']:.1f}",
             f"{r['T_top_C']:.1f}",
             f"{r['T_bot_C']:.1f}",
         ],
-        "Presión (bar)": [
+        "Pressure (bar)": [
             f"{r['P_feed_bar']:.2f}",
             "—",
             "—",
         ],
-        "x Etanol": [
+        "x Ethanol": [
             f"{r['x_eth_feed']:.4f}",
             f"{r['x_eth_top']:.4f}",
             f"{r['x_eth_bot']:.4f}",
         ],
-        "x Agua": [
+        "x Water": [
             f"{r['x_wat_feed']:.4f}",
             f"{r['x_wat_top']:.4f}",
             f"{r['x_wat_bot']:.4f}",
@@ -503,16 +503,16 @@ def simulacion_dwsim_page():
     })
     st.dataframe(stream_df, use_container_width=True)
 
-    # ── Tabla de equipos ──────────────────────────────────────────────────────
-    st.markdown("#### Tabla de Equipos")
+    # ── Equipment table ───────────────────────────────────────────────────────
+    st.markdown("#### Equipment Table")
     equip_df = pd.DataFrame({
-        "Parámetro": [
-            "Deber condensador (kW)",
-            "Deber rehervidor (kW)",
-            "Razón de reflujo (L/D)",
-            "Número de etapas teóricas",
+        "Parameter": [
+            "Condenser Duty (kW)",
+            "Reboiler Duty (kW)",
+            "Reflux Ratio (L/D)",
+            "Number of Theoretical Stages",
         ],
-        "Valor": [
+        "Value": [
             f"{r['Q_cond_kw']:.1f}",
             f"{r['Q_reb_kw']:.1f}",
             f"{r['reflux_ratio']:.2f}",
@@ -521,60 +521,60 @@ def simulacion_dwsim_page():
     })
     st.dataframe(equip_df, use_container_width=True)
 
-    # ── Métricas clave ────────────────────────────────────────────────────────
-    st.markdown("#### Métricas Clave del Proceso")
+    # ── Key metrics ───────────────────────────────────────────────────────────
+    st.markdown("#### Key Process Metrics")
     scale = r["scale"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Condensador", f"{r['Q_cond_kw']:.1f} kW",
-              delta=f"{(scale-1)*100:+.1f}% vs diseño")
-    c2.metric("Rehervidor", f"{r['Q_reb_kw']:.1f} kW",
-              delta=f"{(scale-1)*100:+.1f}% vs diseño")
-    c3.metric("Reflujo L/D", f"{r['reflux_ratio']:.2f}")
-    c4.metric("Recuperación EtOH", f"{min(r['ethanol_recovery'], 100.0):.1f} %")
+    c1.metric("Condenser", f"{r['Q_cond_kw']:.1f} kW",
+              delta=f"{(scale-1)*100:+.1f}% vs design")
+    c2.metric("Reboiler", f"{r['Q_reb_kw']:.1f} kW",
+              delta=f"{(scale-1)*100:+.1f}% vs design")
+    c3.metric("Reflux L/D", f"{r['reflux_ratio']:.2f}")
+    c4.metric("EtOH Recovery", f"{min(r['ethanol_recovery'], 100.0):.1f} %")
 
     if r.get("q") is not None:
         c5, c6 = st.columns(2)
-        c5.metric("Parámetro q",  f"{r['q']:.3f}",
-                  help="q=1: líquido saturado; q>1: sub-enfriado; q<1: vapor parcial")
-        c6.metric("PM alimentación", f"{r['mw_feed']:.3f} g/mol")
+        c5.metric("q-parameter", f"{r['q']:.3f}",
+                  help="q=1: saturated liquid; q>1: sub-cooled; q<1: partial vapour")
+        c6.metric("Feed MW", f"{r['mw_feed']:.3f} g/mol")
 
     st.markdown("---")
 
-    # ── Gráficas ──────────────────────────────────────────────────────────────
-    st.markdown("#### Visualización de Resultados")
+    # ── Charts ────────────────────────────────────────────────────────────────
+    st.markdown("#### Results Visualization")
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-    # Panel 1: flujos másicos (barras horizontales)
-    labels = ["Feed", "Destilado", "Fondos"]
+    # Panel 1: mass flows (horizontal bar)
+    labels = ["Feed", "Distillate", "Bottoms"]
     values_kgh = [r["F_feed_kgh"], r["F_top_kgh"], r["F_bot_kgh"]]
     colors = ["#4C72B0", "#55A868", "#C44E52"]
     axes[0].barh(labels, values_kgh, color=colors)
-    axes[0].set_xlabel("Flujo (kg/h)")
-    axes[0].set_title("Flujos Másicos de Corrientes")
+    axes[0].set_xlabel("Flow (kg/h)")
+    axes[0].set_title("Stream Mass Flows")
     for i, v in enumerate(values_kgh):
         axes[0].text(v * 1.01, i, f"{v:,.0f}", va="center", fontsize=8)
 
-    # Panel 2: comparación de composiciones (antes/después)
+    # Panel 2: composition comparison
     x_eth_vals = [r["x_eth_feed"], r["x_eth_top"], r["x_eth_bot"]]
     x_wat_vals = [r["x_wat_feed"], r["x_wat_top"], r["x_wat_bot"]]
     bar_w = 0.35
     x_pos = np.arange(3)
-    axes[1].bar(x_pos - bar_w / 2, x_eth_vals, bar_w, label="Etanol", color="#55A868")
-    axes[1].bar(x_pos + bar_w / 2, x_wat_vals, bar_w, label="Agua", color="#4C72B0")
+    axes[1].bar(x_pos - bar_w / 2, x_eth_vals, bar_w, label="Ethanol", color="#55A868")
+    axes[1].bar(x_pos + bar_w / 2, x_wat_vals, bar_w, label="Water", color="#4C72B0")
     axes[1].set_xticks(x_pos)
-    axes[1].set_xticklabels(["Feed", "Destilado", "Fondos"])
-    axes[1].set_ylabel("Fracción molar")
-    axes[1].set_title("Composiciones por Corriente")
+    axes[1].set_xticklabels(["Feed", "Distillate", "Bottoms"])
+    axes[1].set_ylabel("Mole Fraction")
+    axes[1].set_title("Stream Compositions")
     axes[1].legend(fontsize=8)
     axes[1].set_ylim(0, 1.1)
 
-    # Panel 3: balance de energía
-    duty_labels = ["Condensador", "Rehervidor"]
+    # Panel 3: energy balance
+    duty_labels = ["Condenser", "Reboiler"]
     duty_vals = [r["Q_cond_kw"], r["Q_reb_kw"]]
     duty_colors = ["#8172B2", "#CCB974"]
     axes[2].bar(duty_labels, duty_vals, color=duty_colors, width=0.4)
-    axes[2].set_ylabel("Deber (kW)")
-    axes[2].set_title("Balance de Energía")
+    axes[2].set_ylabel("Duty (kW)")
+    axes[2].set_title("Energy Balance")
     for i, v in enumerate(duty_vals):
         axes[2].text(i, v + max(duty_vals) * 0.01, f"{v:.1f}", ha="center", fontsize=9)
 
@@ -582,14 +582,14 @@ def simulacion_dwsim_page():
     st.pyplot(fig)
     plt.close(fig)
 
-    # ── Ecuaciones de escalado ────────────────────────────────────────────────
-    with st.expander("📐 Ecuaciones de Escalado Usadas (modo analítico)"):
+    # ── Scaling equations ─────────────────────────────────────────────────────
+    with st.expander("📐 Scaling Equations Used (analytic mode)"):
         st.latex(r"\dot{F}_{\text{scaled}} = \dot{F}_{\text{design}} \times \alpha, "
                  r"\quad \alpha = \frac{\dot{m}_{\text{feed}}}{\dot{m}_{\text{feed,design}}}")
         st.latex(r"\dot{Q}_{\text{cond/reb,scaled}} = \dot{Q}_{\text{cond/reb,design}} \times \alpha")
         st.latex(r"\frac{L}{D} \approx \frac{\dot{V} - \dot{D}}{\dot{D}}, "
                  r"\quad \dot{V} = \frac{\dot{Q}_{\text{cond}}}{\Delta H_{\text{vap,top}}}")
         st.markdown("""
-        Estas son **relaciones de escalado de primer orden** válidas cerca del punto de diseño.
-        Desviaciones grandes de la composición o flujo base requieren simulación rigurosa en DWSIM.
+        These are **first-order scaling relationships** valid near the design point.
+        Large deviations in composition or base flow require rigorous simulation in DWSIM.
         """)
