@@ -7,9 +7,14 @@ import logging
 import os
 import platform
 import sys
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Unit-conversion constants
+_KMOLH_TO_MOLS = 1000.0 / 3600.0   # kmol/h → mol/s
+_CELSIUS_TO_K = 273.15              # °C offset → K
+_BAR_TO_PA = 1e5                    # bar → Pa
 
 
 class DWSIMInterfaceError(Exception):
@@ -40,6 +45,7 @@ class DWSIMInterface:
         self._flowsheet = None    # IFlowsheet / loaded simulation object
         self._loaded_file: Optional[str] = None
         self._initialised = False
+        self._compounds_cache: Optional[List[str]] = None
         self._init_dotnet()
 
     # ------------------------------------------------------------------
@@ -129,6 +135,7 @@ class DWSIMInterface:
         try:
             self._flowsheet = self._automation.LoadFlowsheet(file_path)
             self._loaded_file = file_path
+            self._compounds_cache = None  # invalidate cache on new load
             logger.info("Loaded simulation: %s", file_path)
             return self._flowsheet
         except Exception as exc:
@@ -336,6 +343,499 @@ class DWSIMInterface:
                 f"Could not set {property_name!r} on stream {stream_name!r}: {exc}"
             ) from exc
 
+    # ------------------------------------------------------------------
+    # High-level stream setters (user-friendly units)
+    # ------------------------------------------------------------------
+
+    def set_stream_molar_flow(
+        self, stream_name: str, molar_flow_kmolh: float
+    ) -> None:
+        """
+        Set the molar flow rate of a material stream.
+
+        Parameters
+        ----------
+        stream_name : str
+            Name of the stream in the DWSIM flowsheet (e.g. ``"Feed"``).
+        molar_flow_kmolh : float
+            Molar flow rate in **kmol/h**.  Converted to mol/s internally.
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the stream does not exist or the property cannot be set.
+        """
+        self._require_loaded()
+        stream = self._get_object(stream_name, "stream")
+        molar_flow_mols = molar_flow_kmolh * _KMOLH_TO_MOLS
+        try:
+            stream.Phases[0].Properties.molarflow = molar_flow_mols
+            logger.debug(
+                "Set %s.molarflow = %.6g mol/s (%.4g kmol/h)",
+                stream_name, molar_flow_mols, molar_flow_kmolh,
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set molar flow on stream {stream_name!r}: {exc}"
+            ) from exc
+
+    def set_stream_temperature(
+        self, stream_name: str, temperature_celsius: float
+    ) -> None:
+        """
+        Set the temperature of a material stream.
+
+        Parameters
+        ----------
+        stream_name : str
+            Name of the stream in the DWSIM flowsheet.
+        temperature_celsius : float
+            Temperature in **°C**.  Converted to K internally (+273.15).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the stream does not exist or the property cannot be set.
+        """
+        self._require_loaded()
+        stream = self._get_object(stream_name, "stream")
+        temperature_k = temperature_celsius + _CELSIUS_TO_K
+        try:
+            stream.Phases[0].Properties.temperature = temperature_k
+            logger.debug(
+                "Set %s.temperature = %.2f K (%.2f °C)",
+                stream_name, temperature_k, temperature_celsius,
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set temperature on stream {stream_name!r}: {exc}"
+            ) from exc
+
+    def set_stream_pressure(
+        self, stream_name: str, pressure_bar: float
+    ) -> None:
+        """
+        Set the pressure of a material stream.
+
+        Parameters
+        ----------
+        stream_name : str
+            Name of the stream in the DWSIM flowsheet.
+        pressure_bar : float
+            Pressure in **bar**.  Converted to Pa internally (×100 000).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the stream does not exist or the property cannot be set.
+        """
+        self._require_loaded()
+        stream = self._get_object(stream_name, "stream")
+        pressure_pa = pressure_bar * _BAR_TO_PA
+        try:
+            stream.Phases[0].Properties.pressure = pressure_pa
+            logger.debug(
+                "Set %s.pressure = %.4g Pa (%.4g bar)",
+                stream_name, pressure_pa, pressure_bar,
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set pressure on stream {stream_name!r}: {exc}"
+            ) from exc
+
+    def set_stream_composition(
+        self, stream_name: str, composition_dict: Dict[str, float]
+    ) -> None:
+        """
+        Set the mole-fraction composition of a material stream.
+
+        The provided fractions are automatically normalised to sum to 1.0.
+        Only the compounds listed in *composition_dict* are updated; other
+        compounds already present in the stream are **not** modified.
+
+        Parameters
+        ----------
+        stream_name : str
+            Name of the stream in the DWSIM flowsheet (e.g. ``"Feed"``).
+        composition_dict : dict
+            Mapping of compound name → mole fraction.
+            Example: ``{"Ethanol": 0.1, "Water": 0.9}``
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the stream does not exist, a compound name is unknown, or
+            fractions are invalid.
+        """
+        self._require_loaded()
+        stream = self._get_object(stream_name, "stream")
+        normalised = self.validate_composition(composition_dict)
+        try:
+            for compound, fraction in normalised.items():
+                stream.Phases[0].Compounds[compound].MoleFraction = fraction
+                logger.debug(
+                    "Set %s compound %s MoleFraction = %.6g",
+                    stream_name, compound, fraction,
+                )
+        except DWSIMInterfaceError:
+            raise
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set composition on stream {stream_name!r}: {exc}"
+            ) from exc
+
+    def set_stream_conditions(
+        self,
+        stream_name: str,
+        molar_flow: Optional[float] = None,
+        temperature: Optional[float] = None,
+        pressure: Optional[float] = None,
+        composition: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """
+        Convenience method to set multiple stream conditions in a single call.
+
+        All parameters are optional; only the provided ones are applied.
+
+        Parameters
+        ----------
+        stream_name : str
+            Name of the stream in the DWSIM flowsheet (e.g. ``"Feed"``).
+        molar_flow : float, optional
+            Molar flow rate in **kmol/h**.
+        temperature : float, optional
+            Temperature in **°C**.
+        pressure : float, optional
+            Pressure in **bar**.
+        composition : dict, optional
+            Mole-fraction dictionary, e.g. ``{"Ethanol": 0.1, "Water": 0.9}``.
+
+        Example
+        -------
+        ::
+
+            dwsim.set_stream_conditions(
+                "Feed",
+                molar_flow=100,                          # kmol/h
+                temperature=30,                           # °C
+                pressure=10,                              # bar
+                composition={"Ethanol": 0.1, "Water": 0.9},
+            )
+        """
+        if molar_flow is not None:
+            self.set_stream_molar_flow(stream_name, molar_flow)
+        if temperature is not None:
+            self.set_stream_temperature(stream_name, temperature)
+        if pressure is not None:
+            self.set_stream_pressure(stream_name, pressure)
+        if composition is not None:
+            self.set_stream_composition(stream_name, composition)
+
+    # ------------------------------------------------------------------
+    # Shortcut-column setters
+    # ------------------------------------------------------------------
+
+    def set_column_light_key(
+        self, column_name: str, compound_name: str
+    ) -> None:
+        """
+        Set the light-key compound for a shortcut distillation column.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet (e.g. ``"SCOL-1"``).
+        compound_name : str
+            Exact compound name as known to DWSIM (e.g. ``"Ethanol"``).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the column does not exist or the compound is not in the
+            simulation.
+        """
+        self._require_loaded()
+        self._validate_compound_name(compound_name)
+        col = self._get_object(column_name, "column")
+        try:
+            col.LightKeyCompound = compound_name
+            logger.debug("Set %s.LightKeyCompound = %r", column_name, compound_name)
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set LightKeyCompound on column {column_name!r}: {exc}"
+            ) from exc
+
+    def set_column_heavy_key(
+        self, column_name: str, compound_name: str
+    ) -> None:
+        """
+        Set the heavy-key compound for a shortcut distillation column.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet (e.g. ``"SCOL-1"``).
+        compound_name : str
+            Exact compound name as known to DWSIM (e.g. ``"Water"``).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the column does not exist or the compound is not in the
+            simulation.
+        """
+        self._require_loaded()
+        self._validate_compound_name(compound_name)
+        col = self._get_object(column_name, "column")
+        try:
+            col.HeavyKeyCompound = compound_name
+            logger.debug("Set %s.HeavyKeyCompound = %r", column_name, compound_name)
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set HeavyKeyCompound on column {column_name!r}: {exc}"
+            ) from exc
+
+    def set_column_lk_fraction_bottoms(
+        self, column_name: str, mole_fraction: float
+    ) -> None:
+        """
+        Set the light-key mole fraction in the bottoms stream.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet.
+        mole_fraction : float
+            Target mole fraction of the light key in the bottoms (0 – 1).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the value is outside [0, 1] or the property cannot be set.
+        """
+        self._require_loaded()
+        self._validate_mole_fraction(mole_fraction, "lk_bottoms")
+        col = self._get_object(column_name, "column")
+        try:
+            col.LKMoleFractionInBottoms = mole_fraction
+            logger.debug(
+                "Set %s.LKMoleFractionInBottoms = %.4g", column_name, mole_fraction
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set LKMoleFractionInBottoms on column "
+                f"{column_name!r}: {exc}"
+            ) from exc
+
+    def set_column_hk_fraction_distillate(
+        self, column_name: str, mole_fraction: float
+    ) -> None:
+        """
+        Set the heavy-key mole fraction in the distillate stream.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet.
+        mole_fraction : float
+            Target mole fraction of the heavy key in the distillate (0 – 1).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the value is outside [0, 1] or the property cannot be set.
+        """
+        self._require_loaded()
+        self._validate_mole_fraction(mole_fraction, "hk_distillate")
+        col = self._get_object(column_name, "column")
+        try:
+            col.HKMoleFractionInDistillate = mole_fraction
+            logger.debug(
+                "Set %s.HKMoleFractionInDistillate = %.4g",
+                column_name, mole_fraction,
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set HKMoleFractionInDistillate on column "
+                f"{column_name!r}: {exc}"
+            ) from exc
+
+    def set_column_reflux_ratio(
+        self, column_name: str, reflux_ratio: float
+    ) -> None:
+        """
+        Set the reflux ratio of a shortcut distillation column.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet (e.g. ``"SCOL-1"``).
+        reflux_ratio : float
+            Reflux ratio (dimensionless, must be > 0).
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the value is not positive or the property cannot be set.
+        """
+        self._require_loaded()
+        if reflux_ratio <= 0:
+            raise DWSIMInterfaceError(
+                f"reflux_ratio must be positive (got {reflux_ratio})."
+            )
+        col = self._get_object(column_name, "column")
+        try:
+            col.RefluxRatio = reflux_ratio
+            logger.debug(
+                "Set %s.RefluxRatio = %.4g", column_name, reflux_ratio
+            )
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not set RefluxRatio on column {column_name!r}: {exc}"
+            ) from exc
+
+    def set_column_parameters(
+        self,
+        column_name: str,
+        light_key: Optional[str] = None,
+        heavy_key: Optional[str] = None,
+        lk_bottoms: Optional[float] = None,
+        hk_distillate: Optional[float] = None,
+        reflux_ratio: Optional[float] = None,
+    ) -> None:
+        """
+        Convenience method to set multiple column parameters in a single call.
+
+        All parameters are optional; only the provided ones are applied.
+
+        Parameters
+        ----------
+        column_name : str
+            Name of the column in the DWSIM flowsheet (e.g. ``"SCOL-1"``).
+        light_key : str, optional
+            Light-key compound name (e.g. ``"Ethanol"``).
+        heavy_key : str, optional
+            Heavy-key compound name (e.g. ``"Water"``).
+        lk_bottoms : float, optional
+            Light-key mole fraction in bottoms (0 – 1).
+        hk_distillate : float, optional
+            Heavy-key mole fraction in distillate (0 – 1).
+        reflux_ratio : float, optional
+            Reflux ratio (> 0).
+
+        Example
+        -------
+        ::
+
+            dwsim.set_column_parameters(
+                "SCOL-1",
+                light_key="Ethanol",
+                heavy_key="Water",
+                lk_bottoms=0.05,
+                hk_distillate=0.1,
+                reflux_ratio=1.1,
+            )
+        """
+        if light_key is not None:
+            self.set_column_light_key(column_name, light_key)
+        if heavy_key is not None:
+            self.set_column_heavy_key(column_name, heavy_key)
+        if lk_bottoms is not None:
+            self.set_column_lk_fraction_bottoms(column_name, lk_bottoms)
+        if hk_distillate is not None:
+            self.set_column_hk_fraction_distillate(column_name, hk_distillate)
+        if reflux_ratio is not None:
+            self.set_column_reflux_ratio(column_name, reflux_ratio)
+
+    # ------------------------------------------------------------------
+    # Compound / composition helpers
+    # ------------------------------------------------------------------
+
+    def get_available_compounds(self) -> List[str]:
+        """
+        Return the list of compound names available in the loaded simulation.
+
+        The result is cached after the first call; the cache is cleared
+        whenever :meth:`load_simulation` is called.
+
+        Returns
+        -------
+        list of str
+            Compound names exactly as defined in the DWSIM flowsheet.
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If no simulation is loaded or the compound list cannot be read.
+        """
+        self._require_loaded()
+        if self._compounds_cache is not None:
+            return self._compounds_cache
+        try:
+            self._compounds_cache = list(self._flowsheet.SelectedCompounds.Keys)
+            return self._compounds_cache
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Could not retrieve compound list from flowsheet: {exc}"
+            ) from exc
+
+    def validate_composition(
+        self, composition_dict: Dict[str, float]
+    ) -> Dict[str, float]:
+        """
+        Validate and normalise a composition dictionary.
+
+        * All compound names must exist in the loaded simulation.
+        * All mole fractions must be non-negative.
+        * The returned dictionary is normalised so that fractions sum to 1.0.
+
+        Parameters
+        ----------
+        composition_dict : dict
+            Mapping of compound name → mole fraction.
+
+        Returns
+        -------
+        dict
+            Normalised composition dictionary.
+
+        Raises
+        ------
+        DWSIMInterfaceError
+            If the dict is empty, contains unknown compounds, negative
+            fractions, or if all fractions are zero.
+        """
+        if not composition_dict:
+            raise DWSIMInterfaceError("composition_dict must not be empty.")
+
+        available = self.get_available_compounds()
+        unknown = [c for c in composition_dict if c not in available]
+        if unknown:
+            raise DWSIMInterfaceError(
+                f"Unknown compound(s) {unknown!r}. "
+                f"Available compounds: {available!r}."
+            )
+
+        if any(v < 0 for v in composition_dict.values()):
+            raise DWSIMInterfaceError(
+                "Mole fractions must be non-negative."
+            )
+
+        total = sum(composition_dict.values())
+        if total == 0:
+            raise DWSIMInterfaceError(
+                "Sum of mole fractions is zero; cannot normalise."
+            )
+
+        if abs(total - 1.0) > 1e-9:
+            logger.debug(
+                "Normalising composition: fractions summed to %g (expected 1.0).",
+                total,
+            )
+            return {c: v / total for c, v in composition_dict.items()}
+
+        return dict(composition_dict)
+
     def close_simulation(self) -> None:
         """Release DWSIM resources associated with the loaded simulation."""
         if self._flowsheet is not None:
@@ -366,6 +866,22 @@ class DWSIMInterface:
         if self._flowsheet is None:
             raise DWSIMInterfaceError(
                 "No simulation is loaded. Call load_simulation() first."
+            )
+
+    def _validate_mole_fraction(self, value: float, param_name: str) -> None:
+        """Raise DWSIMInterfaceError if *value* is outside [0, 1]."""
+        if not (0.0 <= value <= 1.0):
+            raise DWSIMInterfaceError(
+                f"{param_name} must be in [0, 1] (got {value})."
+            )
+
+    def _validate_compound_name(self, compound_name: str) -> None:
+        """Raise DWSIMInterfaceError if *compound_name* is not in the simulation."""
+        available = self.get_available_compounds()
+        if compound_name not in available:
+            raise DWSIMInterfaceError(
+                f"Unknown compound {compound_name!r}. "
+                f"Available compounds: {available!r}."
             )
 
     def _get_object(self, name: str, kind: str) -> Any:

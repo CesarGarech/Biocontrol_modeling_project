@@ -88,3 +88,29 @@ EQUIPMENT_PROPERTIES = ["DutyCondenser", "DutyReboiler", "RefluxRatio"]
 # Perturbation settings for dynamic simulation
 PERTURBATION_TYPE = "sinusoidal"   # "sinusoidal", "step", "ramp"
 PERTURBATION_AMPLITUDE = 500.0     # kg/h applied to feed flow
+
+# ==========================================
+# 8. PARAMETRIC STUDY CONFIGURATION
+# ==========================================
+# Default ranges for parametric studies
+FEED_TEMP_RANGE = (25, 40)          # °C
+FEED_PRESSURE_RANGE = (8, 12)       # bar
+FEED_ETHANOL_RANGE = (0.05, 0.15)   # mole fraction
+REFLUX_RATIO_RANGE = (0.5, 3.0)     # dimensionless
+
+# Default feed conditions for quick setup
+DEFAULT_FEED_CONDITIONS = {
+    "molar_flow": 100,   # kmol/h
+    "temperature": 30,   # °C
+    "pressure": 10,      # bar
+    "composition": {"Ethanol": 0.1, "Water": 0.9},
+}
+
+# Default column parameters for quick setup
+DEFAULT_COLUMN_PARAMETERS = {
+    "light_key": "Ethanol",
+    "heavy_key": "Water",
+    "lk_bottoms": 0.05,
+    "hk_distillate": 0.1,
+    "reflux_ratio": 1.1,
+}

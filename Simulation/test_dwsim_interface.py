@@ -16,6 +16,10 @@ if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 
 
+# Conversion constant mirroring dwsim_interface._KMOLH_TO_MOLS (used in assertions)
+_KMOLH_TO_MOLS = 1000.0 / 3600.0
+
+
 # ---------------------------------------------------------------------------
 # Helpers to build a minimal fake DWSIM object tree
 # ---------------------------------------------------------------------------
@@ -56,12 +60,20 @@ def _make_fake_column(
     reboiler_duty=1_524_290.0,     # W
     reflux_ratio=3.5,
     n_stages=20,
+    light_key="Ethanol",
+    heavy_key="Water",
+    lk_bottoms=0.05,
+    hk_distillate=0.1,
 ):
     col = MagicMock()
     col.CondenserDuty = condenser_duty
     col.ReboilerDuty = reboiler_duty
     col.RefluxRatio = reflux_ratio
     col.NumberOfStages = n_stages
+    col.LightKeyCompound = light_key
+    col.HeavyKeyCompound = heavy_key
+    col.LKMoleFractionInBottoms = lk_bottoms
+    col.HKMoleFractionInDistillate = hk_distillate
     return col
 
 
@@ -86,11 +98,16 @@ def _make_automation_mock(flowsheet_objects: dict):
     """
     Return a mock DWSIM.Automation.Automation instance whose
     GetFlowsheetSimulationObject returns objects from *flowsheet_objects*.
+    The flowsheet mock includes a SelectedCompounds dict with Ethanol and Water.
     """
     flowsheet = MagicMock()
     flowsheet.GetFlowsheetSimulationObject.side_effect = (
         lambda name: flowsheet_objects.get(name)
     )
+    # Set up SelectedCompounds so get_available_compounds() works
+    selected_compounds = MagicMock()
+    selected_compounds.Keys = ["Ethanol", "Water"]
+    flowsheet.SelectedCompounds = selected_compounds
 
     automation_instance = MagicMock()
     automation_instance.LoadFlowsheet.return_value = flowsheet
@@ -136,6 +153,7 @@ class TestDWSIMInterface(unittest.TestCase):
             iface._flowsheet = None
             iface._loaded_file = None
             iface._initialised = True
+            iface._compounds_cache = None
 
         return iface, automation_mock, flowsheet_mock
 
@@ -292,6 +310,314 @@ class TestDWSIMInterface(unittest.TestCase):
         with iface:
             pass
         automation_mock.CloseFlowsheet.assert_called_once()
+
+    # ------------------------------------------------------------------
+    # get_available_compounds
+    # ------------------------------------------------------------------
+
+    def test_get_available_compounds_returns_list(self):
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        compounds = iface.get_available_compounds()
+        self.assertEqual(compounds, ["Ethanol", "Water"])
+
+    def test_get_available_compounds_uses_cache(self):
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        iface.get_available_compounds()
+        # Second call should use cache, not re-read flowsheet
+        iface._flowsheet.SelectedCompounds.Keys = ["Other"]
+        compounds = iface.get_available_compounds()
+        self.assertEqual(compounds, ["Ethanol", "Water"])
+
+    def test_get_available_compounds_no_flowsheet(self):
+        from dwsim_interface import DWSIMInterfaceError
+        iface, _, _ = self._build_interface()
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.get_available_compounds()
+
+    # ------------------------------------------------------------------
+    # validate_composition
+    # ------------------------------------------------------------------
+
+    def test_validate_composition_normalizes(self):
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        result = iface.validate_composition({"Ethanol": 0.2, "Water": 0.8})
+        self.assertAlmostEqual(result["Ethanol"], 0.2)
+        self.assertAlmostEqual(result["Water"], 0.8)
+
+    def test_validate_composition_normalizes_fractions(self):
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        result = iface.validate_composition({"Ethanol": 1.0, "Water": 3.0})
+        self.assertAlmostEqual(result["Ethanol"], 0.25)
+        self.assertAlmostEqual(result["Water"], 0.75)
+        self.assertAlmostEqual(sum(result.values()), 1.0)
+
+    def test_validate_composition_unknown_compound_raises(self):
+        from dwsim_interface import DWSIMInterfaceError
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.validate_composition({"Methanol": 1.0})
+
+    def test_validate_composition_negative_fraction_raises(self):
+        from dwsim_interface import DWSIMInterfaceError
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.validate_composition({"Ethanol": -0.1, "Water": 1.1})
+
+    def test_validate_composition_empty_raises(self):
+        from dwsim_interface import DWSIMInterfaceError
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.validate_composition({})
+
+    def test_validate_composition_all_zero_raises(self):
+        from dwsim_interface import DWSIMInterfaceError
+        iface, _, flowsheet_mock = self._build_interface()
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.validate_composition({"Ethanol": 0.0, "Water": 0.0})
+
+    # ------------------------------------------------------------------
+    # set_stream_molar_flow
+    # ------------------------------------------------------------------
+
+    def test_set_stream_molar_flow(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        iface.set_stream_molar_flow("Feed", 100.0)
+        # 100 kmol/h → mol/s
+        expected = 100.0 * _KMOLH_TO_MOLS
+        self.assertAlmostEqual(feed.Phases[0].Properties.molarflow, expected, places=5)
+
+    # ------------------------------------------------------------------
+    # set_stream_temperature
+    # ------------------------------------------------------------------
+
+    def test_set_stream_temperature(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        iface.set_stream_temperature("Feed", 30.0)
+        self.assertAlmostEqual(feed.Phases[0].Properties.temperature, 303.15)
+
+    # ------------------------------------------------------------------
+    # set_stream_pressure
+    # ------------------------------------------------------------------
+
+    def test_set_stream_pressure(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        iface.set_stream_pressure("Feed", 10.0)
+        self.assertAlmostEqual(feed.Phases[0].Properties.pressure, 1e6)
+
+    # ------------------------------------------------------------------
+    # set_stream_composition
+    # ------------------------------------------------------------------
+
+    def test_set_stream_composition(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        iface.set_stream_composition("Feed", {"Ethanol": 0.1, "Water": 0.9})
+        self.assertAlmostEqual(
+            feed.Phases[0].Compounds["Ethanol"].MoleFraction, 0.1
+        )
+        self.assertAlmostEqual(
+            feed.Phases[0].Compounds["Water"].MoleFraction, 0.9
+        )
+
+    def test_set_stream_composition_normalization(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        # Sum = 2.0, should normalize to 0.5 / 0.5
+        iface.set_stream_composition("Feed", {"Ethanol": 1.0, "Water": 1.0})
+        self.assertAlmostEqual(
+            feed.Phases[0].Compounds["Ethanol"].MoleFraction, 0.5
+        )
+        self.assertAlmostEqual(
+            feed.Phases[0].Compounds["Water"].MoleFraction, 0.5
+        )
+
+    def test_set_stream_composition_invalid_compound(self):
+        from dwsim_interface import DWSIMInterfaceError
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_stream_composition("Feed", {"Methanol": 1.0})
+
+    # ------------------------------------------------------------------
+    # set_stream_conditions (combined)
+    # ------------------------------------------------------------------
+
+    def test_set_stream_conditions_combined(self):
+        feed = _make_fake_stream()
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        iface.set_stream_conditions(
+            "Feed",
+            molar_flow=100.0,
+            temperature=30.0,
+            pressure=10.0,
+            composition={"Ethanol": 0.1, "Water": 0.9},
+        )
+        expected_molarflow = 100.0 * _KMOLH_TO_MOLS
+        self.assertAlmostEqual(
+            feed.Phases[0].Properties.molarflow, expected_molarflow, places=5
+        )
+        self.assertAlmostEqual(feed.Phases[0].Properties.temperature, 303.15)
+        self.assertAlmostEqual(feed.Phases[0].Properties.pressure, 1e6)
+        self.assertAlmostEqual(
+            feed.Phases[0].Compounds["Ethanol"].MoleFraction, 0.1
+        )
+
+    def test_set_stream_conditions_partial(self):
+        feed = _make_fake_stream(temperature=350.0)
+        iface, _, flowsheet_mock = self._build_interface({"Feed": feed})
+        iface._flowsheet = flowsheet_mock
+        # Only set temperature; other properties should not be changed
+        iface.set_stream_conditions("Feed", temperature=25.0)
+        self.assertAlmostEqual(feed.Phases[0].Properties.temperature, 298.15)
+
+    # ------------------------------------------------------------------
+    # set_column_light_key / heavy_key
+    # ------------------------------------------------------------------
+
+    def test_set_column_light_key(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_light_key("SCOL-1", "Ethanol")
+        self.assertEqual(col.LightKeyCompound, "Ethanol")
+
+    def test_set_column_heavy_key(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_heavy_key("SCOL-1", "Water")
+        self.assertEqual(col.HeavyKeyCompound, "Water")
+
+    def test_set_column_light_key_unknown_compound(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_light_key("SCOL-1", "Acetone")
+
+    def test_set_column_heavy_key_unknown_compound(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_heavy_key("SCOL-1", "Acetone")
+
+    # ------------------------------------------------------------------
+    # set_column_lk_fraction_bottoms
+    # ------------------------------------------------------------------
+
+    def test_set_column_lk_fraction_bottoms(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_lk_fraction_bottoms("SCOL-1", 0.05)
+        self.assertAlmostEqual(col.LKMoleFractionInBottoms, 0.05)
+
+    def test_column_lk_fraction_bottoms_out_of_range(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_lk_fraction_bottoms("SCOL-1", 1.5)
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_lk_fraction_bottoms("SCOL-1", -0.1)
+
+    # ------------------------------------------------------------------
+    # set_column_hk_fraction_distillate
+    # ------------------------------------------------------------------
+
+    def test_set_column_hk_fraction_distillate(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_hk_fraction_distillate("SCOL-1", 0.1)
+        self.assertAlmostEqual(col.HKMoleFractionInDistillate, 0.1)
+
+    def test_column_hk_fraction_distillate_out_of_range(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_hk_fraction_distillate("SCOL-1", 2.0)
+
+    # ------------------------------------------------------------------
+    # set_column_reflux_ratio
+    # ------------------------------------------------------------------
+
+    def test_set_column_reflux_ratio(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_reflux_ratio("SCOL-1", 1.5)
+        self.assertAlmostEqual(col.RefluxRatio, 1.5)
+
+    def test_reflux_ratio_validation_zero(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_reflux_ratio("SCOL-1", 0.0)
+
+    def test_reflux_ratio_validation_negative(self):
+        from dwsim_interface import DWSIMInterfaceError
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        with self.assertRaises(DWSIMInterfaceError):
+            iface.set_column_reflux_ratio("SCOL-1", -1.0)
+
+    # ------------------------------------------------------------------
+    # set_column_parameters (combined)
+    # ------------------------------------------------------------------
+
+    def test_set_column_parameters_combined(self):
+        col = _make_fake_column()
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        iface.set_column_parameters(
+            "SCOL-1",
+            light_key="Ethanol",
+            heavy_key="Water",
+            lk_bottoms=0.05,
+            hk_distillate=0.1,
+            reflux_ratio=1.1,
+        )
+        self.assertEqual(col.LightKeyCompound, "Ethanol")
+        self.assertEqual(col.HeavyKeyCompound, "Water")
+        self.assertAlmostEqual(col.LKMoleFractionInBottoms, 0.05)
+        self.assertAlmostEqual(col.HKMoleFractionInDistillate, 0.1)
+        self.assertAlmostEqual(col.RefluxRatio, 1.1)
+
+    def test_set_column_parameters_partial(self):
+        col = _make_fake_column(reflux_ratio=3.5)
+        iface, _, flowsheet_mock = self._build_interface({"SCOL-1": col})
+        iface._flowsheet = flowsheet_mock
+        # Only change reflux ratio
+        iface.set_column_parameters("SCOL-1", reflux_ratio=2.0)
+        self.assertAlmostEqual(col.RefluxRatio, 2.0)
 
 
 # ---------------------------------------------------------------------------

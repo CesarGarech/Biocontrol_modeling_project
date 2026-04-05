@@ -132,6 +132,78 @@ with DWSIMInterface(config.DWSIM_INSTALL_PATH) as dwsim:
     print(f"New feed flow: {feed:.1f} kg/h")
 ```
 
+### Setting feed conditions with user-friendly units
+
+```python
+with DWSIMInterface(config.DWSIM_INSTALL_PATH) as dwsim:
+    dwsim.load_simulation(config.SIMULATION_FILE)
+
+    # Set all feed conditions in one call (user-friendly units)
+    dwsim.set_stream_conditions(
+        "Feed",
+        molar_flow=100,                          # kmol/h
+        temperature=30,                           # °C
+        pressure=10,                              # bar
+        composition={"Ethanol": 0.1, "Water": 0.9},  # mole fractions
+    )
+
+    dwsim.run_simulation()
+
+    top_flow = dwsim.get_stream_property("Top", "MolarFlow") * 3.6  # kmol/h
+    bottom_flow = dwsim.get_stream_property("Bottom", "MolarFlow") * 3.6
+    print(f"Distillate: {top_flow:.2f} kmol/h")
+    print(f"Bottoms:    {bottom_flow:.2f} kmol/h")
+```
+
+### Configuring the distillation column
+
+```python
+with DWSIMInterface(config.DWSIM_INSTALL_PATH) as dwsim:
+    dwsim.load_simulation(config.SIMULATION_FILE)
+
+    # Configure all column parameters in one call
+    dwsim.set_column_parameters(
+        "SCOL-1",
+        light_key="Ethanol",
+        heavy_key="Water",
+        lk_bottoms=0.05,      # 5% ethanol allowed in bottoms
+        hk_distillate=0.1,    # 10% water allowed in distillate
+        reflux_ratio=1.1,
+    )
+
+    dwsim.run_simulation()
+
+    top_ethanol = dwsim.get_stream_property("Top", "MoleFraction", component="Ethanol")
+    bottom_ethanol = dwsim.get_stream_property("Bottom", "MoleFraction", component="Ethanol")
+    print(f"Distillate purity: {top_ethanol*100:.2f}% ethanol")
+    print(f"Bottoms ethanol:   {bottom_ethanol*100:.3f}%")
+```
+
+### Parametric study — effect of reflux ratio
+
+```python
+import pandas as pd
+
+reflux_ratios = [0.5, 1.0, 1.5, 2.0, 2.5]
+results = []
+
+with DWSIMInterface(config.DWSIM_INSTALL_PATH) as dwsim:
+    dwsim.load_simulation(config.SIMULATION_FILE)
+    dwsim.set_stream_conditions("Feed", **config.DEFAULT_FEED_CONDITIONS)
+
+    for rr in reflux_ratios:
+        dwsim.set_column_reflux_ratio("SCOL-1", rr)
+        dwsim.run_simulation()
+
+        purity = dwsim.get_stream_property("Top", "MoleFraction", component="Ethanol")
+        q_reb = abs(dwsim.get_equipment_property("SCOL-1", "DutyReboiler")) / 1000
+
+        results.append({"Reflux_Ratio": rr, "Purity_%": purity * 100, "Reboiler_kW": q_reb})
+
+df = pd.DataFrame(results)
+print(df)
+```
+
 ### Running the pipeline with live DWSIM
 
 ```python
@@ -177,6 +249,106 @@ python Simulation/main2.py
 
 ---
 
+## User-Friendly Stream Setters
+
+These methods accept engineering units and convert them internally.
+
+| Python method | Input unit | DWSIM internal unit | Conversion |
+|---------------|-----------|---------------------|------------|
+| `set_stream_molar_flow` | kmol/h | mol/s | ÷ 3.6 |
+| `set_stream_temperature` | °C | K | + 273.15 |
+| `set_stream_pressure` | bar | Pa | × 100 000 |
+| `set_stream_composition` | mole fractions | mole fractions | normalised to 1.0 |
+
+### `set_stream_conditions` — set multiple properties at once
+
+```python
+dwsim.set_stream_conditions(
+    stream_name,
+    molar_flow=None,    # kmol/h
+    temperature=None,   # °C
+    pressure=None,      # bar
+    composition=None,   # {"Ethanol": 0.1, "Water": 0.9}
+)
+```
+
+All parameters are optional; only the provided ones are applied.
+
+---
+
+## Shortcut Column Setters
+
+| Python method | Parameter | Type | Validation |
+|---------------|-----------|------|------------|
+| `set_column_light_key` | compound name | str | must exist in simulation |
+| `set_column_heavy_key` | compound name | str | must exist in simulation |
+| `set_column_lk_fraction_bottoms` | mole fraction | float | must be in [0, 1] |
+| `set_column_hk_fraction_distillate` | mole fraction | float | must be in [0, 1] |
+| `set_column_reflux_ratio` | reflux ratio | float | must be > 0 |
+
+### `set_column_parameters` — set multiple column parameters at once
+
+```python
+dwsim.set_column_parameters(
+    column_name,
+    light_key=None,      # e.g. "Ethanol"
+    heavy_key=None,      # e.g. "Water"
+    lk_bottoms=None,     # mole fraction [0, 1]
+    hk_distillate=None,  # mole fraction [0, 1]
+    reflux_ratio=None,   # > 0
+)
+```
+
+---
+
+## Compound / Composition Helpers
+
+### `get_available_compounds()`
+
+Returns the list of compound names available in the loaded simulation.
+Result is cached after the first call.
+
+```python
+compounds = dwsim.get_available_compounds()
+# e.g. ["Ethanol", "Water"]
+```
+
+### `validate_composition(composition_dict)`
+
+Validates and normalises a composition dictionary.
+
+```python
+normalised = dwsim.validate_composition({"Ethanol": 1.0, "Water": 3.0})
+# returns {"Ethanol": 0.25, "Water": 0.75}
+```
+
+Raises `DWSIMInterfaceError` if:
+- The dictionary is empty.
+- A compound name is not in the simulation.
+- Any mole fraction is negative.
+- All mole fractions are zero.
+
+---
+
+## Parametric Study Script
+
+A ready-to-run parametric study is provided in
+`Examples/dwsim_parametric_study.py`.  It performs three studies:
+
+1. **Reflux-ratio sweep** — records distillate purity and reboiler duty.
+2. **Feed-condition grid** — varies temperature and pressure.
+3. **Feed-composition sweep** — varies ethanol mole fraction in the feed.
+
+Run it with:
+
+```bash
+python Examples/dwsim_parametric_study.py
+```
+
+CSV results and PNG plots are saved to the `Output/` directory.
+
+---
+
 ## Troubleshooting
 
 ### `pythonnet is not installed`
@@ -194,6 +366,10 @@ Check `DWSIM_INSTALL_PATH` in `config.py`.  The path must contain
 ### `Cannot find stream 'Feed' in the loaded flowsheet`
 The stream name in the flowsheet must match the tag in `config.py` exactly
 (case-sensitive).  Open the `.dwxmz` file in DWSIM and verify the names.
+
+### `Unknown compound 'Ethanol'`
+Call `dwsim.get_available_compounds()` to see the exact compound names used
+in the loaded simulation and update your code accordingly.
 
 ### Simulation converges to wrong values
 - Check that the feed composition and thermodynamic model are correctly
@@ -215,3 +391,4 @@ python -m pytest test_dwsim_interface.py -v
 ```
 
 All tests use mocks and do **not** require a real DWSIM installation.
+
