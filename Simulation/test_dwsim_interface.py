@@ -52,6 +52,9 @@ def _make_fake_stream(
 
     stream = MagicMock()
     stream.Phases = {0: phase}
+    # GetAsObject() must return the stream itself so _get_object returns the
+    # correctly configured fake rather than a new generic MagicMock.
+    stream.GetAsObject.return_value = stream
     return stream
 
 
@@ -74,12 +77,16 @@ def _make_fake_column(
     col.HeavyKeyCompound = heavy_key
     col.LKMoleFractionInBottoms = lk_bottoms
     col.HKMoleFractionInDistillate = hk_distillate
+    # GetAsObject() must return the column itself.
+    col.GetAsObject.return_value = col
     return col
 
 
 def _make_fake_energy_stream(energy_flow=-1_207_870.0):
     es = MagicMock()
     es.EnergyFlow = energy_flow
+    # GetAsObject() must return the energy stream itself.
+    es.GetAsObject.return_value = es
     return es
 
 
@@ -112,6 +119,7 @@ def _make_automation_mock(flowsheet_objects: dict):
     automation_instance = MagicMock()
     automation_instance.LoadFlowsheet.return_value = flowsheet
     automation_instance.CalculateFlowsheet.return_value = None
+    automation_instance.CalculateFlowsheet2.return_value = None   # None = success
     automation_instance.CloseFlowsheet.return_value = None
 
     return automation_instance, flowsheet
@@ -136,7 +144,7 @@ class TestDWSIMInterface(unittest.TestCase):
 
         # Build a fake DWSIM.Automation module hierarchy
         dwsim_automation_mod = types.ModuleType("DWSIM.Automation")
-        dwsim_automation_mod.Automation = MagicMock(return_value=automation_mock)
+        dwsim_automation_mod.Automation3 = MagicMock(return_value=automation_mock)
 
         with (
             patch.dict("sys.modules", {
@@ -154,7 +162,6 @@ class TestDWSIMInterface(unittest.TestCase):
             iface._loaded_file = None
             iface._initialised = True
             iface._compounds_cache = None
-            iface._material_stream_class = None
 
         return iface, automation_mock, flowsheet_mock
 
@@ -191,7 +198,7 @@ class TestDWSIMInterface(unittest.TestCase):
         iface, automation_mock, flowsheet_mock = self._build_interface()
         iface._flowsheet = flowsheet_mock
         iface.run_simulation()
-        automation_mock.CalculateFlowsheet.assert_called_once_with(flowsheet_mock)
+        automation_mock.CalculateFlowsheet2.assert_called_once_with(flowsheet_mock)
 
     def test_run_simulation_no_flowsheet(self):
         from dwsim_interface import DWSIMInterfaceError

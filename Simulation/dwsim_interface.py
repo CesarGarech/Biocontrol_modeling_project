@@ -41,12 +41,11 @@ class DWSIMInterface:
 
     def __init__(self, install_path: str) -> None:
         self.install_path = install_path
-        self._automation = None   # DWSIM.Automation.Automation instance
+        self._automation = None   # DWSIM.Automation.Automation3 instance
         self._flowsheet = None    # IFlowsheet / loaded simulation object
         self._loaded_file: Optional[str] = None
         self._initialised = False
         self._compounds_cache: Optional[List[str]] = None
-        self._material_stream_class = None  # cached MaterialStream type for casting
         self._init_dotnet()
 
     # ------------------------------------------------------------------
@@ -54,7 +53,18 @@ class DWSIMInterface:
     # ------------------------------------------------------------------
 
     def _init_dotnet(self) -> None:
-        """Load the .NET runtime and import DWSIM assemblies via pythonnet."""
+        """Load the .NET runtime and all required DWSIM assemblies via pythonnet.
+
+        Follows the canonical DWSIM-Python integration pattern:
+          1. Initialize COM on Windows (pythoncom.CoInitialize).
+          2. Add System.Runtime and System.IO references.
+          3. Load every required DWSIM DLL explicitly by full path so that
+             Python.NET registers each namespace without relying on transitive
+             dependency resolution (which silently fails for ClickOnce installs).
+          4. Set the DWSIM installation directory as the current .NET working
+             directory so that DWSIM can locate its own resource files.
+          5. Instantiate Automation3 (the current automation manager class).
+        """
         if platform.system() != "Windows":
             logger.warning(
                 "DWSIM Automation is primarily supported on Windows. "
@@ -76,61 +86,98 @@ class DWSIMInterface:
                 "Update DWSIM_INSTALL_PATH in Simulation/config.py."
             )
 
-        # Add the DWSIM directory to the .NET assembly search path
+        # ── Step 1: COM initialisation (Windows only) ─────────────────────────
+        if platform.system() == "Windows":
+            try:
+                import pythoncom  # type: ignore[import]
+                pythoncom.CoInitialize()
+                logger.debug("COM initialised via pythoncom.CoInitialize().")
+            except ImportError:
+                logger.debug(
+                    "pythoncom not available — skipping CoInitialize. "
+                    "Install pywin32 if COM errors occur."
+                )
+            except Exception as exc:
+                logger.debug("CoInitialize() failed (non-fatal): %s", exc)
+
         try:
             import clr as _clr
 
-            _clr.AddReference  # check attribute exists (pythonnet ≥ 2)
+            # ── Step 2: System assemblies ─────────────────────────────────────
+            _clr.AddReference("System.Runtime")
+            _clr.AddReference("System.IO")
+
+            # ── Step 3: Load every DWSIM DLL explicitly by full path ──────────
+            #
+            # This is the only reliable approach for ClickOnce DWSIM installs.
+            # Calling AddReference("DWSIM.Automation") alone loads the assembly
+            # into the .NET AppDomain but does NOT register any of its transitive
+            # dependencies (DWSIM.Interfaces, DWSIM.Objects, etc.) with Python.NET's
+            # namespace import machinery.  As a result, GetAsObject() cannot return
+            # a typed MaterialStream and "from DWSIM.Objects.Streams import ..."
+            # raises ModuleNotFoundError.  Loading each DLL individually by full
+            # path forces Python.NET to register every namespace.
             if self.install_path not in sys.path:
                 sys.path.insert(0, self.install_path)
-            _clr.AddReference("DWSIM.Automation")
-            # Register ALL DWSIM-prefixed assemblies in the .NET AppDomain with
-            # Python.NET's import machinery.
+
+            _DWSIM_DLLS = [
+                "CapeOpen.dll",
+                "DWSIM.Automation.dll",
+                "DWSIM.Interfaces.dll",
+                "DWSIM.GlobalSettings.dll",
+                "DWSIM.SharedClasses.dll",
+                "DWSIM.Thermodynamics.dll",
+                "DWSIM.UnitOperations.dll",
+                "DWSIM.Inspector.dll",
+                "System.Buffers.dll",
+                "DWSIM.Thermodynamics.ThermoC.dll",
+            ]
+            for _dll in _DWSIM_DLLS:
+                _dll_path = os.path.join(self.install_path, _dll)
+                try:
+                    if os.path.isfile(_dll_path):
+                        _clr.AddReference(_dll_path)
+                        logger.debug("Loaded %s", _dll)
+                    else:
+                        # DLL absent (e.g., older DWSIM version) — skip silently
+                        logger.debug("DLL not found, skipping: %s", _dll_path)
+                except Exception as exc:
+                    # Already loaded or version mismatch — not fatal
+                    logger.debug("AddReference(%s) skipped: %s", _dll, exc)
+
+            # ── Step 4: Set DWSIM install dir as .NET current directory ───────
             #
-            # When DWSIM is deployed via ClickOnce, assemblies such as
-            # DWSIM.Interfaces, DWSIM.Objects, DWSIM.Thermodynamics, etc. are
-            # loaded by .NET as transitive dependencies of DWSIM.Automation but
-            # are NOT registered with Python.NET (which requires a successful
-            # clr.AddReference call for each assembly).  Without registration:
-            #   * Python.NET 2 cannot find ISimulationObject.Phases (defined in
-            #     DWSIM.Interfaces), so hasattr(obj, "Phases") → False.
-            #   * "from DWSIM.Objects.Streams import MaterialStream" raises
-            #     ModuleNotFoundError / ImportError.
-            #
-            # Using the full assembly identity string (version + culture +
-            # public-key token) resolves from the AppDomain without a
-            # file-system lookup, which is the only reliable path for ClickOnce.
+            # DWSIM resolves several internal resource paths relative to the
+            # current directory.  Without this call, loading the flowsheet may
+            # fail with file-not-found errors even when the DLLs loaded fine.
             try:
-                import System  # type: ignore[import]
-                for _asm in System.AppDomain.CurrentDomain.GetAssemblies():
-                    if _asm.GetName().Name.startswith("DWSIM"):
-                        try:
-                            _clr.AddReference(_asm.FullName)
-                            logger.debug(
-                                "Registered DWSIM assembly: %s", _asm.GetName().Name
-                            )
-                        except Exception:
-                            pass  # dynamic / reflection-only assembly — skip
-            except Exception:
+                from System.IO import Directory  # type: ignore[import]
+                Directory.SetCurrentDirectory(self.install_path)
                 logger.debug(
-                    "Could not enumerate AppDomain assemblies — "
-                    "stream Phases access will rely on Python.NET dynamic dispatch."
+                    "Set .NET current directory to: %s", self.install_path
                 )
+            except Exception as exc:
+                logger.debug(
+                    "SetCurrentDirectory(%s) failed (non-fatal): %s",
+                    self.install_path, exc,
+                )
+
         except Exception as exc:
             raise DWSIMInterfaceError(
-                f"Failed to load DWSIM.Automation.dll from {self.install_path!r}. "
+                f"Failed to load DWSIM assemblies from {self.install_path!r}. "
                 f"Ensure DWSIM is installed and the path is correct. Detail: {exc}"
             ) from exc
 
+        # ── Step 5: Instantiate Automation3 ───────────────────────────────────
         try:
-            from DWSIM.Automation import Automation  # type: ignore[import]
+            from DWSIM.Automation import Automation3  # type: ignore[import]
 
-            self._automation = Automation()
+            self._automation = Automation3()
             self._initialised = True
-            logger.info("DWSIM Automation initialised successfully.")
+            logger.info("DWSIM Automation3 initialised successfully.")
         except Exception as exc:
             raise DWSIMInterfaceError(
-                f"Could not create DWSIM Automation object: {exc}"
+                f"Could not create DWSIM Automation3 object: {exc}"
             ) from exc
 
     # ------------------------------------------------------------------
@@ -187,8 +234,16 @@ class DWSIMInterface:
         """
         self._require_loaded()
         try:
-            self._automation.CalculateFlowsheet(self._flowsheet)
+            # CalculateFlowsheet2 returns an error object (None = success)
+            # and is the recommended method for external automation scripts.
+            error = self._automation.CalculateFlowsheet2(self._flowsheet)
+            if error is not None:
+                raise DWSIMInterfaceError(
+                    f"Flowsheet calculation returned an error: {error}"
+                )
             logger.info("Simulation run completed.")
+        except DWSIMInterfaceError:
+            raise
         except Exception as exc:
             raise DWSIMInterfaceError(f"Simulation run failed: {exc}") from exc
 
@@ -921,86 +976,35 @@ class DWSIMInterface:
         """
         Return a material-stream object that exposes the ``Phases`` attribute.
 
-        In DWSIM's external Automation context,
         ``GetFlowsheetSimulationObject()`` returns an ``ISimulationObject``
-        interface which does not expose ``Phases``.  This helper casts the
-        object to the concrete ``MaterialStream`` class so that stream-specific
-        properties (temperature, pressure, molar flow, composition …) are
-        accessible.
-
-        If the object already has a ``Phases`` attribute (e.g. when running
-        inside DWSIM's own scripting console) it is returned unchanged.
+        interface.  Calling ``.GetAsObject()`` on it returns the underlying
+        concrete type (e.g. ``MaterialStream``) which exposes ``Phases``,
+        ``Temperature``, ``MassFlow``, etc.  This is the canonical pattern
+        used in DWSIM-Python automation scripts and does not require loading
+        ``DWSIM.Objects.dll`` or importing ``MaterialStream`` explicitly.
         """
         obj = self._get_object(name, "stream")
 
-        # Fast path: try to access Phases directly.
-        # Python.NET 2's hasattr() only catches AttributeError; if Python.NET
-        # wraps a CLR exception when probing an interface member, hasattr()
-        # returns False even though the attribute IS accessible via direct
-        # access.  A try/except approach handles both CLR and Python exceptions.
+        # Primary path: GetAsObject() — canonical DWSIM automation pattern.
         try:
-            _ = obj.Phases
-            return obj
+            typed = obj.GetAsObject()
+            if typed is not None:
+                return typed
         except Exception:
             pass
 
-        # Slow path: ISimulationObject returned by external Automation DLL
-        # without Phases visible through the Python.NET proxy.  Load the
-        # MaterialStream class and cast.  The class is cached after first load.
-        if self._material_stream_class is None:
-            try:
-                import clr as _clr  # noqa: PLC0415
-
-                # Attempt to load DWSIM.Objects.dll so Python.NET can resolve
-                # the MaterialStream type.
-                #   1. Try AddReference by full path (Python.NET 3, DLL on disk).
-                #   2. Try AddReference by short name (DLL already in sys.path).
-                #   3. If both fail, scan System.AppDomain for the assembly that
-                #      .NET loaded as a transitive dep of DWSIM.Automation, then
-                #      call AddReference with its full identity string so
-                #      Python.NET 2 registers the namespace without a file-system
-                #      lookup.
-                _dll_path = os.path.join(self.install_path, "DWSIM.Objects.dll")
-                try:
-                    if os.path.isfile(_dll_path):
-                        _clr.AddReference(_dll_path)
-                    else:
-                        _clr.AddReference("DWSIM.Objects")
-                except Exception:
-                    try:
-                        import System  # type: ignore[import]
-                        for _asm in System.AppDomain.CurrentDomain.GetAssemblies():
-                            if _asm.GetName().Name == "DWSIM.Objects":
-                                _clr.AddReference(_asm.FullName)
-                                logger.debug(
-                                    "DWSIM.Objects referenced via AppDomain: %s",
-                                    _asm.FullName,
-                                )
-                                break
-                    except Exception:
-                        pass  # Will raise at the import below with a clear message
-
-                from DWSIM.Objects.Streams import MaterialStream  # type: ignore[import]
-
-                self._material_stream_class = MaterialStream
-                logger.debug("Cached MaterialStream class for stream casting.")
-            except Exception as exc:
-                raise DWSIMInterfaceError(
-                    "Cannot load 'MaterialStream' from DWSIM.Objects.dll. "
-                    f"Ensure DWSIM.Objects.dll is present in {self.install_path!r}. "
-                    f"Detail: {exc}"
-                ) from exc
-
-        try:
-            return self._material_stream_class(obj)
-        except Exception as exc:
-            raise DWSIMInterfaceError(
-                f"Cannot cast stream {name!r} from ISimulationObject to "
-                f"MaterialStream: {exc}"
-            ) from exc
+        # Fallback: the object may already be fully typed (in-process scripting
+        # or a future automation version that returns concrete types directly).
+        return obj
 
     def _get_object(self, name: str, kind: str) -> Any:
-        """Return a flowsheet object by name, raising a clear error if missing."""
+        """Return a typed flowsheet object by name, raising a clear error if missing.
+
+        Calls ``GetAsObject()`` on the ``ISimulationObject`` interface returned
+        by ``GetFlowsheetSimulationObject()`` to obtain the concrete typed object
+        (MaterialStream, ShortcutColumn, EnergyStream, etc.).  This is the
+        canonical DWSIM-Python automation pattern.
+        """
         try:
             obj = self._flowsheet.GetFlowsheetSimulationObject(name)
         except Exception as exc:
@@ -1012,4 +1016,12 @@ class DWSIMInterface:
             raise DWSIMInterfaceError(
                 f"{kind.capitalize()} {name!r} was not found in the flowsheet."
             )
+        # Cast to concrete type via GetAsObject() — equivalent to the
+        # ".GetAsObject()" call in working DWSIM-Python scripts.
+        try:
+            typed = obj.GetAsObject()
+            if typed is not None:
+                return typed
+        except Exception:
+            pass
         return obj
