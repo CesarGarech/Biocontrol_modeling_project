@@ -99,10 +99,28 @@ class DWSIMInterface:
                     _clr.AddReference("DWSIM.Objects")
                     logger.debug("DWSIM.Objects assembly loaded by name.")
             except Exception:
-                logger.debug(
-                    "DWSIM.Objects assembly not loaded — stream casting will be "
-                    "attempted lazily on first stream access."
-                )
+                # Direct load failed.  DWSIM.Automation.dll brings in DWSIM.Objects
+                # as a transitive dependency, so the assembly may already be in the
+                # .NET AppDomain.  In Python.NET 2 the import machinery requires a
+                # successful clr.AddReference to register the namespace.  Calling
+                # AddReference with the *full* assembly identity (version + culture +
+                # public-key token) resolves from the AppDomain without a file-system
+                # lookup, making the namespace importable.
+                try:
+                    import System  # type: ignore[import]
+                    for _asm in System.AppDomain.CurrentDomain.GetAssemblies():
+                        if _asm.GetName().Name == "DWSIM.Objects":
+                            _clr.AddReference(_asm.FullName)
+                            logger.debug(
+                                "DWSIM.Objects referenced via AppDomain: %s",
+                                _asm.FullName,
+                            )
+                            break
+                except Exception:
+                    logger.debug(
+                        "DWSIM.Objects assembly not found in AppDomain — "
+                        "stream casting will be attempted lazily on first access."
+                    )
         except Exception as exc:
             raise DWSIMInterfaceError(
                 f"Failed to load DWSIM.Automation.dll from {self.install_path!r}. "
@@ -933,13 +951,21 @@ class DWSIMInterface:
 
                 # Attempt to load DWSIM.Objects.dll so Python.NET can resolve the
                 # MaterialStream type.  DWSIM.Automation.dll already loads
-                # DWSIM.Objects as an internal dependency, so the assembly may
-                # already be present in the .NET AppDomain.  When that is the
-                # case the AddReference call below will either be a no-op (Python.NET 2)
-                # or raise (Python.NET 3 / assembly not on disk).  Either way we
-                # must still attempt the import — the try-except around AddReference
-                # is intentionally separate so a failed load attempt does NOT
-                # prevent the import from succeeding.
+                # DWSIM.Objects as a transitive dependency, so the assembly is
+                # usually present in the .NET AppDomain even when the DLL is not
+                # addressable as a standalone file.
+                #
+                # Strategy:
+                #   1. Try AddReference by full path (Python.NET 3, DLL on disk).
+                #   2. Try AddReference by short name (Python.NET 2, DLL on disk or
+                #      in the .NET search path).
+                #   3. If both fail, scan System.AppDomain.CurrentDomain.GetAssemblies()
+                #      for an already-loaded "DWSIM.Objects" and call AddReference with
+                #      its *full* identity string (Python.NET 2 registers the namespace
+                #      from the AppDomain without a file-system lookup).
+                #
+                # Steps 1-2 are in an inner try-except so a failure never prevents
+                # step 3 or the subsequent import.
                 _dll_path = os.path.join(self.install_path, "DWSIM.Objects.dll")
                 try:
                     if os.path.isfile(_dll_path):
@@ -947,7 +973,20 @@ class DWSIMInterface:
                     else:
                         _clr.AddReference("DWSIM.Objects")
                 except Exception:
-                    pass  # Assembly may already be in AppDomain via DWSIM.Automation
+                    # Direct load failed — try to find the assembly that .NET loaded
+                    # as a transitive dependency of DWSIM.Automation.dll.
+                    try:
+                        import System  # type: ignore[import]
+                        for _asm in System.AppDomain.CurrentDomain.GetAssemblies():
+                            if _asm.GetName().Name == "DWSIM.Objects":
+                                _clr.AddReference(_asm.FullName)
+                                logger.debug(
+                                    "DWSIM.Objects referenced via AppDomain: %s",
+                                    _asm.FullName,
+                                )
+                                break
+                    except Exception:
+                        pass  # Will raise at the import step below with a clear message
 
                 from DWSIM.Objects.Streams import MaterialStream  # type: ignore[import]
 
