@@ -931,16 +931,23 @@ class DWSIMInterface:
             try:
                 import clr as _clr  # noqa: PLC0415
 
-                # Python.NET 3 resolves assemblies by full file path more reliably
-                # than by name alone, because the .NET runtime's assembly resolver
-                # may not search sys.path for indirect dependencies.
-                # Pass the full path to clr.AddReference when the DLL is present.
+                # Attempt to load DWSIM.Objects.dll so Python.NET can resolve the
+                # MaterialStream type.  DWSIM.Automation.dll already loads
+                # DWSIM.Objects as an internal dependency, so the assembly may
+                # already be present in the .NET AppDomain.  When that is the
+                # case the AddReference call below will either be a no-op (Python.NET 2)
+                # or raise (Python.NET 3 / assembly not on disk).  Either way we
+                # must still attempt the import — the try-except around AddReference
+                # is intentionally separate so a failed load attempt does NOT
+                # prevent the import from succeeding.
                 _dll_path = os.path.join(self.install_path, "DWSIM.Objects.dll")
-                if os.path.isfile(_dll_path):
-                    _clr.AddReference(_dll_path)
-                else:
-                    # Fallback: try by name (works if DLL is in GAC or already loaded)
-                    _clr.AddReference("DWSIM.Objects")
+                try:
+                    if os.path.isfile(_dll_path):
+                        _clr.AddReference(_dll_path)
+                    else:
+                        _clr.AddReference("DWSIM.Objects")
+                except Exception:
+                    pass  # Assembly may already be in AppDomain via DWSIM.Automation
 
                 from DWSIM.Objects.Streams import MaterialStream  # type: ignore[import]
 
