@@ -46,6 +46,7 @@ class DWSIMInterface:
         self._loaded_file: Optional[str] = None
         self._initialised = False
         self._compounds_cache: Optional[List[str]] = None
+        self._material_stream_class = None  # cached MaterialStream type for casting
         self._init_dotnet()
 
     # ------------------------------------------------------------------
@@ -83,6 +84,17 @@ class DWSIMInterface:
             if self.install_path not in sys.path:
                 sys.path.insert(0, self.install_path)
             _clr.AddReference("DWSIM.Automation")
+            # Also load DWSIM.Objects so MaterialStream is available for casting.
+            # This assembly is required when GetFlowsheetSimulationObject() returns
+            # ISimulationObject and a cast to MaterialStream is needed to access Phases.
+            try:
+                _clr.AddReference("DWSIM.Objects")
+                logger.debug("DWSIM.Objects assembly loaded.")
+            except Exception:
+                logger.debug(
+                    "DWSIM.Objects assembly not loaded — stream casting will be "
+                    "attempted lazily on first stream access."
+                )
         except Exception as exc:
             raise DWSIMInterfaceError(
                 f"Failed to load DWSIM.Automation.dll from {self.install_path!r}. "
@@ -198,7 +210,7 @@ class DWSIMInterface:
             If the stream or property does not exist.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
 
         try:
             if property_name == "MassFlow":
@@ -319,7 +331,7 @@ class DWSIMInterface:
             If the stream or property is not writable.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
 
         try:
             if property_name == "MassFlow":
@@ -366,7 +378,7 @@ class DWSIMInterface:
             If the stream does not exist or the property cannot be set.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
         molar_flow_mols = molar_flow_kmolh * _KMOLH_TO_MOLS
         try:
             stream.Phases[0].Properties.molarflow = molar_flow_mols
@@ -398,7 +410,7 @@ class DWSIMInterface:
             If the stream does not exist or the property cannot be set.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
         temperature_k = temperature_celsius + _CELSIUS_TO_K
         try:
             stream.Phases[0].Properties.temperature = temperature_k
@@ -430,7 +442,7 @@ class DWSIMInterface:
             If the stream does not exist or the property cannot be set.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
         pressure_pa = pressure_bar * _BAR_TO_PA
         try:
             stream.Phases[0].Properties.pressure = pressure_pa
@@ -468,7 +480,7 @@ class DWSIMInterface:
             fractions are invalid.
         """
         self._require_loaded()
-        stream = self._get_object(stream_name, "stream")
+        stream = self._get_material_stream(stream_name)
         normalised = self.validate_composition(composition_dict)
         try:
             for compound, fraction in normalised.items():
@@ -883,6 +895,57 @@ class DWSIMInterface:
                 f"Unknown compound {compound_name!r}. "
                 f"Available compounds: {available!r}."
             )
+
+    def _get_material_stream(self, name: str) -> Any:
+        """
+        Return a material-stream object that exposes the ``Phases`` attribute.
+
+        In DWSIM's external Automation context,
+        ``GetFlowsheetSimulationObject()`` returns an ``ISimulationObject``
+        interface which does not expose ``Phases``.  This helper casts the
+        object to the concrete ``MaterialStream`` class so that stream-specific
+        properties (temperature, pressure, molar flow, composition …) are
+        accessible.
+
+        If the object already has a ``Phases`` attribute (e.g. when running
+        inside DWSIM's own scripting console) it is returned unchanged.
+        """
+        obj = self._get_object(name, "stream")
+
+        # Fast path: already a properly typed object (in-process scripting,
+        # or a future DWSIM automation version that returns typed objects).
+        if hasattr(obj, "Phases"):
+            return obj
+
+        # Slow path: ISimulationObject returned by external Automation DLL.
+        # Load MaterialStream type once and cache it.
+        if self._material_stream_class is None:
+            try:
+                import clr as _clr  # noqa: PLC0415
+
+                try:
+                    _clr.AddReference("DWSIM.Objects")
+                except Exception:
+                    pass  # may already be loaded
+
+                from DWSIM.Objects.Streams import MaterialStream  # type: ignore[import]
+
+                self._material_stream_class = MaterialStream
+                logger.debug("Cached MaterialStream class for stream casting.")
+            except Exception as exc:
+                raise DWSIMInterfaceError(
+                    "Cannot load 'MaterialStream' from DWSIM.Objects.dll. "
+                    f"Ensure DWSIM.Objects.dll is present in {self.install_path!r}. "
+                    f"Detail: {exc}"
+                ) from exc
+
+        try:
+            return self._material_stream_class(obj)
+        except Exception as exc:
+            raise DWSIMInterfaceError(
+                f"Cannot cast stream {name!r} from ISimulationObject to "
+                f"MaterialStream: {exc}"
+            ) from exc
 
     def _get_object(self, name: str, kind: str) -> Any:
         """Return a flowsheet object by name, raising a clear error if missing."""
