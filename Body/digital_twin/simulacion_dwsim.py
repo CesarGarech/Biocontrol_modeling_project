@@ -111,8 +111,12 @@ def _run_analytic_simulation(
     lambda_feed = dh_vap_top * mw_feed / 1000.0
     q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
 
-    # Estimación de etapas teóricas con razón de reflujo (Fenske simplificado)
-    n_stages = max(5, int(10 * reflux_ratio_col / max(rr_calc, 0.1)))
+    # Estimación de etapas teóricas: aproximación simplificada de Fenske
+    # N ≈ 10 × (R / R_min); R_min ≈ rr_calc calculado sobre el diseño base
+    _R_MIN_FACTOR = 10.0   # factor de proporcionalidad Fenske simplificado
+    _R_MIN_FLOOR = 0.1     # piso para R_min para evitar división por cero
+    _N_STAGES_MIN = 5      # mínimo de etapas teóricas (límite práctico)
+    n_stages = max(_N_STAGES_MIN, int(_R_MIN_FACTOR * reflux_ratio_col / max(rr_calc, _R_MIN_FLOOR)))
 
     return {
         "source": "analytic",

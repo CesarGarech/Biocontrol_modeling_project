@@ -14,7 +14,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec  # noqa: F401 — usado en versiones futuras
 from scipy.optimize import minimize
 
 # ── Importar configuración compartida desde Simulation/config.py ─────────────
@@ -375,7 +374,7 @@ def analisis_datos_page():
 
     if st.button(btn_label, key="btn_gen"):
         # Validar que ventana sea menor que n_points
-        if n_points <= window:
+        if n_points < window:
             st.error(
                 f"❌ El número de puntos ({n_points}) debe ser mayor que "
                 f"la ventana de filtro ({window})."
