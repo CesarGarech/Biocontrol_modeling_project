@@ -367,8 +367,18 @@ class DWSIMInterface:
             if property_name == "NumberOfStages":
                 return float(obj.NumberOfStages)
             if property_name == "Duty":
-                # Generic energy-stream duty
-                return float(obj.EnergyFlow)
+                # Generic energy-stream duty.  DWSIM exposes this as either a
+                # property (obj.EnergyFlow) or a getter method (obj.get_EnergyFlow()).
+                try:
+                    return float(obj.EnergyFlow)
+                except Exception:
+                    pass
+                try:
+                    return float(obj.get_EnergyFlow())
+                except Exception as _exc:
+                    raise DWSIMInterfaceError(
+                        f"Could not read EnergyFlow from {equipment_name!r}: {_exc}"
+                    ) from _exc
             raise DWSIMInterfaceError(
                 f"Unknown equipment property: {property_name!r}. "
                 "Supported: DutyCondenser, DutyReboiler, RefluxRatio, "

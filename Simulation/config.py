@@ -100,10 +100,10 @@ REFLUX_RATIO_RANGE = (0.5, 3.0)     # dimensionless
 
 # Default feed conditions for quick setup
 DEFAULT_FEED_CONDITIONS = {
-    "molar_flow": 500,   # kmol/h
-    "temperature": 80,   # °C
+    "molar_flow": 100,   # kmol/h
+    "temperature": 30,   # °C
     "pressure": 10,      # bar
-    "composition": {"Ethanol": 0.4, "Water": 0.6},
+    "composition": {"Ethanol": 0.1, "Water": 0.9},
 }
 
 # Default column parameters for quick setup

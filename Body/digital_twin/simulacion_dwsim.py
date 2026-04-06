@@ -155,27 +155,20 @@ def _run_dwsim_simulation(
     P_feed_bar: float,
     x_eth: float,
     x_water: float,
-    lk: str,
-    hk: str,
-    lk_bottoms: float,
-    hk_distillate: float,
-    reflux_ratio_col: float,
 ) -> dict:
     """
     Run a live simulation in DWSIM using DWSIMInterface.
 
+    Column parameters are left at their DWSIM defaults; only the feed
+    stream conditions are set by the caller.
+
     Parameters
     ----------
-    F_feed_kmolh     : float  — Feed molar flow rate (kmol/h)
-    T_feed           : float  — Feed temperature (°C)
-    P_feed_bar       : float  — Feed pressure (bar)
-    x_eth            : float  — Ethanol mole fraction in the feed
-    x_water          : float  — Water mole fraction in the feed
-    lk               : str    — Light-key compound
-    hk               : str    — Heavy-key compound
-    lk_bottoms       : float  — Light-key mole fraction in bottoms
-    hk_distillate    : float  — Heavy-key mole fraction in distillate
-    reflux_ratio_col : float  — Column reflux ratio
+    F_feed_kmolh : float  — Feed molar flow rate (kmol/h)
+    T_feed       : float  — Feed temperature (°C)
+    P_feed_bar   : float  — Feed pressure (bar)
+    x_eth        : float  — Ethanol mole fraction in the feed
+    x_water      : float  — Water mole fraction in the feed
 
     Returns
     -------
@@ -192,23 +185,13 @@ def _run_dwsim_simulation(
     with DWSIMInterface(_cfg.DWSIM_INSTALL_PATH) as dwsim:
         dwsim.load_simulation(_cfg.SIMULATION_FILE)
 
-        # Set feed stream conditions
+        # Set feed stream conditions only — column parameters use DWSIM defaults
         dwsim.set_stream_conditions(
             _cfg.TAG_FEED,
             molar_flow=F_feed_kmolh,
             temperature=T_feed,
             pressure=P_feed_bar,
             composition={"Ethanol": x_eth, "Water": x_water},
-        )
-
-        # Set column parameters
-        dwsim.set_column_parameters(
-            _cfg.TAG_COLUMN,
-            light_key=lk,
-            heavy_key=hk,
-            lk_bottoms=lk_bottoms,
-            hk_distillate=hk_distillate,
-            reflux_ratio=reflux_ratio_col,
         )
 
         # Run simulation
@@ -228,8 +211,6 @@ def _run_dwsim_simulation(
         bot_T  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "Temperature") - 273.15
 
         feed_P = dwsim.get_stream_property(_cfg.TAG_FEED, "Pressure") / 1e5
-        top_P  = dwsim.get_stream_property(_cfg.TAG_TOP, "Pressure") / 1e5
-        bot_P  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "Pressure") / 1e5
 
         # Compositions
         x_eth_feed = dwsim.get_stream_property(_cfg.TAG_FEED, "MoleFraction", "Ethanol")
@@ -239,11 +220,20 @@ def _run_dwsim_simulation(
         x_wat_top  = dwsim.get_stream_property(_cfg.TAG_TOP, "MoleFraction", "Water")
         x_wat_bot  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Water")
 
-        # Equipment properties
-        q_cond = abs(dwsim.get_equipment_property(_cfg.TAG_COLUMN, "DutyCondenser")) * _W_TO_KW
-        q_reb  = abs(dwsim.get_equipment_property(_cfg.TAG_COLUMN, "DutyReboiler")) * _W_TO_KW
-        rr     = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "RefluxRatio")
-        n_stg  = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "NumberOfStages")
+        # Condenser / reboiler duty — read from dedicated energy streams
+        # (ShortcutColumn does not expose CondenserDuty / ReboilerDuty directly)
+        q_cond = abs(dwsim.get_equipment_property(_cfg.TAG_R_COND, "Duty")) * _W_TO_KW
+        q_reb  = abs(dwsim.get_equipment_property(_cfg.TAG_Q_REB,  "Duty")) * _W_TO_KW
+
+        # Reflux ratio and stage count from the column — use defaults if unavailable
+        try:
+            rr = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "RefluxRatio")
+        except Exception:
+            rr = float(_cfg.DEFAULT_COLUMN_PARAMETERS["reflux_ratio"])
+        try:
+            n_stg = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "NumberOfStages")
+        except Exception:
+            n_stg = 0.0
 
     mw_feed = feed_mflow / max(feed_molflow, 1e-9)
     mw_top  = top_mflow / max(top_molflow, 1e-9)
@@ -286,7 +276,7 @@ def _run_dwsim_simulation(
     }
 
 
-def simulacion_dwsim_page():
+
     """Main page for the interactive DWSIM simulator."""
     st.header("⚙️ DWSIM Interactive Simulation")
     st.markdown("""
@@ -368,59 +358,23 @@ def simulacion_dwsim_page():
                 st.success(f"Composition sum: {comp_sum:.4f} ✓")
 
         # ── Column parameters ─────────────────────────────────────────────────
-        with st.expander("3. Column Parameters", expanded=True):
-            col_defaults = _cfg.DEFAULT_COLUMN_PARAMETERS
-            lk = st.selectbox(
-                "Light Key Compound (LK)", ["Ethanol", "Water"],
-                index=0 if col_defaults["light_key"] == "Ethanol" else 1,
-                key="dwsim_lk",
-            )
-            hk = st.selectbox(
-                "Heavy Key Compound (HK)", ["Ethanol", "Water"],
-                index=1 if col_defaults["heavy_key"] == "Water" else 0,
-                key="dwsim_hk",
-            )
-            if lk == hk:
-                st.error("⚠️ LK and HK must be different compounds.")
-
-            lk_bottoms = st.number_input(
-                "LK Mole Fraction in Bottoms", min_value=0.0, max_value=1.0,
-                value=float(col_defaults["lk_bottoms"]), step=0.005,
-                format="%.4f", key="dwsim_lk_bot",
-            )
-            hk_distillate = st.number_input(
-                "HK Mole Fraction in Distillate", min_value=0.0, max_value=1.0,
-                value=float(col_defaults["hk_distillate"]), step=0.005,
-                format="%.4f", key="dwsim_hk_dist",
-            )
-            reflux_ratio_col = st.number_input(
-                "Reflux Ratio (L/D)", min_value=0.01, max_value=20.0,
-                value=float(col_defaults["reflux_ratio"]), step=0.05,
-                format="%.2f", key="dwsim_rr",
-            )
-            if reflux_ratio_col <= 0:
-                st.error("⚠️ Reflux ratio must be greater than 0.")
+        # Column parameters are not exposed to the user; DWSIM defaults are used.
 
     # ── Run button ────────────────────────────────────────────────────────────
     st.markdown(
-        "Configure parameters in the sidebar and press the button to run the simulation."
+        "Configure feed conditions in the sidebar and press the button to run the simulation."
     )
 
     run_clicked = st.button("🚀 Run Simulation", key="btn_dwsim_run", type="primary")
+
+    # Fixed reflux ratio from config (not exposed to the user)
+    _default_rr = float(_cfg.DEFAULT_COLUMN_PARAMETERS["reflux_ratio"])
 
     if run_clicked:
         # ── Validation ────────────────────────────────────────────────────────
         errors = []
         if abs(x_eth + x_water - 1.0) > 1e-3:
             errors.append(f"Composition sum is {x_eth + x_water:.4f}; must be 1.0 ± 0.001.")
-        if lk == hk:
-            errors.append("Light Key and Heavy Key must be different compounds.")
-        if reflux_ratio_col <= 0:
-            errors.append("Reflux ratio must be greater than 0.")
-        if not (0.0 <= lk_bottoms <= 1.0):
-            errors.append("LK Mole Fraction in Bottoms must be between 0 and 1.")
-        if not (0.0 <= hk_distillate <= 1.0):
-            errors.append("HK Mole Fraction in Distillate must be between 0 and 1.")
 
         if errors:
             for e in errors:
@@ -435,7 +389,6 @@ def simulacion_dwsim_page():
                     try:
                         results = _run_dwsim_simulation(
                             F_feed_kmolh, T_feed, P_feed_bar, x_eth, x_water,
-                            lk, hk, lk_bottoms, hk_distillate, reflux_ratio_col,
                         )
                         st.success("✅ DWSIM simulation completed successfully.")
                     except Exception as exc:  # DWSIMInterfaceError or any other
@@ -443,13 +396,13 @@ def simulacion_dwsim_page():
                             f"⚠️ DWSIM failed ({exc}). Using analytic scaling as fallback."
                         )
                         results = _run_analytic_simulation(
-                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, reflux_ratio_col,
+                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, _default_rr,
                         )
             else:
                 # ── Fallback: analytic scaling ────────────────────────────────
                 with st.spinner("Computing results (analytic scaling)…"):
                     results = _run_analytic_simulation(
-                        F_feed_kmolh, T_feed, P_feed_bar, x_eth, reflux_ratio_col,
+                        F_feed_kmolh, T_feed, P_feed_bar, x_eth, _default_rr,
                     )
                 st.info("ℹ️ Results obtained via analytic scaling of the design point.")
 
