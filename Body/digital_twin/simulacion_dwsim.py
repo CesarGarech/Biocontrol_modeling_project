@@ -277,6 +277,7 @@ def _run_dwsim_simulation(
 
 
 
+def simulacion_dwsim_page():
     """Main page for the interactive DWSIM simulator."""
     st.header("⚙️ DWSIM Interactive Simulation")
     st.markdown("""
