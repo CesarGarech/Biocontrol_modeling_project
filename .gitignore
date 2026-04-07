@@ -103,10 +103,3 @@ outputs/
 # Optional: ignore notebooks (if only for local experiments)
 *.ipynb
 notebooks/
-
-# Installer dependencies (too large for git, ~700MB+)
-dependencies/
-installer/Output/
-
-# Inno Setup temp files
-*.~is
