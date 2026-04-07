@@ -11,6 +11,24 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# On Linux/macOS, pythonnet 3.x must load the .NET (Core) CLR runtime BEFORE
+# the first ``import clr``.  DWSIM 9 ships with .NET 8 on Linux, so we select
+# the "coreclr" runtime here at module load time.  On Windows the default
+# .NET Framework runtime is picked up automatically and no explicit load is
+# needed.
+if platform.system() != "Windows":
+    try:
+        import pythonnet as _pythonnet  # type: ignore[import]
+        _pythonnet.load("coreclr")
+        del _pythonnet
+        logger.debug("pythonnet: loaded 'coreclr' runtime for Linux/macOS.")
+    except Exception as _pn_load_exc:  # noqa: BLE001
+        logger.debug(
+            "pythonnet.load('coreclr') skipped (%s). "
+            "Will fall back to default runtime.",
+            _pn_load_exc,
+        )
+
 # Unit-conversion constants
 _KMOLH_TO_MOLS = 1000.0 / 3600.0   # kmol/h → mol/s
 _CELSIUS_TO_K = 273.15              # °C offset → K
@@ -68,7 +86,7 @@ class DWSIMInterface:
         if platform.system() != "Windows":
             logger.warning(
                 "DWSIM Automation is primarily supported on Windows. "
-                "Attempting to load via Mono on %s — this may not work.",
+                "Attempting to load via .NET 8 / coreclr on %s.",
                 platform.system(),
             )
 

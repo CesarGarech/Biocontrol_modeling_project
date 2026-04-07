@@ -10,8 +10,14 @@ import os
 # ==========================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# DWSIM installation path (adjust to your system)
-DWSIM_INSTALL_PATH = r"C:\\Users\\cesar\\AppData\\Local\\DWSIM\\"
+# DWSIM installation path — reads from environment variable first, then falls
+# back to the local default for the current OS.
+DWSIM_INSTALL_PATH = os.environ.get(
+    "DWSIM_INSTALL_PATH",
+    os.path.join(os.environ.get("LOCALAPPDATA", r"C:\Users\Default\AppData\Local"), "DWSIM")
+    if os.name == "nt"
+    else "/usr/lib/dwsim",
+)
 
 # DWSIM simulation file
 SIMULATION_FILE = os.path.join(CURRENT_DIR, "ethanol.dwxmz")
@@ -75,8 +81,9 @@ MAX_ENERGY_BALANCE_ERROR = 2.0  # Max tolerable energy balance error (%)
 # ==========================================
 # 7. DWSIM API CONFIGURATION
 # ==========================================
-# Enable/disable live DWSIM integration (set to True to use live simulations)
-USE_DWSIM_LIVE = False
+# Enable/disable live DWSIM integration.
+# Reads from environment variable USE_DWSIM_LIVE; defaults to False.
+USE_DWSIM_LIVE = os.environ.get("USE_DWSIM_LIVE", "false").lower() == "true"
 
 # Full path to the DWSIM.Automation.dll (derived from the install path above)
 DWSIM_DLL_PATH = os.path.join(DWSIM_INSTALL_PATH, "DWSIM.Automation.dll")

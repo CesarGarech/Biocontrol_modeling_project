@@ -56,7 +56,8 @@ def validate_dwsim_installation() -> Tuple[bool, str]:
         issues.append(
             f"DWSIM installation directory not found: "
             f"{config.DWSIM_INSTALL_PATH!r}. "
-            "Update DWSIM_INSTALL_PATH in Simulation/config.py."
+            "Update DWSIM_INSTALL_PATH in Simulation/config.py or set the "
+            "DWSIM_INSTALL_PATH environment variable."
         )
 
     # 3. Automation DLL
