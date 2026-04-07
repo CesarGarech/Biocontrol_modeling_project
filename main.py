@@ -33,6 +33,12 @@ menu_structure = {
 def main():
     st.set_page_config(page_title="Bioprocess Modeling", layout="wide")
 
+    try:
+        from Utils.update_checker import show_update_banner
+        show_update_banner()
+    except Exception:
+        pass  # Never let update checker crash the dashboard
+
     # --- Navegación en la Barra Lateral (sin cambios necesarios aquí) ---
     st.sidebar.title("Main Navigation")
 

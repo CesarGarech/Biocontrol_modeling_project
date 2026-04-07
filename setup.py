@@ -3,6 +3,12 @@ Setup configuration for Biocontrol Modeling Project.
 """
 
 from setuptools import setup, find_packages
+import re
+
+# Read version from version.py
+with open("version.py", "r", encoding="utf-8") as fh:
+    version_match = re.search(r'^__version__\s*=\s*["\']([^"\']*)["\']', fh.read(), re.M)
+    version = version_match.group(1) if version_match else "0.0.0"
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -12,7 +18,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="biocontrol-modeling",
-    version="1.0.0",
+    version=version,
     author="César Augusto García Echeverry",
     author_email="cesar.garech@gmail.com",
     description="An interactive Streamlit application for teaching modeling, simulation, analysis, and control of bioprocesses",
