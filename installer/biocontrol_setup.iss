@@ -27,11 +27,9 @@ AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\BiocontrolDashboard
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-; Require 64-bit Windows 10 or later
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 MinVersion=10.0.17763
-; Require admin privileges so Python and .NET can be installed system-wide
 PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=BiocontrolDashboard-Setup-v{#AppVersion}
@@ -39,17 +37,13 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 
-; Uninstaller settings
-UninstallDisplayIcon={app}\run_dashboard.bat
-UninstallDisplayName={#AppName}
-
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries (Streamlit, TensorFlow, CasADi, etc.)%n%nThis may take several minutes depending on your internet connection.%nClick Next to continue.
-spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias (Streamlit, TensorFlow, CasADi, etc.)%n%nEsto puede tardar varios minutos dependiendo de su conexión a internet.%nHaga clic en Siguiente para continuar.
+english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
+spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias%n%nHaga clic en Siguiente para continuar.
 
 english.InstallingLibraries=Installing Python libraries, please wait...
 spanish.InstallingLibraries=Instalando librerías Python, por favor espere...
@@ -59,27 +53,18 @@ Name: "desktopicon";     Description: "{cm:CreateDesktopIcon}";          GroupDe
 Name: "launchafterdone"; Description: "Launch Biocontrol Dashboard now";  GroupDescription: "After installation:";  Flags: unchecked
 
 [Files]
-; -------------------------------------------------------------------------
-; .NET Runtime 8.0 installer — extracted to {tmp}, deleted after installation
-; -------------------------------------------------------------------------
-Source: "..\dependencies\dotnet-runtime-8.0-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8Installed
+; .NET Runtime 8.0 installer
+Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8Installed
 
-; -------------------------------------------------------------------------
-; Python 3.10.9 installer — extracted to {tmp}, deleted after installation
-; -------------------------------------------------------------------------
+; Python 3.10.9 installer
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
-; -------------------------------------------------------------------------
-; DWSIM files — copied recursively to {localappdata}\DWSIM
-; Preprocessor directive checks for folder during COMPILATION
-; -------------------------------------------------------------------------
+; DWSIM files - Preprocessor directive checks for folder during COMPILATION
 #if exist("..\dependencies\DWSIM")
 Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
 
-; -------------------------------------------------------------------------
 ; Project root files
-; -------------------------------------------------------------------------
 Source: "..\main.py";             DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Menu.py";             DestDir: "{app}"; Flags: ignoreversion
 Source: "..\theory.py";           DestDir: "{app}"; Flags: ignoreversion
@@ -91,9 +76,7 @@ Source: "..\verify_python.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\version.py";          DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CHANGELOG.md";        DestDir: "{app}"; Flags: ignoreversion
 
-; -------------------------------------------------------------------------
 ; Project directories (recursive)
-; -------------------------------------------------------------------------
 Source: "..\Body\*";        DestDir: "{app}\Body";        Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\Utils\*";       DestDir: "{app}\Utils";       Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\Data\*";        DestDir: "{app}\Data";        Flags: recursesubdirs createallsubdirs ignoreversion
@@ -103,21 +86,15 @@ Source: "..\References\*";  DestDir: "{app}\References";  Flags: recursesubdirs 
 Source: "..\Examples\*";    DestDir: "{app}\Examples";    Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\test_data\*";   DestDir: "{app}\test_data";   Flags: recursesubdirs createallsubdirs ignoreversion
 
-; -------------------------------------------------------------------------
-; Post-install batch script — deleted after it runs
-; -------------------------------------------------------------------------
+; Post-install batch script
 Source: "post_install.bat"; DestDir: "{app}"; Flags: ignoreversion deleteafterinstall
 
 [Icons]
-; Start Menu shortcut
 Name: "{group}\{#AppName}";            Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-
-; Desktop shortcut (optional task)
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; Step 1 — Run post_install.bat to create venv + install libraries
 Filename: "{app}\post_install.bat"; \
     Description: "{cm:InstallingLibraries}"; \
     Parameters: """{app}"""; \
@@ -125,7 +102,6 @@ Filename: "{app}\post_install.bat"; \
     Flags: runhidden waituntilterminated; \
     StatusMsg: "{cm:InstallingLibraries}"
 
-; Step 2 — Optionally launch the dashboard when the user checks the task
 Filename: "{app}\run_dashboard.bat"; \
     Description: "Launch {#AppName}"; \
     WorkingDir: "{app}"; \
@@ -137,19 +113,17 @@ Type: filesandordirs; Name: "{app}\.venv"
 Type: filesandordirs; Name: "{app}\__pycache__"
 Type: filesandordirs; Name: "{app}\Output"
 
-; =============================================================================
-; Pascal Script (Code section)
-; =============================================================================
 [Code]
 
 // ---------------------------------------------------------------------------
 // IsDotNet8Installed
-// Verifica si el directorio de .NET 8 existe en el sistema
+// Verifica si .NET 8 Desktop Runtime (x64) está instalado mediante el registro
 // ---------------------------------------------------------------------------
 function IsDotNet8Installed: Boolean;
 begin
-  // Busca la carpeta base compartida de .NET 8.0 en Program Files
-  Result := DirExists(ExpandConstant('{pf}\dotnet\shared\Microsoft.NETCore.App\8.0.*'));
+  // Revisa la clave oficial del registro de .NET para la versión 8.0 x64
+  Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0') or
+            RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0');
 end;
 
 // ---------------------------------------------------------------------------
@@ -266,14 +240,13 @@ end;
 
 // ---------------------------------------------------------------------------
 // CurStepChanged event hook
-// Installs .NET and Python before files are copied.
+// Installs .NET y Python antes de copiar los archivos.
 // ---------------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   case CurStep of
     ssInstall:
       begin
-        // Primero .NET, luego Python
         InstallDotNet;
         InstallPython;
       end;
