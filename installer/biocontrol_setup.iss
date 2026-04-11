@@ -238,6 +238,7 @@ end;
 procedure UpdateDWSIMPath;
 var
   ConfigFile: String;
+  FileContentAnsi: AnsiString;
   FileContent: String;
   OldPath: String;
   NewPath: String;
@@ -250,34 +251,29 @@ begin
     Exit;
   end;
 
-  if not LoadStringFromFile(ConfigFile, FileContent) then
+  // Cargar como AnsiString
+  if not LoadStringFromFile(ConfigFile, FileContentAnsi) then
   begin
     Log('Could not read config.py — skipping DWSIM path update.');
     Exit;
   end;
 
-  // The source file uses double-escaped backslashes inside a raw string:
-  //   DWSIM_INSTALL_PATH = r"C:\\Users\\cesar\\AppData\\Local\\DWSIM\\"
+  // Convertir a String normal para modificarlo
+  FileContent := String(FileContentAnsi);
+
   OldPath := 'C:\\Users\\cesar\\AppData\\Local\\DWSIM\\';
-
-  // Build the new path using the actual LOCALAPPDATA value.
-  // Inno Setup expands {localappdata} at compile time, so we call
-  // ExpandConstant here to get the runtime value.
   NewPath := ExpandConstant('{localappdata}') + '\DWSIM\';
-
-  // Convert single backslashes to double-escaped backslashes to keep the
-  // Python raw-string literal format consistent.
   StringChangeEx(NewPath, '\', '\\', True);
-
-  // Replace every occurrence (there should be exactly one).
   StringChangeEx(FileContent, OldPath, NewPath, True);
 
-  if not SaveStringToFile(ConfigFile, FileContent, False) then
+  // Volver a convertir a AnsiString para guardarlo
+  FileContentAnsi := AnsiString(FileContent);
+
+  if not SaveStringToFile(ConfigFile, FileContentAnsi, False) then
     Log('Could not write updated config.py — DWSIM path NOT updated.')
   else
     Log('config.py updated: DWSIM_INSTALL_PATH set to ' + NewPath);
 end;
-
 // ---------------------------------------------------------------------------
 // CurStepChanged event hook
 // Installs Python before files are copied, and updates config.py after.
