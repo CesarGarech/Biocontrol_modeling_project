@@ -60,7 +60,8 @@ Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flag
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
 ; DWSIM files - Preprocessor directive checks for folder during COMPILATION
-#if exist("..\dependencies\DWSIM")
+; Verificamos si existe el DLL principal de DWSIM para confirmar que la carpeta está lista
+#if FileExists("..\dependencies\DWSIM\DWSIM.Automation.dll")
 Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
 
