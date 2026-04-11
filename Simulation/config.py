@@ -10,8 +10,17 @@ import os
 # ==========================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# DWSIM installation path (adjust to your system)
-DWSIM_INSTALL_PATH = r"C:\\Users\\cesar\\AppData\\Local\\DWSIM\\"
+# DWSIM installation path.
+# Resolution order (first match wins):
+#   1. Environment variable DWSIM_INSTALL_PATH  (set by Docker / CI / power users)
+#   2. %LOCALAPPDATA%\DWSIM  (default Windows location used by the installer)
+#   3. /usr/lib/dwsim         (default Linux/Docker location)
+#   4. Bare fallback so the app still starts without DWSIM
+_default_dwsim = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expandvars("%LOCALAPPDATA%") or "C:\\",
+    "DWSIM"
+) if os.name == "nt" else "/usr/lib/dwsim"
+DWSIM_INSTALL_PATH = os.environ.get("DWSIM_INSTALL_PATH", _default_dwsim)
 
 # DWSIM simulation file
 SIMULATION_FILE = os.path.join(CURRENT_DIR, "ethanol.dwxmz")

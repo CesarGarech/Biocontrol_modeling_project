@@ -22,26 +22,60 @@ echo.
 
 :: ---------------------------------------------------------------------------
 :: Step 1 — Locate Python 3.10 executable
+:: Search order:
+::   a) Hard-coded well-known paths (most reliable; PATH may not be updated yet
+::      in the same process that ran the Python 3.10 silent installer)
+::   b) Windows registry  (works even when PATH is stale)
+::   c) PATH fallback (last resort; may return a different Python version)
 :: ---------------------------------------------------------------------------
 set "PYTHON_EXE="
 
-:: Check common installation paths first
+:: --- a) Hard-coded well-known paths ---
 if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" (
     set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
     goto :FoundPython
 )
-
 if exist "%ProgramFiles%\Python310\python.exe" (
     set "PYTHON_EXE=%ProgramFiles%\Python310\python.exe"
     goto :FoundPython
 )
-
 if exist "C:\Python310\python.exe" (
     set "PYTHON_EXE=C:\Python310\python.exe"
     goto :FoundPython
 )
 
-:: Fallback: search PATH
+:: --- b) Registry search (handles both per-user and system-wide installs) ---
+:: HKCU (per-user installer — InstallAllUsers=0)
+for /f "tokens=2*" %%A in ('reg query "HKCU\SOFTWARE\Python\PythonCore\3.10\InstallPath" /ve 2^>nul') do (
+    if not defined PYTHON_EXE (
+        set "_REG_PATH=%%B"
+        if "!_REG_PATH:~-1!"=="\" (set "_REG_PATH=!_REG_PATH:~0,-1!")
+        if exist "!_REG_PATH!\python.exe" set "PYTHON_EXE=!_REG_PATH!\python.exe"
+    )
+)
+if defined PYTHON_EXE goto :FoundPython
+
+:: HKLM 64-bit (system-wide installer — InstallAllUsers=1)
+for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\Python\PythonCore\3.10\InstallPath" /ve 2^>nul') do (
+    if not defined PYTHON_EXE (
+        set "_REG_PATH=%%B"
+        if "!_REG_PATH:~-1!"=="\" (set "_REG_PATH=!_REG_PATH:~0,-1!")
+        if exist "!_REG_PATH!\python.exe" set "PYTHON_EXE=!_REG_PATH!\python.exe"
+    )
+)
+if defined PYTHON_EXE goto :FoundPython
+
+:: HKLM 32-bit view (rare but possible)
+for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\WOW6432Node\Python\PythonCore\3.10\InstallPath" /ve 2^>nul') do (
+    if not defined PYTHON_EXE (
+        set "_REG_PATH=%%B"
+        if "!_REG_PATH:~-1!"=="\" (set "_REG_PATH=!_REG_PATH:~0,-1!")
+        if exist "!_REG_PATH!\python.exe" set "PYTHON_EXE=!_REG_PATH!\python.exe"
+    )
+)
+if defined PYTHON_EXE goto :FoundPython
+
+:: --- c) PATH fallback (last resort) ---
 for /f "tokens=* usebackq" %%P in (`where python 2^>nul`) do (
     if not defined PYTHON_EXE (
         set "PYTHON_EXE=%%P"
@@ -128,15 +162,26 @@ if !ERRORLEVEL! NEQ 0 (
 echo [INFO] Python dependencies installed successfully.
 
 :: ---------------------------------------------------------------------------
-:: Step 7 — Verify DWSIM installation
+:: Step 7 — Check DWSIM installation (warning only — app works without it)
 :: ---------------------------------------------------------------------------
 echo [INFO] Checking DWSIM installation...
+set "DWSIM_FOUND=0"
+
 if exist "%LOCALAPPDATA%\DWSIM\DWSIM.Automation.dll" (
+    set "DWSIM_FOUND=1"
     echo [INFO] DWSIM found at %LOCALAPPDATA%\DWSIM
-) else (
-    echo [WARNING] DWSIM not found at %LOCALAPPDATA%\DWSIM
-    echo           The Digital Twin module will use synthetic data.
-    echo           Install DWSIM 8.x manually from https://dwsim.org if needed.
+)
+
+if "%DWSIM_FOUND%"=="0" (
+    echo.
+    echo [WARNING] DWSIM was not found at %LOCALAPPDATA%\DWSIM
+    echo           The Digital Twin module will run with synthetic data only.
+    echo.
+    echo           To enable live DWSIM simulation:
+    echo             1. Download DWSIM 8.x from https://dwsim.org/index.php/download/
+    echo             2. Install it (default location is %%LOCALAPPDATA%%\DWSIM)
+    echo             3. Set USE_DWSIM_LIVE = True in Simulation\config.py
+    echo.
 )
 
 :: ---------------------------------------------------------------------------

@@ -231,52 +231,10 @@ begin
 end;
 
 // ---------------------------------------------------------------------------
-// UpdateDWSIMPath
-// Reads {app}\Simulation\config.py and replaces the hard-coded DWSIM path
-// with the actual {localappdata}\DWSIM path used on the target machine.
-// ---------------------------------------------------------------------------
-procedure UpdateDWSIMPath;
-var
-  ConfigFile: String;
-  FileContentAnsi: AnsiString;
-  FileContent: String;
-  OldPath: String;
-  NewPath: String;
-begin
-  ConfigFile := ExpandConstant('{app}\Simulation\config.py');
-
-  if not FileExists(ConfigFile) then
-  begin
-    Log('config.py not found — skipping DWSIM path update.');
-    Exit;
-  end;
-
-  // Cargar como AnsiString
-  if not LoadStringFromFile(ConfigFile, FileContentAnsi) then
-  begin
-    Log('Could not read config.py — skipping DWSIM path update.');
-    Exit;
-  end;
-
-  // Convertir a String normal para modificarlo
-  FileContent := String(FileContentAnsi);
-
-  OldPath := 'C:\\Users\\cesar\\AppData\\Local\\DWSIM\\';
-  NewPath := ExpandConstant('{localappdata}') + '\DWSIM\';
-  StringChangeEx(NewPath, '\', '\\', True);
-  StringChangeEx(FileContent, OldPath, NewPath, True);
-
-  // Volver a convertir a AnsiString para guardarlo
-  FileContentAnsi := AnsiString(FileContent);
-
-  if not SaveStringToFile(ConfigFile, FileContentAnsi, False) then
-    Log('Could not write updated config.py — DWSIM path NOT updated.')
-  else
-    Log('config.py updated: DWSIM_INSTALL_PATH set to ' + NewPath);
-end;
-// ---------------------------------------------------------------------------
 // CurStepChanged event hook
-// Installs Python before files are copied, and updates config.py after.
+// Installs Python before files are copied.
+// (DWSIM path is resolved dynamically at runtime via config.py — no
+//  post-install string patching is needed.)
 // ---------------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
@@ -285,11 +243,6 @@ begin
       begin
         // Install Python before copying files
         InstallPython;
-      end;
-    ssPostInstall:
-      begin
-        // Update the DWSIM path in config.py after all files are in place
-        UpdateDWSIMPath;
       end;
   end;
 end;
