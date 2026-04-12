@@ -65,13 +65,12 @@ Name: "launchafterdone"; Description: "Launch Biocontrol Dashboard now";  GroupD
 ; -------------------------------------------------------------------------
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
-; -------------------------------------------------------------------------
-; DWSIM files — copied recursively to {localappdata}\DWSIM
-; The Check function makes the section optional when the folder is absent
-; -------------------------------------------------------------------------
-Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: DWSIMDependenciesExist
+; DWSIM files - Preprocessor directive checks for folder during COMPILATION
+; Verificamos si existe el DLL principal de DWSIM para confirmar que la carpeta está lista
+#if FileExists("..\dependencies\DWSIM\DWSIM.Automation.dll")
+Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
+#endif
 
-; -------------------------------------------------------------------------
 ; Project root files
 ; -------------------------------------------------------------------------
 Source: "..\main.py";             DestDir: "{app}"; Flags: ignoreversion
