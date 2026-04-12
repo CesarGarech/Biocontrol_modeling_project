@@ -13,6 +13,7 @@ __pycache__/
 
 # Virtual environment
 venv/
+venv310/
 .venv/
 env/
 ENV/
@@ -20,6 +21,12 @@ ENV/
 *.venv
 Pipfile.lock
 poetry.lock
+
+# Setup/Distribution
+build/
+dist/
+*.egg-info/
+*.egg
 
 # Jupyter notebooks
 .ipynb_checkpoints/
@@ -81,7 +88,7 @@ test-results.xml
 # *.png
 *.jpg
 *.jpeg
-*.pdf
+# *.pdf
 figures/
 exports/
 outputs/
@@ -96,3 +103,10 @@ outputs/
 # Optional: ignore notebooks (if only for local experiments)
 *.ipynb
 notebooks/
+
+# Installer dependencies (too large for git, ~700MB+)
+dependencies/
+installer/Output/
+
+# Inno Setup temp files
+*.~is

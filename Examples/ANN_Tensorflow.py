@@ -195,69 +195,69 @@ plt.style.use('seaborn-v0_8-whitegrid')
 
 # --- Gráfica de la pérdida durante el entrenamiento ---
 fig_loss, ax_loss = plt.subplots(figsize=(10, 6))
-ax_loss.plot(history.history['loss'], label='Pérdida de Entrenamiento')
-ax_loss.plot(history.history['val_loss'], label='Pérdida de Validación')
-ax_loss.set_title('Curva de Aprendizaje de la ANN (MSE)')
-ax_loss.set_xlabel('Época')
-ax_loss.set_ylabel('Error Cuadrático Medio (MSE)')
+ax_loss.plot(history.history['loss'], label='Training Loss')
+ax_loss.plot(history.history['val_loss'], label='Validation Loss')
+ax_loss.set_title('ANN Learning Curve (MSE)')
+ax_loss.set_xlabel('Epoch')
+ax_loss.set_ylabel('Mean Squared Error (MSE)')
 ax_loss.legend()
 ax_loss.grid(True)
-ax_loss.set_yscale('log') # Escala logarítmica es útil para ver el detalle
+ax_loss.set_yscale('log') # Logarithmic scale is useful to see detail
 
-# --- Gráficas comparativas de Estados ---
+# --- Comparative Plots of States ---
 fig_states, axs_states = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
-fig_states.suptitle('Comparación: Real vs. EKF vs. ANN - Estados del Proceso', fontsize=16)
+fig_states.suptitle('Comparison: Real vs. EKF vs. ANN - Process States', fontsize=16)
 
-# Biomasa
+# Biomass
 axs_states[0].plot(time_vec, X_real_arr, 'b-', label='X Real')
-axs_states[0].plot(time_vec, X_est_arr, 'r--', label='X Estimada (EKF)')
-axs_states[0].plot(time_vec, X_ann_pred, 'g:', linewidth=3, label='X Predicha (ANN)')
-axs_states[0].set_ylabel('Biomasa (g/L)')
-axs_states[0].set_title('Biomasa (X)')
+axs_states[0].plot(time_vec, X_est_arr, 'r--', label='X Estimated (EKF)')
+axs_states[0].plot(time_vec, X_ann_pred, 'g:', linewidth=3, label='X Predicted (ANN)')
+axs_states[0].set_ylabel('Biomass (g/L)')
+axs_states[0].set_title('Biomass (X)')
 axs_states[0].legend()
 axs_states[0].grid(True)
 
-# Sustrato
+# Substrate
 axs_states[1].plot(time_vec, S_real_arr, 'b-', label='S Real')
-axs_states[1].plot(time_vec, S_est_arr, 'r--', label='S Estimada (EKF)')
-axs_states[1].plot(time_vec, S_ann_pred, 'g:', linewidth=3, label='S Predicha (ANN)')
-axs_states[1].set_ylabel('Sustrato (g/L)')
-axs_states[1].set_title('Sustrato (S)')
+axs_states[1].plot(time_vec, S_est_arr, 'r--', label='S Estimated (EKF)')
+axs_states[1].plot(time_vec, S_ann_pred, 'g:', linewidth=3, label='S Predicted (ANN)')
+axs_states[1].set_ylabel('Substrate (g/L)')
+axs_states[1].set_title('Substrate (S)')
 axs_states[1].legend()
 axs_states[1].grid(True)
 
-# Producto
+# Product
 axs_states[2].plot(time_vec, P_real_arr, 'b-', label='P Real')
-axs_states[2].plot(time_vec, P_est_arr, 'r--', label='P Estimada (EKF)')
-axs_states[2].plot(time_vec, P_ann_pred, 'g:', linewidth=3, label='P Predicha (ANN)')
-axs_states[2].set_xlabel('Tiempo (h)')
-axs_states[2].set_ylabel('Producto (g/L)')
-axs_states[2].set_title('Producto (P)')
+axs_states[2].plot(time_vec, P_est_arr, 'r--', label='P Estimated (EKF)')
+axs_states[2].plot(time_vec, P_ann_pred, 'g:', linewidth=3, label='P Predicted (ANN)')
+axs_states[2].set_xlabel('Time (h)')
+axs_states[2].set_ylabel('Product (g/L)')
+axs_states[2].set_title('Product (P)')
 axs_states[2].legend()
 axs_states[2].grid(True)
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-# --- Gráficas comparativas de Parámetros ---
+# --- Comparative Plots of Parameters ---
 fig_params, axs_params = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-fig_params.suptitle('Comparación: Real vs. EKF vs. ANN - Parámetros del Modelo', fontsize=16)
+fig_params.suptitle('Comparison: Real vs. EKF vs. ANN - Model Parameters', fontsize=16)
 
 # mu_max
 axs_params[0].plot(time_vec, mu_real_arr, 'b-', label=r'$\mu_{max}$ Real')
-axs_params[0].plot(time_vec, mu_est_arr, 'r--', label=r'$\mu_{max}$ Estimada (EKF)')
-axs_params[0].plot(time_vec, mu_ann_pred, 'g:', linewidth=3, label=r'$\mu_{max}$ Predicha (ANN)')
+axs_params[0].plot(time_vec, mu_est_arr, 'r--', label=r'$\mu_{max}$ Estimated (EKF)')
+axs_params[0].plot(time_vec, mu_ann_pred, 'g:', linewidth=3, label=r'$\mu_{max}$ Predicted (ANN)')
 axs_params[0].set_ylabel(r'$\mu_{max}$ (1/h)')
-axs_params[0].set_title(r'Tasa Máxima de Crecimiento ($\mu_{max}$)')
+axs_params[0].set_title(r'Maximum Growth Rate ($\mu_{max}$)')
 axs_params[0].legend()
 axs_params[0].grid(True)
 
 # Yxs
 axs_params[1].plot(time_vec, Yxs_real_arr, 'b-', label=r'$Y_{X/S}$ Real')
-axs_params[1].plot(time_vec, Yxs_est_arr, 'r--', label=r'$Y_{X/S}$ Estimada (EKF)')
-axs_params[1].plot(time_vec, Yxs_ann_pred, 'g:', linewidth=3, label=r'$Y_{X/S}$ Predicha (ANN)')
-axs_params[1].set_xlabel('Tiempo (h)')
+axs_params[1].plot(time_vec, Yxs_est_arr, 'r--', label=r'$Y_{X/S}$ Estimated (EKF)')
+axs_params[1].plot(time_vec, Yxs_ann_pred, 'g:', linewidth=3, label=r'$Y_{X/S}$ Predicted (ANN)')
+axs_params[1].set_xlabel('Time (h)')
 axs_params[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)')
-axs_params[1].set_title(r'Rendimiento Biomasa/Sustrato ($Y_{X/S}$)')
+axs_params[1].set_title(r'Biomass/Substrate Yield ($Y_{X/S}$)')
 axs_params[1].legend()
 axs_params[1].grid(True)
 

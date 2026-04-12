@@ -200,79 +200,79 @@ Temp_meas_arr = np.array(Temp_meas_list)
 plt.style.use('seaborn-v0_8-whitegrid') # Estilo de gráfica
 
 fig1, axs1 = plt.subplots(3, 2, figsize=(12, 10))
-fig1.suptitle('Resultados EKF Bioproceso Batch (Python/CasADi)', fontsize=14)
+fig1.suptitle('EKF Results for Batch Bioprocess (Python/CasADi)', fontsize=14)
 
-# Biomasa
+# Biomass
 axs1[0, 0].plot(time_vec, X_real_arr, 'b-', label='X real')
-axs1[0, 0].plot(time_vec, X_est_arr, 'r--', label='X estimada')
-axs1[0, 0].set_xlabel('Tiempo (h)')
-axs1[0, 0].set_ylabel('Biomasa (g/L)')
-axs1[0, 0].set_title('Biomasa')
+axs1[0, 0].plot(time_vec, X_est_arr, 'r--', label='X estimated')
+axs1[0, 0].set_xlabel('Time (h)')
+axs1[0, 0].set_ylabel('Biomass (g/L)')
+axs1[0, 0].set_title('Biomass')
 axs1[0, 0].legend()
 axs1[0, 0].grid(True)
 
-# Medición OD
-axs1[0, 1].plot(time_vec, OD_meas_arr, 'k.-', markersize=3, linewidth=1, label='OD medido')
-axs1[0, 1].set_xlabel('Tiempo (h)')
-axs1[0, 1].set_ylabel('OD (mg/L)')
-axs1[0, 1].set_title('Medición de Oxígeno Disuelto')
+# DO Measurement
+axs1[0, 1].plot(time_vec, OD_meas_arr, 'k.-', markersize=3, linewidth=1, label='DO measured')
+axs1[0, 1].set_xlabel('Time (h)')
+axs1[0, 1].set_ylabel('DO (mg/L)')
+axs1[0, 1].set_title('Dissolved Oxygen Measurement')
 axs1[0, 1].legend()
 axs1[0, 1].grid(True)
 
-# Sustrato
+# Substrate
 axs1[1, 0].plot(time_vec, S_real_arr, 'b-', label='S real')
-axs1[1, 0].plot(time_vec, S_est_arr, 'r--', label='S estimada')
-axs1[1, 0].set_xlabel('Tiempo (h)')
-axs1[1, 0].set_ylabel('Sustrato (g/L)')
-axs1[1, 0].set_title('Sustrato')
+axs1[1, 0].plot(time_vec, S_est_arr, 'r--', label='S estimated')
+axs1[1, 0].set_xlabel('Time (h)')
+axs1[1, 0].set_ylabel('Substrate (g/L)')
+axs1[1, 0].set_title('Substrate')
 axs1[1, 0].legend()
 axs1[1, 0].grid(True)
 
-# Medición pH
-axs1[1, 1].plot(time_vec, pH_meas_arr, 'k.-', markersize=3, linewidth=1, label='pH medido')
-axs1[1, 1].set_xlabel('Tiempo (h)')
+# pH Measurement
+axs1[1, 1].plot(time_vec, pH_meas_arr, 'k.-', markersize=3, linewidth=1, label='pH measured')
+axs1[1, 1].set_xlabel('Time (h)')
 axs1[1, 1].set_ylabel('pH')
-axs1[1, 1].set_title('Medición de pH')
+axs1[1, 1].set_title('pH Measurement')
 axs1[1, 1].legend()
 axs1[1, 1].grid(True)
 
-# Producto
+# Product
 axs1[2, 0].plot(time_vec, P_real_arr, 'b-', label='P real')
-axs1[2, 0].plot(time_vec, P_est_arr, 'r--', label='P estimada')
-axs1[2, 0].set_xlabel('Tiempo (h)')
-axs1[2, 0].set_ylabel('Producto (g/L)')
-axs1[2, 0].set_title('Producto')
+axs1[2, 0].plot(time_vec, P_est_arr, 'r--', label='P estimated')
+axs1[2, 0].set_xlabel('Time (h)')
+axs1[2, 0].set_ylabel('Product (g/L)')
+axs1[2, 0].set_title('Product')
 axs1[2, 0].legend()
 axs1[2, 0].grid(True)
 
-# Medición Temperatura
-axs1[2, 1].plot(time_vec, Temp_meas_arr, 'k.-', markersize=3, linewidth=1, label='T medida')
-axs1[2, 1].set_xlabel('Tiempo (h)')
-axs1[2, 1].set_ylabel('Temperatura (°C)')
-axs1[2, 1].set_title('Medición de Temperatura')
+# Temperature Measurement
+axs1[2, 1].plot(time_vec, Temp_meas_arr, 'k.-', markersize=3, linewidth=1, label='T measured')
+axs1[2, 1].set_xlabel('Time (h)')
+axs1[2, 1].set_ylabel('Temperature (°C)')
+axs1[2, 1].set_title('Temperature Measurement')
 axs1[2, 1].legend()
 axs1[2, 1].grid(True)
 
-plt.tight_layout(rect=[0, 0.03, 1, 0.96]) # Ajustar layout para el título
+plt.tight_layout(rect=[0, 0.03, 1, 0.96]) # Adjust layout for title
 
-# Figura para parámetros estimados
+# Figure for estimated parameters
 fig2, axs2 = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
-fig2.suptitle('Estimación de Parámetros (Python/CasADi)', fontsize=14)
+fig2.suptitle('Parameter Estimation (Python/CasADi)', fontsize=14)
 
 # mu_max
 axs2[0].plot(time_vec, mu_real_arr, 'b-', label=r'$\mu_{max}$ real')
-axs2[0].plot(time_vec, mu_est_arr, 'r--', label=r'$\mu_{max}$ estimada')
+axs2[0].plot(time_vec, mu_est_arr, 'r--', label=r'$\mu_{max}$ estimated')
 axs2[0].set_ylabel(r'$\mu_{max}$ (1/h)')
-axs2[0].set_title(r'Estimación de $\mu_{max}$')
+axs2[0].set_title(r'Estimation of $\mu_{max}$')
 axs2[0].legend()
 axs2[0].grid(True)
 
 # Yxs
 axs2[1].plot(time_vec, Yxs_real_arr, 'b-', label=r'$Y_{X/S}$ real')
-axs2[1].plot(time_vec, Yxs_est_arr, 'r--', label=r'$Y_{X/S}$ estimada')
-axs2[1].set_xlabel('Tiempo (h)')
+axs2[1].plot(time_vec, Yxs_est_arr, 'r--', label=r'$Y_{X/S}$ estimated')
+axs2[1].set_xlabel('Time (h)')
 axs2[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)')
-axs2[1].set_title(r'Estimación de $Y_{X/S}$')
+axs2[1].set_title(r'Estimation of $Y_{X/S}$')
 axs2[1].legend()
 axs2[1].grid(True)
 
