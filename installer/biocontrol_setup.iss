@@ -3,8 +3,9 @@
 ; =============================================================================
 ; Prerequisites:
 ;   - Inno Setup 6.x  (https://jrsoftware.org/isinfo.php)
-;   - installer\dependencies\python-3.10.9-amd64.exe  (download separately)
-;   - installer\dependencies\DWSIM\*                  (copy from DWSIM install)
+;   - installer\dependencies\python-3.10.9-amd64.exe      (download separately)
+;   - installer\dependencies\dotnet-runtime-8.0-win-x64.exe (download separately)
+;   - installer\dependencies\DWSIM\* (copy from DWSIM install)
 ; Compile:
 ;   iscc /DAppVersion=1.0.0 biocontrol_setup.iss
 ; =============================================================================
@@ -26,31 +27,23 @@ AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\BiocontrolDashboard
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-; Require 64-bit Windows 10 or later
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 MinVersion=10.0.17763
-; Require admin privileges so Python can be installed system-wide
 PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=BiocontrolDashboard-Setup-v{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-; Icon for the installer window
-; SetupIconFile=..\Images\icon.ico
-
-; Uninstaller settings
-UninstallDisplayIcon={app}\run_dashboard.bat
-UninstallDisplayName={#AppName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries (Streamlit, TensorFlow, CasADi, etc.)%n%nThis may take several minutes depending on your internet connection.%nClick Next to continue.
-spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias (Streamlit, TensorFlow, CasADi, etc.)%n%nEsto puede tardar varios minutos dependiendo de su conexión a internet.%nHaga clic en Siguiente para continuar.
+english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
+spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias%n%nHaga clic en Siguiente para continuar.
 
 english.InstallingLibraries=Installing Python libraries, please wait...
 spanish.InstallingLibraries=Instalando librerías Python, por favor espere...
@@ -60,9 +53,10 @@ Name: "desktopicon";     Description: "{cm:CreateDesktopIcon}";          GroupDe
 Name: "launchafterdone"; Description: "Launch Biocontrol Dashboard now";  GroupDescription: "After installation:";  Flags: unchecked
 
 [Files]
-; -------------------------------------------------------------------------
-; Python 3.10.9 installer — extracted to {tmp}, deleted after installation
-; -------------------------------------------------------------------------
+; .NET Runtime 8.0 installer
+Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8Installed
+
+; Python 3.10.9 installer
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
 ; DWSIM files - Preprocessor directive checks for folder during COMPILATION
@@ -72,7 +66,6 @@ Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recur
 #endif
 
 ; Project root files
-; -------------------------------------------------------------------------
 Source: "..\main.py";             DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Menu.py";             DestDir: "{app}"; Flags: ignoreversion
 Source: "..\theory.py";           DestDir: "{app}"; Flags: ignoreversion
@@ -84,9 +77,7 @@ Source: "..\verify_python.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\version.py";          DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CHANGELOG.md";        DestDir: "{app}"; Flags: ignoreversion
 
-; -------------------------------------------------------------------------
 ; Project directories (recursive)
-; -------------------------------------------------------------------------
 Source: "..\Body\*";        DestDir: "{app}\Body";        Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\Utils\*";       DestDir: "{app}\Utils";       Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\Data\*";        DestDir: "{app}\Data";        Flags: recursesubdirs createallsubdirs ignoreversion
@@ -96,22 +87,15 @@ Source: "..\References\*";  DestDir: "{app}\References";  Flags: recursesubdirs 
 Source: "..\Examples\*";    DestDir: "{app}\Examples";    Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\test_data\*";   DestDir: "{app}\test_data";   Flags: recursesubdirs createallsubdirs ignoreversion
 
-; -------------------------------------------------------------------------
-; Post-install batch script — deleted after it runs
-; -------------------------------------------------------------------------
+; Post-install batch script
 Source: "post_install.bat"; DestDir: "{app}"; Flags: ignoreversion deleteafterinstall
 
 [Icons]
-; Start Menu shortcut
-Name: "{group}\{#AppName}";           Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"
+Name: "{group}\{#AppName}";            Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-
-; Desktop shortcut (optional task)
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; Step 1 — Install Python silently (handled in CurStepChanged via Code section)
-; Step 2 — Run post_install.bat to create venv + install libraries
 Filename: "{app}\post_install.bat"; \
     Description: "{cm:InstallingLibraries}"; \
     Parameters: """{app}"""; \
@@ -119,7 +103,6 @@ Filename: "{app}\post_install.bat"; \
     Flags: runhidden waituntilterminated; \
     StatusMsg: "{cm:InstallingLibraries}"
 
-; Step 3 — Optionally launch the dashboard when the user checks the task
 Filename: "{app}\run_dashboard.bat"; \
     Description: "Launch {#AppName}"; \
     WorkingDir: "{app}"; \
@@ -131,10 +114,54 @@ Type: filesandordirs; Name: "{app}\.venv"
 Type: filesandordirs; Name: "{app}\__pycache__"
 Type: filesandordirs; Name: "{app}\Output"
 
-; =============================================================================
-; Pascal Script (Code section)
-; =============================================================================
 [Code]
+
+// ---------------------------------------------------------------------------
+// IsDotNet8Installed
+// Verifica si .NET 8 Desktop Runtime (x64) está instalado mediante el registro
+// ---------------------------------------------------------------------------
+function IsDotNet8Installed: Boolean;
+begin
+  // Revisa la clave oficial del registro de .NET para la versión 8.0 x64
+  Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0') or
+            RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0');
+end;
+
+// ---------------------------------------------------------------------------
+// InstallDotNet
+// Ejecuta el instalador de .NET 8 silenciosamente si no está instalado
+// ---------------------------------------------------------------------------
+procedure InstallDotNet;
+var
+  InstallerPath: String;
+  ResultCode: Integer;
+begin
+  if IsDotNet8Installed then
+  begin
+    Log('.NET 8 Runtime already installed — skipping.');
+    Exit;
+  end;
+
+  InstallerPath := ExpandConstant('{tmp}\dotnet-runtime-8.0-win-x64.exe');
+  Log('Installing .NET 8 from: ' + InstallerPath);
+
+  if not FileExists(InstallerPath) then
+  begin
+    MsgBox('.NET 8 installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
+           'Please ensure the installer was bundled correctly.', mbError, MB_OK);
+    Exit;
+  end;
+
+  // Ejecución silenciosa para el instalador de Microsoft (/install /quiet /norestart)
+  if not Exec(InstallerPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    MsgBox('.NET 8 installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
+  end
+  else
+  begin
+    Log('.NET 8 installed successfully (exit code ' + IntToStr(ResultCode) + ').');
+  end;
+end;
 
 // ---------------------------------------------------------------------------
 // IsPython310Installed
@@ -147,7 +174,6 @@ var
 begin
   Result := False;
 
-  // Check system-wide install (HKLM)
   SubKey := 'SOFTWARE\Python\PythonCore\3.10\InstallPath';
   if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) then
   begin
@@ -158,7 +184,6 @@ begin
     end;
   end;
 
-  // Check per-user install (HKCU)
   if RegQueryStringValue(HKCU, SubKey, '', InstalledPath) then
   begin
     if InstalledPath <> '' then
@@ -168,7 +193,6 @@ begin
     end;
   end;
 
-  // Also check the 64-bit registry hive explicitly
   SubKey := 'SOFTWARE\WOW6432Node\Python\PythonCore\3.10\InstallPath';
   if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) then
   begin
@@ -183,7 +207,6 @@ end;
 // ---------------------------------------------------------------------------
 // InstallPython
 // Runs the bundled Python 3.10.9 installer silently.
-// Skips automatically when Python 3.10 is already installed.
 // ---------------------------------------------------------------------------
 procedure InstallPython;
 var
@@ -206,9 +229,7 @@ begin
     Exit;
   end;
 
-  if not Exec(InstallerPath,
-              '/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1 Include_test=0',
-              '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if not Exec(InstallerPath, '/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1 Include_test=0', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     MsgBox('Python 3.10.9 installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
   end
@@ -219,76 +240,16 @@ begin
 end;
 
 // ---------------------------------------------------------------------------
-// DWSIMDependenciesExist
-// Returns True when the bundled DWSIM folder is present.
-// This is used as a [Files] Check function so the DWSIM copy is skipped
-// gracefully when the installer was built without bundling DWSIM.
-// ---------------------------------------------------------------------------
-function DWSIMDependenciesExist: Boolean;
-begin
-  Result := DirExists(ExpandConstant('{src}\..\dependencies\DWSIM'));
-end;
-
-// ---------------------------------------------------------------------------
-// UpdateDWSIMPath
-// Reads {app}\Simulation\config.py and replaces the hard-coded DWSIM path
-// with the actual {localappdata}\DWSIM path used on the target machine.
-// ---------------------------------------------------------------------------
-procedure UpdateDWSIMPath;
-var
-  ConfigFile: String;
-  FileContentAnsi: AnsiString;
-  FileContent: String;
-  OldPath: String;
-  NewPath: String;
-begin
-  ConfigFile := ExpandConstant('{app}\Simulation\config.py');
-
-  if not FileExists(ConfigFile) then
-  begin
-    Log('config.py not found — skipping DWSIM path update.');
-    Exit;
-  end;
-
-  // Cargar como AnsiString
-  if not LoadStringFromFile(ConfigFile, FileContentAnsi) then
-  begin
-    Log('Could not read config.py — skipping DWSIM path update.');
-    Exit;
-  end;
-
-  // Convertir a String normal para modificarlo
-  FileContent := String(FileContentAnsi);
-
-  OldPath := 'C:\\Users\\cesar\\AppData\\Local\\DWSIM\\';
-  NewPath := ExpandConstant('{localappdata}') + '\DWSIM\';
-  StringChangeEx(NewPath, '\', '\\', True);
-  StringChangeEx(FileContent, OldPath, NewPath, True);
-
-  // Volver a convertir a AnsiString para guardarlo
-  FileContentAnsi := AnsiString(FileContent);
-
-  if not SaveStringToFile(ConfigFile, FileContentAnsi, False) then
-    Log('Could not write updated config.py — DWSIM path NOT updated.')
-  else
-    Log('config.py updated: DWSIM_INSTALL_PATH set to ' + NewPath);
-end;
-// ---------------------------------------------------------------------------
 // CurStepChanged event hook
-// Installs Python before files are copied, and updates config.py after.
+// Installs .NET y Python antes de copiar los archivos.
 // ---------------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   case CurStep of
     ssInstall:
       begin
-        // Install Python before copying files
+        InstallDotNet;
         InstallPython;
-      end;
-    ssPostInstall:
-      begin
-        // Update the DWSIM path in config.py after all files are in place
-        UpdateDWSIMPath;
       end;
   end;
 end;
