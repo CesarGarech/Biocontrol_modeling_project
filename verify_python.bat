@@ -1,5 +1,5 @@
 @echo off
-REM Verification script for Python 3.10.x, DWSIM, and .NET Runtime 8.0
+REM Verification script for Python 3.10.x, DWSIM, and .NET Runtime (>= 8.0)
 setlocal enabledelayedexpansion
 
 set "PYTHON_VER=3.10.14"
@@ -39,13 +39,19 @@ if not exist "%LOCALAPPDATA%\DWSIM\DWSIM.Automation.dll" (
     echo [SKIP] DWSIM verified in LocalAppData.
 )
 
-:: Evaluation of .NET
-dotnet --list-runtimes 2>nul | findstr /c:"Microsoft.NETCore.App %DOTNET_VER%" >nul
-if !ERRORLEVEL! NEQ 0 (
+:: Evaluation of .NET (>= 8)
+set "DOTNET_OK=0"
+for /f "tokens=2" %%A in ('dotnet --list-runtimes 2^>nul ^| findstr "Microsoft.NETCore.App"') do (
+    for /f "tokens=1 delims=." %%V in ("%%A") do (
+        if %%V GEQ 8 set "DOTNET_OK=1"
+    )
+)
+
+if "!DOTNET_OK!"=="0" (
     echo [INFO] Installing .NET %DOTNET_VER% via winget...
     winget install Microsoft.DotNet.Runtime.8 --silent --accept-package-agreements --accept-source-agreements
 ) else (
-    echo [SKIP] .NET Runtime 8.0 verified correctly.
+    echo [SKIP] .NET Runtime ^>= 8.0 verified correctly.
 )
 
 exit /b 0
