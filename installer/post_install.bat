@@ -28,7 +28,6 @@ echo.
 echo [INFO] Evaluating Python 3.10.x...
 set "PYTHON_EXE="
 
-:: Search in known paths
 if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
 if exist "%ProgramFiles%\Python310\python.exe" set "PYTHON_EXE=%ProgramFiles%\Python310\python.exe"
 if exist "C:\Python310\python.exe" set "PYTHON_EXE=C:\Python310\python.exe"
@@ -67,15 +66,23 @@ if "%DWSIM_FOUND%"=="0" (
 )
 
 :: ---------------------------------------------------------------------------
-:: Step 3 — Evaluate and Install .NET Runtime
+:: Step 3 — Evaluate and Install .NET Runtime (>= Version)
 :: ---------------------------------------------------------------------------
-echo [INFO] Evaluating .NET Runtime %DOTNET_VER%...
-dotnet --list-runtimes 2>nul | findstr /c:"Microsoft.NETCore.App %DOTNET_VER%" >nul
-if %ERRORLEVEL% NEQ 0 (
+echo [INFO] Evaluating .NET Runtime (requires v%DOTNET_VER% or higher)...
+set "DOTNET_OK=0"
+
+:: Extraer versiones instaladas y verificar si alguna es >= 8
+for /f "tokens=2" %%A in ('dotnet --list-runtimes 2^>nul ^| findstr "Microsoft.NETCore.App"') do (
+    for /f "tokens=1 delims=." %%V in ("%%A") do (
+        if %%V GEQ 8 set "DOTNET_OK=1"
+    )
+)
+
+if "!DOTNET_OK!"=="0" (
     echo [INFO] Installing .NET %DOTNET_VER% via winget...
     winget install Microsoft.DotNet.Runtime.8 --silent --accept-package-agreements --accept-source-agreements
 ) else (
-    echo [SKIP] .NET Runtime already configured on the system.
+    echo [SKIP] .NET Runtime 8.0 or higher is already configured on the system.
 )
 
 :: ---------------------------------------------------------------------------

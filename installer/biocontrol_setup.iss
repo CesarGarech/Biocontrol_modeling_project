@@ -42,8 +42,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
-spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias%n%nHaga clic en Siguiente para continuar.
+english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0 or higher%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
+spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0 o superior%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias%n%nHaga clic en Siguiente para continuar.
 
 english.InstallingLibraries=Installing Python libraries, please wait...
 spanish.InstallingLibraries=Instalando librerías Python, por favor espere...
@@ -54,7 +54,7 @@ Name: "launchafterdone"; Description: "Launch Biocontrol Dashboard now";  GroupD
 
 [Files]
 ; .NET Runtime 8.0 installer
-Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8Installed
+Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8OrHigherInstalled
 
 ; Python 3.10.9 installer
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
@@ -110,44 +110,85 @@ Filename: "{app}\run_dashboard.bat"; \
     Tasks: launchafterdone
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\.venv"
+Type: filesandordirs; Name: "{localappdata}\BiocontrolDashboard\.venv"
+Type: filesandordirs; Name: "{localappdata}\BiocontrolDashboard"
 Type: filesandordirs; Name: "{app}\__pycache__"
 Type: filesandordirs; Name: "{app}\Output"
 
 [Code]
 
 // ---------------------------------------------------------------------------
-// IsDotNet8Installed
-// Verifica si .NET 8 Desktop Runtime (x64) está instalado mediante el registro
+// IsDotNet8OrHigherInstalled
+// Verifica si existe .NET 8, 9 o superior en el registro.
 // ---------------------------------------------------------------------------
-function IsDotNet8Installed: Boolean;
+function IsDotNet8OrHigherInstalled: Boolean;
+var
+  Versions: TArrayOfString;
+  I, MajorVersion, PosDot: Integer;
+  BaseKey: String;
 begin
-  // Revisa la clave oficial del registro de .NET para la versión 8.0 x64
-  Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0') or
-            RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App\8.0');
+  Result := False;
+  
+  // Revisar clave oficial de 64 bits
+  BaseKey := 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
+  if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
+  begin
+    for I := 0 to GetArrayLength(Versions) - 1 do
+    begin
+      PosDot := Pos('.', Versions[I]);
+      if PosDot > 0 then
+      begin
+        MajorVersion := StrToIntDef(Copy(Versions[I], 1, PosDot - 1), 0);
+        if MajorVersion >= 8 then
+        begin
+          Result := True;
+          Exit;
+        end;
+      end;
+    end;
+  end;
+
+  // Revisar clave de WOW6432Node
+  BaseKey := 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
+  if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
+  begin
+    for I := 0 to GetArrayLength(Versions) - 1 do
+    begin
+      PosDot := Pos('.', Versions[I]);
+      if PosDot > 0 then
+      begin
+        MajorVersion := StrToIntDef(Copy(Versions[I], 1, PosDot - 1), 0);
+        if MajorVersion >= 8 then
+        begin
+          Result := True;
+          Exit;
+        end;
+      end;
+    end;
+  end;
 end;
 
 // ---------------------------------------------------------------------------
 // InstallDotNet
-// Ejecuta el instalador de .NET 8 silenciosamente si no está instalado
+// Ejecuta el instalador de .NET silenciosamente si no se cumple el requisito
 // ---------------------------------------------------------------------------
 procedure InstallDotNet;
 var
   InstallerPath: String;
   ResultCode: Integer;
 begin
-  if IsDotNet8Installed then
+  if IsDotNet8OrHigherInstalled then
   begin
-    Log('.NET 8 Runtime already installed — skipping.');
+    Log('.NET >= 8 Runtime already installed — skipping.');
     Exit;
   end;
 
-  InstallerPath := ExpandConstant('{tmp}\dotnet-runtime-8.0-win-x64.exe');
-  Log('Installing .NET 8 from: ' + InstallerPath);
+  InstallerPath := ExpandConstant('{tmp}\dotnet-sdk-8.0.419-win-x64.exe');
+  Log('Installing .NET from: ' + InstallerPath);
 
   if not FileExists(InstallerPath) then
   begin
-    MsgBox('.NET 8 installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
+    MsgBox('.NET installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
            'Please ensure the installer was bundled correctly.', mbError, MB_OK);
     Exit;
   end;
@@ -155,11 +196,11 @@ begin
   // Ejecución silenciosa para el instalador de Microsoft (/install /quiet /norestart)
   if not Exec(InstallerPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    MsgBox('.NET 8 installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
+    MsgBox('.NET installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
   end
   else
   begin
-    Log('.NET 8 installed successfully (exit code ' + IntToStr(ResultCode) + ').');
+    Log('.NET installed successfully (exit code ' + IntToStr(ResultCode) + ').');
   end;
 end;
 
@@ -241,12 +282,12 @@ end;
 
 // ---------------------------------------------------------------------------
 // CurStepChanged event hook
-// Installs .NET y Python antes de copiar los archivos.
+// Installs .NET y Python después de extraer los archivos a {tmp}.
 // ---------------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   case CurStep of
-    ssInstall:
+    ssPostInstall:
       begin
         InstallDotNet;
         InstallPython;

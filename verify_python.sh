@@ -40,12 +40,25 @@ else
 fi
 echo ""
 
-# Step 3: Evaluate and Install .NET Runtime
-echo "[3/3] Evaluating .NET Runtime ${TARGET_DOTNET_VERSION}..."
-if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App ${TARGET_DOTNET_VERSION}"; then
-    echo "[SKIP] .NET Runtime ${TARGET_DOTNET_VERSION} is already configured."
+# Step 3: Evaluate and Install .NET Runtime (>= 8.0)
+echo "[3/3] Evaluating .NET Runtime (requires >= ${TARGET_DOTNET_VERSION})..."
+DOTNET_OK=0
+if command -v dotnet &> /dev/null; then
+    # Extraer las versiones principales de los runtimes instalados
+    while read -r line; do
+        VERSION=$(echo "$line" | awk '{print $2}')
+        MAJOR_VERSION=$(echo "$VERSION" | cut -d'.' -f1)
+        if [ "$MAJOR_VERSION" -ge 8 ]; then
+            DOTNET_OK=1
+            break
+        fi
+    done <<< "$(dotnet --list-runtimes 2>/dev/null | grep "Microsoft.NETCore.App")"
+fi
+
+if [ "$DOTNET_OK" -eq 1 ]; then
+    echo "[SKIP] .NET Runtime >= ${TARGET_DOTNET_VERSION} is already configured."
 else
-    echo "[INFO] .NET ${TARGET_DOTNET_VERSION} not detected. Installing..."
+    echo "[INFO] .NET ${TARGET_DOTNET_VERSION} (or higher) not detected. Installing..."
     UBUNTU_VERSION=$(lsb_release -rs)
     wget -q https://packages.microsoft.com/config/ubuntu/${UBUNTU_VERSION}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
     sudo dpkg -i /tmp/packages-microsoft-prod.deb
