@@ -155,6 +155,9 @@ def _run_dwsim_simulation(
     P_feed_bar: float,
     x_eth: float,
     x_water: float,
+    light_key,
+    heavy_key,
+    reflux_ratio:float,
 ) -> dict:
     """
     Run a live simulation in DWSIM using DWSIMInterface.
@@ -192,6 +195,9 @@ def _run_dwsim_simulation(
             temperature=T_feed,
             pressure=P_feed_bar,
             composition={"Ethanol": x_eth, "Water": x_water},
+            light_key=light_key,
+            heavy_key=heavy_key,
+            reflux_ratio=reflux_ratio,
         )
 
         # Run simulation
@@ -357,6 +363,27 @@ def simulacion_dwsim_page():
                 st.error(f"⚠️ Composition sum = {comp_sum:.4f}  (must be 1.0)")
             else:
                 st.success(f"Composition sum: {comp_sum:.4f} ✓")
+                
+        with st.expander("3. Column Parameters", expanded=True):
+                light_key = st.selectbox(
+                "Light Key",
+                ["Ethanol", "Water"],  # ideal: dinámico desde DWSIM
+                index=0
+                )
+
+                heavy_key = st.selectbox(
+                    "Heavy Key",
+                    ["Water", "Ethanol"],
+                    index=0
+                )
+
+                reflux_ratio = st.number_input(
+                    "Reflux Ratio (L/D)",
+                    min_value=0.1,
+                    max_value=10.0,
+                    value=float(_cfg.DEFAULT_COLUMN_PARAMETERS["reflux_ratio"]),
+                    step=0.1
+                )
 
         # ── Column parameters ─────────────────────────────────────────────────
         # Column parameters are not exposed to the user; DWSIM defaults are used.
@@ -389,7 +416,7 @@ def simulacion_dwsim_page():
                 with st.spinner("Connecting to DWSIM and running simulation…"):
                     try:
                         results = _run_dwsim_simulation(
-                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, x_water,
+                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, x_water,light_key,heavy_key,reflux_ratio,
                         )
                         st.success("✅ DWSIM simulation completed successfully.")
                     except Exception as exc:  # DWSIMInterfaceError or any other
