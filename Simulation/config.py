@@ -11,7 +11,7 @@ import os
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # DWSIM installation path (adjust to your system)
-DWSIM_INSTALL_PATH = r"C:\\Users\\cesar\\AppData\\Local\\DWSIM\\"
+DWSIM_INSTALL_PATH = r"C:\\Users\\carol\\AppData\\Local\\DWSIM\\"
 
 # DWSIM simulation file
 SIMULATION_FILE = os.path.join(CURRENT_DIR, "ethanol.dwxmz")
@@ -29,7 +29,7 @@ TAG_FEED = "Feed"
 TAG_TOP = "Top"
 TAG_BOTTOM = "Bottom"
 TAG_COLUMN = "SCOL-1"
-TAG_R_COND = "Q_cond"     # Condenser duty (energy stream)
+TAG_R_COND = "R_cond"     # Condenser duty (energy stream)
 TAG_Q_REB = "Q_reb"       # Reboiler duty (energy stream)
 
 # ==========================================

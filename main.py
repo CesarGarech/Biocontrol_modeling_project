@@ -27,7 +27,7 @@ menu_structure = {
         "Regulatory": ["Identification (pH)","Temperature", "pH", "Oxygen", "Cascade-Oxygen", "On-Off Feeding"],
         "Advanced": ["RTO", "RTO Ferm", "NMPC", "LMPC", "EKF-NMPC", "Fuzzy Control"]
     },
-    "🏭 Digital Twin": None
+    "🏭 Digital Twin": ["DWSIM Simulation", "Data Analysis"]
 }
 
 def main():
@@ -173,9 +173,13 @@ def main():
             fuzzy_control.fuzzy_control_page()
 
         # --- DIGITAL TWIN ---
-        elif selected_page == "🏭 Digital Twin":
-            from Body.digital_twin import gemelo_digital
-            gemelo_digital.digital_twin_page()
+        elif selected_page == "DWSIM Simulation":
+            from Body.digital_twin.simulacion_dwsim import simulacion_dwsim_page
+            simulacion_dwsim_page()
+
+        elif selected_page == "Data Analysis":
+            from Body.digital_twin.analisis_datos import analisis_datos_page
+            analisis_datos_page()
 
         else:
             st.warning(f"'{selected_page}' page selected, but no specific loader found. Displaying Home.")

@@ -607,3 +607,6 @@ def _add_iqr_flags(df: pd.DataFrame) -> pd.DataFrame:
         lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
         df_c[f"{col}_outlier"] = (df_c[col] < lo) | (df_c[col] > hi)
     return df_c
+
+if __name__ == '__main__':
+    analisis_datos_page()
