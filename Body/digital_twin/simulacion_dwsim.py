@@ -157,6 +157,7 @@ def _run_dwsim_simulation(
     x_water: float,
     light_key,
     heavy_key,
+    lk_mole_fraction,
     reflux_ratio:float,
 ) -> dict:
     """
@@ -195,9 +196,7 @@ def _run_dwsim_simulation(
             temperature=T_feed,
             pressure=P_feed_bar,
             composition={"Ethanol": x_eth, "Water": x_water},
-            light_key=light_key,
-            heavy_key=heavy_key,
-            reflux_ratio=reflux_ratio,
+
         )
 
         # Run simulation
@@ -375,6 +374,20 @@ def simulacion_dwsim_page():
                     "Heavy Key",
                     ["Water", "Ethanol"],
                     index=0
+                )
+                lk_mole_fraction = st.number_input(
+                    "LK Mole Fraction in Bottoms",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(_cfg.DEFAULT_COLUMN_PARAMETERS["lk_bottoms"]),
+                    step=0.1
+                )
+                hk_mole_fraction = st.number_input(
+                    "HK Mole Fraction in Distillate",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(_cfg.DEFAULT_COLUMN_PARAMETERS["hk_distillate"]),
+                    step=0.1
                 )
 
                 reflux_ratio = st.number_input(
