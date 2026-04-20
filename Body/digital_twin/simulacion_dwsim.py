@@ -345,17 +345,6 @@ def _run_analytic_simulation(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _run_dwsim_simulation(
-<<<<<<< HEAD
-    F_feed_kmolh: float,
-    T_feed: float,
-    P_feed_bar: float,
-    x_eth: float,
-    x_water: float,
-    light_key,
-    heavy_key,
-    lk_mole_fraction,
-    reflux_ratio:float,
-=======
     F_feed_kmolh: float, T_feed_C: float, P_feed_bar: float,
     x_eth: float, x_water: float,
     lk: str, hk: str,
@@ -363,7 +352,6 @@ def _run_dwsim_simulation(
     rr_multiplier: float,
     P_cond_bar: float, P_reb_bar: float,
     tray_height_m: float, condenser_type: str,
->>>>>>> 7496ea34655ce0713c377845172e7e3837117128
 ) -> dict:
     """
     Run a live DWSIM shortcut-column simulation.
@@ -398,10 +386,6 @@ def _run_dwsim_simulation(
             _cfg.TAG_FEED,
             molar_flow=F_feed_kmolh, temperature=T_feed_C, pressure=P_feed_bar,
             composition={"Ethanol": x_eth, "Water": x_water},
-<<<<<<< HEAD
-
-=======
->>>>>>> 7496ea34655ce0713c377845172e7e3837117128
         )
 
         # Shortcut column — using the dedicated API (correct property names)
@@ -582,33 +566,11 @@ def simulacion_dwsim_page():
                 key="hk_dist",
                 help="Lower → purer distillate; more stages / energy required.")
 
-<<<<<<< HEAD
-                heavy_key = st.selectbox(
-                    "Heavy Key",
-                    ["Water", "Ethanol"],
-                    index=0
-                )
-                lk_mole_fraction = st.number_input(
-                    "LK Mole Fraction in Bottoms",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=float(_cfg.DEFAULT_COLUMN_PARAMETERS["lk_bottoms"]),
-                    step=0.1
-                )
-                hk_mole_fraction = st.number_input(
-                    "HK Mole Fraction in Distillate",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=float(_cfg.DEFAULT_COLUMN_PARAMETERS["hk_distillate"]),
-                    step=0.1
-                )
-=======
         # 4 — Reflux ratio
         with st.expander("4. Reflux Ratio", expanded=True):
             rr_multiplier = st.number_input(
                 "R ", 1.01, 10.0,
                 _DEFAULT_RR_MULT, 0.05, key="rr_mult")
->>>>>>> 7496ea34655ce0713c377845172e7e3837117128
 
         # 5 — Column pressures
         with st.expander("5. Column Pressures", expanded=True):
