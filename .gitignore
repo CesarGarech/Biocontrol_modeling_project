@@ -10,6 +10,7 @@ __pycache__/
 # Streamlit-specific
 .streamlit/config.toml
 .streamlit/credentials.toml
+.streamlit/secrets.toml
 
 # Virtual environment
 venv/
