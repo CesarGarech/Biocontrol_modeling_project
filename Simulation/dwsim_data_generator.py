@@ -159,7 +159,7 @@ def generate_dwsim_data(
             # DWSIM uses SI units (kg/s) internally
             target_flow_kg_s = target_flow_kg_h / KG_S_TO_KG_H
             try:
-                dwsim.set_stream_property(
+                dwsim.get_stream_property(
                     config.TAG_FEED, "MassFlow", target_flow_kg_s
                 )
                 dwsim.run_simulation()
