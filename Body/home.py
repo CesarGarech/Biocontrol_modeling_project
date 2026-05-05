@@ -5,13 +5,13 @@ import streamlit as st
 def home_page():
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.image("images/Batch.png", use_container_width=True)
+        st.image("Images/Batch.png", use_container_width=True)
         st.caption("**Figure 1:** Batch Reactor")
     with col2:
-        st.image("images/fed_batch.png", use_container_width=True)
+        st.image("Images/fed_batch.png", use_container_width=True)
         st.caption("**Figure 2:** Fed-Batch Reactor")
     with col3:
-        st.image("images/continous.png", use_container_width=True)
+        st.image("Images/continous.png", use_container_width=True)
         st.caption("**Figure 3:** Continuous Reactor")
 
     st.markdown("""

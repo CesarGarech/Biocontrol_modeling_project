@@ -1,0 +1,23 @@
+# Include all image files
+recursive-include Images *.png *.jpg *.jpeg *.gif
+
+# Include data files
+recursive-include Data *.xlsx *.csv *.txt
+
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Include style and config files
+include style.css
+include requirements.txt
+
+# Include DWSIM dependencies if needed
+recursive-include dependencies *.csv *.ini *.xml
+
+# Include example scripts
+recursive-include Examples *.py *.txt
+
+# Include reference documents
+recursive-include References *.pdf *.md
