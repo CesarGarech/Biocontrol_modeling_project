@@ -20,7 +20,7 @@ if os.path.exists("Images"):
 
 setup(
     name="biocontrol-modeling",
-    version="1.0.0",
+    version="1.0.1",
     author="César Augusto García Echeverry",
     author_email="cesar.garech@gmail.com",
     description="An interactive Streamlit application for teaching modeling, simulation, analysis, and control of bioprocesses",
