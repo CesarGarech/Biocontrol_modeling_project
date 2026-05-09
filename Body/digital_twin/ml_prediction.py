@@ -112,41 +112,96 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
 
 
 # ── Helper: Build Neural Network model ────────────────────────────────────────
-def _build_neural_network(input_dim: int, seed: int = 42) -> keras.Model:
+def _build_neural_network(input_dim: int, seed: int = 42, 
+                         hidden_layers: list = None, 
+                         dropout_rate: float = 0.2,
+                         learning_rate: float = 0.001) -> keras.Model:
     """Build a simple feedforward neural network for regression."""
+    if not _TF_AVAILABLE:
+        raise RuntimeError("TensorFlow/Keras is not available.")
+    
     tf.random.set_seed(seed)
-    model = keras.Sequential([
-        layers.Dense(64, activation='relu', input_shape=(input_dim,)),
-        layers.Dropout(0.2),
-        layers.Dense(32, activation='relu'),
-        layers.Dropout(0.2),
-        layers.Dense(16, activation='relu'),
-        layers.Dense(1)  # Output layer for regression
-    ])
-    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    np.random.seed(seed)
+    
+    # Default architecture if not specified
+    if hidden_layers is None:
+        hidden_layers = [64, 32, 16]
+    
+    model = keras.Sequential()
+    # Input layer
+    model.add(layers.Dense(hidden_layers[0], activation='relu', input_shape=(input_dim,)))
+    model.add(layers.Dropout(dropout_rate))
+    
+    # Hidden layers
+    for units in hidden_layers[1:]:
+        model.add(layers.Dense(units, activation='relu'))
+        model.add(layers.Dropout(dropout_rate))
+    
+    # Output layer
+    model.add(layers.Dense(1))
+    
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate), 
+        loss='mse', 
+        metrics=['mae']
+    )
+    
     return model
 
 
 # ── Helper: Train and evaluate all models ────────────────────────────────────
 def _train_and_evaluate_models(
     X_train, X_test, y_train, y_test, 
-    selected_models: list, seed: int = 42, epochs: int = 100
+    selected_models: list, seed: int = 42, epochs: int = 100,
+    hyperparams: dict = None
 ) -> dict:
     """
-    Train and evaluate selected ML models.
+    Train and evaluate selected ML models with specified hyperparameters.
     
     Returns a dictionary with model names as keys and dictionaries containing
     the trained model, predictions, and metrics as values.
     """
     results = {}
     
-    # Define all available models
+    # Default hyperparameters if not provided
+    if hyperparams is None:
+        hyperparams = {}
+    
+    # Define all available models with hyperparameters
     models_config = {
-        'Neural Network': lambda: _build_neural_network(X_train.shape[1], seed) if _TF_AVAILABLE else None,
-        'Random Forest': lambda: RandomForestRegressor(n_estimators=100, random_state=seed, max_depth=10),
-        'Decision Tree': lambda: DecisionTreeRegressor(random_state=seed, max_depth=8),
-        'SVR': lambda: SVR(kernel='rbf', C=100, gamma='scale'),
-        'Gradient Boosting': lambda: GradientBoostingRegressor(n_estimators=100, random_state=seed, max_depth=5, learning_rate=0.1),
+        'Neural Network': lambda: _build_neural_network(
+            X_train.shape[1], 
+            seed,
+            hidden_layers=hyperparams.get('nn_hidden_layers', [64, 32, 16]),
+            dropout_rate=hyperparams.get('nn_dropout', 0.2),
+            learning_rate=hyperparams.get('nn_learning_rate', 0.001)
+        ) if _TF_AVAILABLE else None,
+        'Random Forest': lambda: RandomForestRegressor(
+            n_estimators=hyperparams.get('rf_n_estimators', 100),
+            random_state=seed,
+            max_depth=hyperparams.get('rf_max_depth', 10),
+            min_samples_split=hyperparams.get('rf_min_samples_split', 2),
+            min_samples_leaf=hyperparams.get('rf_min_samples_leaf', 1)
+        ),
+        'Decision Tree': lambda: DecisionTreeRegressor(
+            random_state=seed,
+            max_depth=hyperparams.get('dt_max_depth', 8),
+            min_samples_split=hyperparams.get('dt_min_samples_split', 2),
+            min_samples_leaf=hyperparams.get('dt_min_samples_leaf', 1)
+        ),
+        'SVR': lambda: SVR(
+            kernel='rbf',
+            C=hyperparams.get('svr_C', 100),
+            epsilon=hyperparams.get('svr_epsilon', 0.1),
+            gamma=hyperparams.get('svr_gamma', 'scale')
+        ),
+        'Gradient Boosting': lambda: GradientBoostingRegressor(
+            n_estimators=hyperparams.get('gb_n_estimators', 100),
+            random_state=seed,
+            max_depth=hyperparams.get('gb_max_depth', 5),
+            learning_rate=hyperparams.get('gb_learning_rate', 0.1),
+            min_samples_split=hyperparams.get('gb_min_samples_split', 2)
+        ),
     }
     
     for model_name in selected_models:
@@ -162,10 +217,11 @@ def _train_and_evaluate_models(
         # Train model
         if model_name == 'Neural Network':
             # Neural network training with reduced verbosity
+            batch_size = hyperparams.get('nn_batch_size', 16)
             history = model.fit(
                 X_train, y_train,
                 epochs=epochs,
-                batch_size=16,
+                batch_size=batch_size,
                 validation_split=0.2,
                 verbose=0,
                 callbacks=[keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
@@ -468,10 +524,138 @@ def ml_prediction_page():
                 help="Seed for reproducibility of random operations (0-9999)"
             )
         
+        with st.expander("3. Hyperparameter Tuning", expanded=False):
+            st.markdown("""
+            Fine-tune model hyperparameters to improve performance. 
+            Adjust these values to find the best configuration for your data.
+            """)
+            
+            # Create tabs for each model type
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "🌲 Random Forest", "🌳 Decision Tree", "⚙️ SVR", 
+                "🚀 Gradient Boosting", "🧠 Neural Network"
+            ])
+            
+            with tab1:
+                st.markdown("**Random Forest Hyperparameters**")
+                rf_n_estimators = st.slider(
+                    "Number of trees", 50, 500, 100, 10,
+                    key="rf_n_estimators",
+                    help="Number of trees in the forest. More trees = better but slower"
+                )
+                rf_max_depth = st.slider(
+                    "Max depth", 3, 30, 10, 1,
+                    key="rf_max_depth",
+                    help="Maximum depth of each tree. None = unlimited"
+                )
+                rf_min_samples_split = st.slider(
+                    "Min samples split", 2, 20, 2, 1,
+                    key="rf_min_samples_split",
+                    help="Minimum samples required to split an internal node"
+                )
+                rf_min_samples_leaf = st.slider(
+                    "Min samples leaf", 1, 20, 1, 1,
+                    key="rf_min_samples_leaf",
+                    help="Minimum samples required to be at a leaf node"
+                )
+            
+            with tab2:
+                st.markdown("**Decision Tree Hyperparameters**")
+                dt_max_depth = st.slider(
+                    "Max depth", 3, 30, 8, 1,
+                    key="dt_max_depth",
+                    help="Maximum depth of the tree"
+                )
+                dt_min_samples_split = st.slider(
+                    "Min samples split", 2, 20, 2, 1,
+                    key="dt_min_samples_split",
+                    help="Minimum samples required to split an internal node"
+                )
+                dt_min_samples_leaf = st.slider(
+                    "Min samples leaf", 1, 20, 1, 1,
+                    key="dt_min_samples_leaf",
+                    help="Minimum samples required to be at a leaf node"
+                )
+            
+            with tab3:
+                st.markdown("**SVR Hyperparameters**")
+                svr_C = st.slider(
+                    "C (Regularization)", 0.1, 1000.0, 100.0, 0.1,
+                    key="svr_C",
+                    help="Regularization parameter. Higher C = less regularization"
+                )
+                svr_epsilon = st.slider(
+                    "Epsilon", 0.01, 1.0, 0.1, 0.01,
+                    key="svr_epsilon",
+                    help="Epsilon in epsilon-SVR model. Larger = wider margin"
+                )
+                svr_gamma = st.selectbox(
+                    "Gamma", ['scale', 'auto', 0.001, 0.01, 0.1, 1.0],
+                    key="svr_gamma",
+                    help="Kernel coefficient. 'scale' is recommended"
+                )
+            
+            with tab4:
+                st.markdown("**Gradient Boosting Hyperparameters**")
+                gb_n_estimators = st.slider(
+                    "Number of boosting stages", 50, 500, 100, 10,
+                    key="gb_n_estimators",
+                    help="Number of boosting stages to perform"
+                )
+                gb_max_depth = st.slider(
+                    "Max depth", 2, 15, 5, 1,
+                    key="gb_max_depth",
+                    help="Maximum depth of individual trees"
+                )
+                gb_learning_rate = st.slider(
+                    "Learning rate", 0.001, 0.5, 0.1, 0.001,
+                    key="gb_learning_rate",
+                    help="Shrinks contribution of each tree. Lower = more robust but slower"
+                )
+                gb_min_samples_split = st.slider(
+                    "Min samples split", 2, 20, 2, 1,
+                    key="gb_min_samples_split",
+                    help="Minimum samples required to split an internal node"
+                )
+            
+            with tab5:
+                st.markdown("**Neural Network Hyperparameters**")
+                nn_layer1 = st.slider(
+                    "Layer 1 neurons", 16, 256, 64, 16,
+                    key="nn_layer1",
+                    help="Number of neurons in first hidden layer"
+                )
+                nn_layer2 = st.slider(
+                    "Layer 2 neurons", 8, 128, 32, 8,
+                    key="nn_layer2",
+                    help="Number of neurons in second hidden layer"
+                )
+                nn_layer3 = st.slider(
+                    "Layer 3 neurons", 4, 64, 16, 4,
+                    key="nn_layer3",
+                    help="Number of neurons in third hidden layer"
+                )
+                nn_dropout = st.slider(
+                    "Dropout rate", 0.0, 0.5, 0.2, 0.05,
+                    key="nn_dropout",
+                    help="Dropout rate for regularization. Higher = more regularization"
+                )
+                nn_learning_rate = st.slider(
+                    "Learning rate", 0.0001, 0.01, 0.001, 0.0001,
+                    key="nn_learning_rate",
+                    help="Learning rate for optimizer. Lower = more stable but slower"
+                )
+                nn_batch_size = st.selectbox(
+                    "Batch size", [8, 16, 32, 64],
+                    index=1,
+                    key="nn_batch_size",
+                    help="Number of samples per gradient update"
+                )
+        
         # Check DWSIM availability
         dwsim_ok, dwsim_msg = validate_dwsim_installation()
         
-        with st.expander("3. DWSIM Comparison", expanded=False):
+        with st.expander("4. DWSIM Comparison", expanded=False):
             st.markdown("""
             Compare the best ML model with **rigorous DWSIM simulations** 
             using the test set conditions.
@@ -574,11 +758,39 @@ def ml_prediction_page():
                         X_train_scaled = scaler.fit_transform(X_train)
                         X_test_scaled = scaler.transform(X_test)
                         
+                        # Collect hyperparameters from sidebar
+                        hyperparams = {
+                            # Random Forest
+                            'rf_n_estimators': rf_n_estimators,
+                            'rf_max_depth': rf_max_depth,
+                            'rf_min_samples_split': rf_min_samples_split,
+                            'rf_min_samples_leaf': rf_min_samples_leaf,
+                            # Decision Tree
+                            'dt_max_depth': dt_max_depth,
+                            'dt_min_samples_split': dt_min_samples_split,
+                            'dt_min_samples_leaf': dt_min_samples_leaf,
+                            # SVR
+                            'svr_C': svr_C,
+                            'svr_epsilon': svr_epsilon,
+                            'svr_gamma': svr_gamma,
+                            # Gradient Boosting
+                            'gb_n_estimators': gb_n_estimators,
+                            'gb_max_depth': gb_max_depth,
+                            'gb_learning_rate': gb_learning_rate,
+                            'gb_min_samples_split': gb_min_samples_split,
+                            # Neural Network
+                            'nn_hidden_layers': [nn_layer1, nn_layer2, nn_layer3],
+                            'nn_dropout': nn_dropout,
+                            'nn_learning_rate': nn_learning_rate,
+                            'nn_batch_size': nn_batch_size,
+                        }
+                        
                         # Train and evaluate models
                         results = _train_and_evaluate_models(
                             X_train_scaled, X_test_scaled,
                             y_train, y_test,
-                            selected_models, random_state, nn_epochs
+                            selected_models, random_state, nn_epochs,
+                            hyperparams=hyperparams
                         )
                         
                         # Store results
