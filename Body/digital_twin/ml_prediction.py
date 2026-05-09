@@ -38,6 +38,24 @@ if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
 
+# Import DWSIM data generator (with safe fallback)
+try:
+    from dwsim_data_generator import (  # noqa: E402
+        generate_dwsim_data,
+        validate_dwsim_installation,
+    )
+    _DWSIM_GENERATOR_OK = True
+except Exception:
+    _DWSIM_GENERATOR_OK = False
+
+    def validate_dwsim_installation():  # type: ignore[misc]
+        """Stub when DWSIM modules are not available."""
+        return False, "DWSIM modules could not be imported."
+
+    def generate_dwsim_data(n_points, perturbations=None):  # type: ignore[misc]
+        """Stub — never called in production when _DWSIM_GENERATOR_OK is False."""
+        raise RuntimeError("dwsim_data_generator is not available.")
+
 # Constants
 _EPSILON = 1e-9
 _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP  # Design target: 80 mol% ethanol
@@ -269,6 +287,116 @@ def _plot_plant_vs_model(y_test, y_pred, model_name: str, timestamps=None) -> pl
     return fig
 
 
+def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame) -> pd.DataFrame:
+    """
+    Run DWSIM simulations for test set conditions and return predictions.
+    
+    Parameters
+    ----------
+    test_data : dict
+        Dictionary containing 'idx_test' with test set indices
+    df_ml : pd.DataFrame
+        Full dataframe with all data including test set
+    
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with DWSIM predictions for test set, including ethanol composition
+    """
+    test_idx = test_data['idx_test']
+    df_test = df_ml.iloc[test_idx].copy()
+    
+    # Extract feed flow perturbations from test set
+    # We need to calculate perturbations relative to base feed flow
+    perturbations = df_test['F_feed_raw'].values - _cfg.FLOW_FEED_BASE
+    
+    # Run DWSIM simulations
+    df_dwsim = generate_dwsim_data(len(test_idx), perturbations=perturbations)
+    
+    # Generate ethanol composition for DWSIM data using the same correlation
+    # but with DWSIM's more accurate flow predictions
+    df_dwsim_composition = _generate_ethanol_composition(df_dwsim, seed=42)
+    
+    return df_dwsim_composition
+
+
+def _plot_dwsim_ml_comparison(
+    y_test, y_ml_pred, y_dwsim_pred, model_name: str, timestamps=None
+) -> plt.Figure:
+    """Create comparison plots between synthetic plant, ML model, and DWSIM."""
+    fig, axs = plt.subplots(3, 1, figsize=(14, 14))
+    fig.suptitle(
+        f"Three-Way Comparison: Synthetic Plant vs ML Model vs DWSIM — {model_name}",
+        fontsize=14, fontweight="bold"
+    )
+    
+    # Prepare x-axis
+    if timestamps is not None:
+        x_axis = timestamps
+        x_label = "Time"
+    else:
+        x_axis = np.arange(len(y_test))
+        x_label = "Sample Index"
+    
+    # Panel 1: Time series comparison (all three)
+    axs[0].plot(x_axis, y_test, 'o-', color='blue', label='Synthetic Plant', 
+                alpha=0.7, markersize=5, linewidth=2)
+    axs[0].plot(x_axis, y_ml_pred, 's-', color='red', label=f'ML Model ({model_name})', 
+                alpha=0.7, markersize=4, linewidth=1.5)
+    axs[0].plot(x_axis, y_dwsim_pred, '^-', color='green', label='DWSIM Simulation', 
+                alpha=0.7, markersize=4, linewidth=1.5)
+    axs[0].set_xlabel(x_label)
+    axs[0].set_ylabel("Ethanol Composition (mol fraction)")
+    axs[0].set_title("Time Series: Three-Way Comparison")
+    axs[0].legend(loc='best')
+    axs[0].grid(True, alpha=0.3)
+    
+    # Panel 2: ML Model vs Synthetic Plant (parity plot)
+    axs[1].scatter(y_test, y_ml_pred, alpha=0.6, s=60, edgecolors='black', 
+                   linewidth=0.5, color='red', label='ML Model')
+    min_val = min(y_test.min(), y_ml_pred.min())
+    max_val = max(y_test.max(), y_ml_pred.max())
+    axs[1].plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2, 
+                label='Perfect Prediction')
+    r2_ml = r2_score(y_test, y_ml_pred)
+    mae_ml = mean_absolute_error(y_test, y_ml_pred)
+    axs[1].text(
+        0.05, 0.95, f'ML Model\nR² = {r2_ml:.4f}\nMAE = {mae_ml:.4f}',
+        transform=axs[1].transAxes,
+        fontsize=11, verticalalignment='top',
+        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+    )
+    axs[1].set_xlabel("Synthetic Plant Ethanol Composition")
+    axs[1].set_ylabel("Predicted Ethanol Composition")
+    axs[1].set_title("Parity Plot: ML Model vs Synthetic Plant")
+    axs[1].legend(loc='lower right')
+    axs[1].grid(True, alpha=0.3)
+    
+    # Panel 3: DWSIM vs Synthetic Plant (parity plot)
+    axs[2].scatter(y_test, y_dwsim_pred, alpha=0.6, s=60, edgecolors='black', 
+                   linewidth=0.5, color='green', label='DWSIM')
+    min_val = min(y_test.min(), y_dwsim_pred.min())
+    max_val = max(y_test.max(), y_dwsim_pred.max())
+    axs[2].plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=2, 
+                label='Perfect Prediction')
+    r2_dwsim = r2_score(y_test, y_dwsim_pred)
+    mae_dwsim = mean_absolute_error(y_test, y_dwsim_pred)
+    axs[2].text(
+        0.05, 0.95, f'DWSIM\nR² = {r2_dwsim:.4f}\nMAE = {mae_dwsim:.4f}',
+        transform=axs[2].transAxes,
+        fontsize=11, verticalalignment='top',
+        bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5)
+    )
+    axs[2].set_xlabel("Synthetic Plant Ethanol Composition")
+    axs[2].set_ylabel("Predicted Ethanol Composition")
+    axs[2].set_title("Parity Plot: DWSIM vs Synthetic Plant")
+    axs[2].legend(loc='lower right')
+    axs[2].grid(True, alpha=0.3)
+    
+    fig.tight_layout()
+    return fig
+
+
 # ── Streamlit page ────────────────────────────────────────────────────────────
 def ml_prediction_page():
     """Main page for ML-based ethanol composition prediction."""
@@ -321,6 +449,28 @@ def ml_prediction_page():
                 key="ml_seed",
                 help="Seed for reproducibility of random operations (0-9999)"
             )
+        
+        # Check DWSIM availability
+        dwsim_ok, dwsim_msg = validate_dwsim_installation()
+        
+        with st.expander("3. DWSIM Comparison", expanded=False):
+            st.markdown("""
+            Compare the best ML model with **rigorous DWSIM simulations** 
+            using the test set conditions.
+            """)
+            
+            enable_dwsim_comparison = st.checkbox(
+                "Enable DWSIM comparison",
+                value=False,
+                key="ml_enable_dwsim",
+                help="Run DWSIM simulations for test set data and compare with ML predictions",
+                disabled=not (dwsim_ok and _DWSIM_GENERATOR_OK),
+            )
+            
+            if not (dwsim_ok and _DWSIM_GENERATOR_OK):
+                st.info(f"ℹ️ DWSIM not available: {dwsim_msg}")
+            else:
+                st.success("✅ DWSIM available for comparison")
     
     # ── Check if data is available ───────────────────────────────────────────
     if "da_df_raw" not in st.session_state:
@@ -504,6 +654,111 @@ def ml_prediction_page():
                         error_stats.style.format({'Value': '{:.4f}'}),
                         use_container_width=True
                     )
+                
+                # ── DWSIM Comparison Section ─────────────────────────────────
+                if enable_dwsim_comparison:
+                    st.markdown("---")
+                    st.subheader("🔬 DWSIM vs ML Model Comparison")
+                    
+                    st.markdown("""
+                    Compare the **best ML model** with **rigorous DWSIM simulations** 
+                    using the test set conditions.
+                    """)
+                    
+                    if st.button("⚗️ Run DWSIM Comparison", key="btn_dwsim_compare"):
+                        use_dwsim = enable_dwsim_comparison and dwsim_ok and _DWSIM_GENERATOR_OK
+                        
+                        if not use_dwsim:
+                            st.error("❌ DWSIM is not available for comparison.")
+                        else:
+                            with st.spinner("Running DWSIM simulations for test set..."):
+                                try:
+                                    # Run DWSIM simulations
+                                    df_dwsim = _run_dwsim_comparison(test_data, df_ml)
+                                    
+                                    # Store DWSIM results
+                                    st.session_state["ml_dwsim_results"] = {
+                                        'predictions': df_dwsim['Ethanol_Composition'].values,
+                                        'df': df_dwsim
+                                    }
+                                    
+                                    st.success(f"✅ DWSIM simulations completed for {len(test_data['y_test'])} test points!")
+                                    
+                                except Exception as exc:
+                                    st.error(f"❌ DWSIM simulation failed: {exc}")
+                                    st.session_state.pop("ml_dwsim_results", None)
+                    
+                    # Display DWSIM comparison results
+                    if "ml_dwsim_results" in st.session_state:
+                        dwsim_results = st.session_state["ml_dwsim_results"]
+                        y_dwsim_pred = dwsim_results['predictions']
+                        
+                        # Get best model predictions
+                        y_test = test_data['y_test']
+                        y_ml_pred = results[best_model_name]['predictions']
+                        timestamps = test_data['timestamps']
+                        
+                        # Calculate metrics for DWSIM
+                        r2_ml = r2_score(y_test, y_ml_pred)
+                        mae_ml = mean_absolute_error(y_test, y_ml_pred)
+                        rmse_ml = np.sqrt(mean_squared_error(y_test, y_ml_pred))
+                        
+                        r2_dwsim = r2_score(y_test, y_dwsim_pred)
+                        mae_dwsim = mean_absolute_error(y_test, y_dwsim_pred)
+                        rmse_dwsim = np.sqrt(mean_squared_error(y_test, y_dwsim_pred))
+                        
+                        # Comparison metrics table
+                        st.markdown("**Performance Comparison:**")
+                        comparison_df = pd.DataFrame({
+                            'Model': [best_model_name, 'DWSIM'],
+                            'R²': [r2_ml, r2_dwsim],
+                            'MAE': [mae_ml, mae_dwsim],
+                            'RMSE': [rmse_ml, rmse_dwsim]
+                        })
+                        
+                        st.dataframe(
+                            comparison_df.style.format({
+                                'R²': '{:.4f}',
+                                'MAE': '{:.4f}',
+                                'RMSE': '{:.4f}',
+                            }).highlight_max(subset=['R²'], color='lightgreen')
+                             .highlight_min(subset=['MAE', 'RMSE'], color='lightgreen'),
+                            use_container_width=True
+                        )
+                        
+                        # Three-way comparison plot
+                        fig_dwsim_comparison = _plot_dwsim_ml_comparison(
+                            y_test, y_ml_pred, y_dwsim_pred, best_model_name, timestamps
+                        )
+                        st.pyplot(fig_dwsim_comparison)
+                        plt.close(fig_dwsim_comparison)
+                        
+                        # Additional comparison insights
+                        with st.expander("📈 Comparison Insights"):
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.markdown(f"**{best_model_name} (ML Model)**")
+                                st.metric("R² Score", f"{r2_ml:.4f}")
+                                st.metric("MAE", f"{mae_ml:.4f}")
+                                st.metric("RMSE", f"{rmse_ml:.4f}")
+                            
+                            with col2:
+                                st.markdown("**DWSIM Simulation**")
+                                st.metric("R² Score", f"{r2_dwsim:.4f}")
+                                st.metric("MAE", f"{mae_dwsim:.4f}")
+                                st.metric("RMSE", f"{rmse_dwsim:.4f}")
+                            
+                            # Winner determination
+                            if r2_ml > r2_dwsim:
+                                st.success(f"🏆 **{best_model_name}** achieves better R² score!")
+                            elif r2_dwsim > r2_ml:
+                                st.success("🏆 **DWSIM** achieves better R² score!")
+                            else:
+                                st.info("Both models show similar R² performance.")
+                    else:
+                        st.info("👆 Press **⚗️ Run DWSIM Comparison** to compare with DWSIM simulations.")
+                
             else:
                 st.info("👆 Press **🚀 Train Models** to see results and comparisons.")
     else:
