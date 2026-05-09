@@ -15,6 +15,10 @@ The purpose of this project is to assist in teaching classical and advanced mode
 - **State Estimation:** Implement an Extended Kalman Filter (EKF) using CasADi to estimate unmeasurable states (Biomass, Substrate, Product) and parameters from noisy simulated measurements.
 - **Regulatory Process Control:** Simulate basic PID control loops for Temperature, pH (split-range), Dissolved Oxygen (via agitation), and On/Off substrate feeding.
 - **Advanced Process Control:** Implement Real-Time Optimization (RTO) and Nonlinear Model Predictive Control (NMPC) using CasADi and IPOPT to find optimal operating profiles (e.g., feed rate) subject to constraints.
+- **Digital Twin for Distillation Columns:** 
+  - DWSIM integration for rigorous distillation simulation
+  - SCADA data generation and analysis with outlier detection (IQR), moving average filtering, and WLS reconciliation
+  - Machine Learning prediction of ethanol composition using multiple models (Neural Networks, Random Forest, Decision Tree, SVR, Gradient Boosting) with comprehensive performance comparison
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
 
 ## 📦 Installation
@@ -119,6 +123,12 @@ Biocontrol_modeling_project/
 │   │   └── avanzado/      # Advanced control (RTO, NMPC)
 │   │       ├── __init__.py
 │   │       ├── rto.py, rto_ferm.py, nmpc.py
+│   ├── digital_twin/       # Digital Twin for distillation columns
+│   │   ├── __init__.py
+│   │   ├── gemelo_digital.py        # Main router for Digital Twin
+│   │   ├── simulacion_dwsim.py      # DWSIM simulation interface
+│   │   ├── analisis_datos.py        # SCADA data analysis and reconciliation
+│   │   └── ml_prediction.py         # Machine Learning prediction models
 │   └── home.py            # Home page content
 ├── Utils/                  # Utility functions
 │   ├── __init__.py
