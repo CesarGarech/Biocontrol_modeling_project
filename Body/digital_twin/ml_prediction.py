@@ -307,7 +307,7 @@ def ml_prediction_page():
                 help="Number of training epochs for Neural Network (only affects NN model)"
             )
             random_state = st.number_input(
-                "Random seed", 0, 9999, 42, step=1,
+                "Random seed", 0, 9999, 42, step=1, format="%d",
                 key="ml_seed",
                 help="Seed for reproducibility"
             )
@@ -380,14 +380,14 @@ def ml_prediction_page():
                                       'Q_cond_raw', 'Q_reb_raw']
                         X = df_ml[feature_cols].values
                         y = df_ml['Ethanol_Composition'].values
-                        indices = np.arange(len(df_ml))
                         
-                        # Split data
-                        X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
-                            X, y, indices,
-                            test_size=test_size/100,
-                            random_state=random_state
-                        )
+                        # Split data and get indices
+                        from sklearn.model_selection import ShuffleSplit
+                        ss = ShuffleSplit(n_splits=1, test_size=test_size/100, random_state=random_state)
+                        train_idx, test_idx = next(ss.split(X))
+                        
+                        X_train, X_test = X[train_idx], X[test_idx]
+                        y_train, y_test = y[train_idx], y[test_idx]
                         
                         # Standardize features
                         scaler = StandardScaler()
@@ -405,8 +405,8 @@ def ml_prediction_page():
                         st.session_state["ml_results"] = results
                         st.session_state["ml_test_data"] = {
                             'y_test': y_test,
-                            'idx_test': idx_test,
-                            'timestamps': df_ml.iloc[idx_test]['Timestamp'].values
+                            'idx_test': test_idx,
+                            'timestamps': df_ml.iloc[test_idx]['Timestamp'].values
                         }
                         st.session_state["ml_scaler"] = scaler
                         st.session_state["ml_feature_cols"] = feature_cols
