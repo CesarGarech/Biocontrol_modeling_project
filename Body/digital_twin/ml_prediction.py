@@ -10,6 +10,7 @@ Interactive ML pipeline for predicting ethanol composition in the distillate:
 """
 import os
 import sys
+from typing import Optional, Dict, Any, List
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -113,7 +114,7 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
 
 # ── Helper: Build Neural Network model ────────────────────────────────────────
 def _build_neural_network(input_dim: int, seed: int = 42, 
-                         hidden_layers: list = None, 
+                         hidden_layers: Optional[List[int]] = None, 
                          dropout_rate: float = 0.2,
                          learning_rate: float = 0.001) -> keras.Model:
     """Build a simple feedforward neural network for regression.
@@ -172,7 +173,7 @@ def _build_neural_network(input_dim: int, seed: int = 42,
 def _train_and_evaluate_models(
     X_train, X_test, y_train, y_test, 
     selected_models: list, seed: int = 42, epochs: int = 100,
-    hyperparams: dict = None
+    hyperparams: Optional[Dict[str, Any]] = None
 ) -> dict:
     """
     Train and evaluate selected ML models with specified hyperparameters.
