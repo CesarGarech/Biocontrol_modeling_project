@@ -18,7 +18,6 @@ except ImportError:
 # --- MODIFICACIÓN AQUÍ ---
 menu_structure = {
     "🏠 Home": None,
-    "🤖 AI Assistant": None,
     "🔬 Models": ["Batch", "Fed-Batch", "Continuous", "Fermentation"],
     "📈 Sensitivity Analysis": None,
     "🔧 Parameter Adjustment": ["Batch Parameter Adjustment", "Fed-Batch Parameter Adjustment", "Fermentation Parameter Adjustment"],
@@ -88,9 +87,6 @@ def main():
         if selected_page == "🏠 Home":
             from Body import home
             home.home_page()
-        elif selected_page == "🤖 AI Assistant":
-            from Body import chatbot
-            chatbot.chatbot_page()
         elif selected_page == "Batch":
             from Body.modeling import lote
             lote.lote_page()

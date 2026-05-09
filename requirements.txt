@@ -13,5 +13,3 @@ scikit-fuzzy
 networkx
 pythonnet>=3.0.0
 # casadi ipopt
-openai>=1.12.0
-tiktoken>=0.5.2

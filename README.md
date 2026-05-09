@@ -16,7 +16,6 @@ The purpose of this project is to assist in teaching classical and advanced mode
 - **Regulatory Process Control:** Simulate basic PID control loops for Temperature, pH (split-range), Dissolved Oxygen (via agitation), and On/Off substrate feeding.
 - **Advanced Process Control:** Implement Real-Time Optimization (RTO) and Nonlinear Model Predictive Control (NMPC) using CasADi and IPOPT to find optimal operating profiles (e.g., feed rate) subject to constraints.
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
-- **🤖 AI Assistant:** Integrated GPT-4-powered chatbot that explains kinetic models, numerical methods, and provides code links and bibliographic references.
 
 ## 📦 Installation
 
@@ -135,57 +134,6 @@ Biocontrol_modeling_project/
 ├── requirements.txt        # Python dependencies list
 └── run_dashboard.bat       # Windows batch script to run the dashboard
 ```
-
-## 🤖 AI Assistant
-
-The project includes an intelligent chatbot assistant powered by OpenAI GPT-4 that helps
-users understand bioprocess modeling concepts interactively.
-
-### Capabilities
-
-- **Kinetic Models**: Explains Monod, Haldane, sigmoidal, and mixed aerobic/anaerobic
-  fermentation models with detailed LaTeX equations, parameter definitions, and typical ranges.
-- **Numerical Methods**: Describes Runge-Kutta integration (RK45, Radau), orthogonal
-  collocation, Levenberg-Marquardt parameter fitting, SQP, and IPOPT optimization.
-- **Advanced Control**: Explains NMPC, RTO, and EKF with mathematical foundations and
-  links to the corresponding source files.
-- **Code Navigation**: Generates direct links to GitHub implementations with line numbers.
-- **Bibliography**: Cites relevant papers and textbooks (Bailey & Ollis, Shuler & Kargi,
-  Biegler, Nocedal & Wright, etc.).
-
-### Setup
-
-1. Get an OpenAI API key from <https://platform.openai.com/api-keys>.
-
-2. Copy the example secrets file and add your key:
-
-   ```bash
-   cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-   # then edit .streamlit/secrets.toml and replace "sk-..." with your real key
-   ```
-
-   ```toml
-   # .streamlit/secrets.toml
-   OPENAI_API_KEY = "sk-your-key-here"
-   ```
-
-   Alternatively, export the key as an environment variable before running the app:
-
-   ```bash
-   export OPENAI_API_KEY="sk-your-key-here"
-   streamlit run main.py
-   ```
-
-3. Run the application and select **🤖 AI Assistant** from the sidebar menu.
-
-### Example Questions
-
-- "Explain the Haldane model with substrate inhibition"
-- "How does orthogonal collocation work in NMPC?"
-- "What optimization method does RTO use?"
-- "Typical parameters for yeast fermentation"
-- "Difference between RK45 and Radau for ODE integration"
-- "What is the Pasteur effect in mixed fermentation?"
 
 ## ✏️ Authors & Contributors
 
