@@ -50,7 +50,7 @@ except Exception:
 
     def validate_dwsim_installation():  # type: ignore[misc]
         """Stub when DWSIM modules are not available."""
-        return False, "DWSIM integration is not available. Please ensure DWSIM is installed and the dwsim_data_generator module is accessible."
+        return False, "DWSIM integration is not available. Please install DWSIM and ensure the dwsim_data_generator module is in your Python path."
 
     def generate_dwsim_data(n_points, perturbations=None):  # type: ignore[misc]
         """Stub — never called in production when _DWSIM_GENERATOR_OK is False."""
@@ -320,7 +320,10 @@ def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame, seed: int = 42) 
     # Extract feed flow perturbations from test set
     # Validate that FLOW_FEED_BASE is available
     if not hasattr(_cfg, 'FLOW_FEED_BASE'):
-        raise AttributeError("FLOW_FEED_BASE not found in config. Please ensure config.py is properly configured.")
+        raise AttributeError(
+            "FLOW_FEED_BASE not found in config.py. "
+            "Please ensure config.py in the Simulation directory contains the FLOW_FEED_BASE constant."
+        )
     
     # Calculate perturbations relative to base feed flow
     perturbations = df_test['F_feed_raw'].values - _cfg.FLOW_FEED_BASE
@@ -483,7 +486,7 @@ def ml_prediction_page():
             )
             
             if not (dwsim_ok and _DWSIM_GENERATOR_OK):
-                st.info(f"ℹ️ DWSIM not available: {dwsim_msg}")
+                st.info(f"DWSIM not available: {dwsim_msg}")
             else:
                 st.success("✅ DWSIM available for comparison")
     
@@ -547,7 +550,10 @@ def ml_prediction_page():
         else:
             if st.button("🚀 Train Models", key="btn_train"):
                 if len(df_ml) < _MIN_TRAINING_SAMPLES:
-                    st.error(f"❌ Not enough data points. Please generate at least {_MIN_TRAINING_SAMPLES} samples in Step 1.")
+                    st.error(
+                        f"❌ Not enough data points. Please generate at least {_MIN_TRAINING_SAMPLES} samples "
+                        f"in Data Analysis → Step 1."
+                    )
                 else:
                     with st.spinner(f"Training {len(selected_models)} models..."):
                         # Prepare features and target
