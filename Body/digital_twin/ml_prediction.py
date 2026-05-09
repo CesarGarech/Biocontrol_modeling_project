@@ -50,7 +50,7 @@ except Exception:
 
     def validate_dwsim_installation():  # type: ignore[misc]
         """Stub when DWSIM modules are not available."""
-        return False, "DWSIM modules could not be imported."
+        return False, "DWSIM integration is not available. Please ensure DWSIM is installed and the dwsim_data_generator module is accessible."
 
     def generate_dwsim_data(n_points, perturbations=None):  # type: ignore[misc]
         """Stub — never called in production when _DWSIM_GENERATOR_OK is False."""
@@ -64,6 +64,15 @@ _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP  # Design target: 80 mol% ethanol
 _ENERGY_RATIO_COEFF = 0.05     # Impact of Q_cond/Q_reb ratio on separation quality
 _FLOW_RATIO_COEFF = 0.03       # Impact of feed/distillate ratio on purity
 _COMPOSITION_NOISE_STD = 0.02  # Process variability (±2% standard deviation)
+
+# Composition bounds and normalization
+_MIN_ETHANOL_COMPOSITION = 0.70   # Minimum ethanol mol fraction in distillate
+_MAX_ETHANOL_COMPOSITION = 0.95   # Maximum ethanol mol fraction in distillate
+_Q_RATIO_CENTER = 0.5             # Center point for Q_cond/Q_reb ratio normalization
+_Q_RATIO_SCALE = 0.5              # Scale factor for Q ratio normalization
+
+# Training constraints
+_MIN_TRAINING_SAMPLES = 10        # Minimum number of samples required for training
 
 
 # ── Helper: Generate ethanol composition based on process conditions ─────────
@@ -85,7 +94,7 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
     # Normalize variables to [0, 1] range for composition calculation
     f_feed_norm = (df_out['F_feed_raw'] - df_out['F_feed_raw'].min()) / (df_out['F_feed_raw'].max() - df_out['F_feed_raw'].min() + _EPSILON)
     f_top_norm = (df_out['F_top_raw'] - df_out['F_top_raw'].min()) / (df_out['F_top_raw'].max() - df_out['F_top_raw'].min() + _EPSILON)
-    q_ratio_norm = (df_out['Q_cond_raw'] / (df_out['Q_reb_raw'] + _EPSILON) - 0.5) / 0.5  # Normalized around design ratio
+    q_ratio_norm = (df_out['Q_cond_raw'] / (df_out['Q_reb_raw'] + _EPSILON) - _Q_RATIO_CENTER) / _Q_RATIO_SCALE
     
     # Physical model: Higher energy ratio → better separation → higher ethanol purity
     # Lower feed/distillate ratio → better separation
@@ -97,7 +106,7 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
     
     # Add process noise (±2% variability)
     noise = rng.normal(0, _COMPOSITION_NOISE_STD, len(df_out))
-    df_out['Ethanol_Composition'] = np.clip(base_composition + noise, 0.70, 0.95)
+    df_out['Ethanol_Composition'] = np.clip(base_composition + noise, _MIN_ETHANOL_COMPOSITION, _MAX_ETHANOL_COMPOSITION)
     
     return df_out
 
@@ -531,8 +540,8 @@ def ml_prediction_page():
             st.warning("⚠️ Please select at least one model from the sidebar.")
         else:
             if st.button("🚀 Train Models", key="btn_train"):
-                if len(df_ml) < 10:
-                    st.error("❌ Not enough data points. Please generate more data in Step 1.")
+                if len(df_ml) < _MIN_TRAINING_SAMPLES:
+                    st.error(f"❌ Not enough data points. Please generate at least {_MIN_TRAINING_SAMPLES} samples in Step 1.")
                 else:
                     with st.spinner(f"Training {len(selected_models)} models..."):
                         # Prepare features and target
