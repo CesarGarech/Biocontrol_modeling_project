@@ -13,13 +13,16 @@ def digital_twin_page():
     st.sidebar.markdown("---")
     dt_option = st.sidebar.radio(
         "Digital Twin — Options:",
-        ["DWSIM Simulation", "Data Analysis"],
+        ["DWSIM Simulation", "Data Analysis", "ML Prediction"],
         key="radio_dt_sub",
     )
 
     if dt_option == "DWSIM Simulation":
         from Body.digital_twin.simulacion_dwsim import simulacion_dwsim_page
         simulacion_dwsim_page()
-    else:
+    elif dt_option == "Data Analysis":
         from Body.digital_twin.analisis_datos import analisis_datos_page
         analisis_datos_page()
+    else:
+        from Body.digital_twin.ml_prediction import ml_prediction_page
+        ml_prediction_page()
