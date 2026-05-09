@@ -12,4 +12,5 @@ tensorflow
 scikit-fuzzy
 networkx
 pythonnet>=3.0.0
+optree
 # casadi ipopt
