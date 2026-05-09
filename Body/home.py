@@ -25,28 +25,30 @@ def home_page():
         (**Camacho & Bordons, 2007; Rawlings et al., 2017**).
         """)
 
-    with st.expander("🤖 Proposed LLM Guide Plan (evaluation stage)"):
+    with st.expander("🤖 NEW: AI Guide Assistant (Beta) - Now Available!"):
         st.markdown("""
-        This is a feasibility proposal to evaluate a **free local LLM assistant (Ollama-based)** in the app.
-
-        **Target capabilities**
-        - Explain equations shown in each section (meaning, variables, assumptions, units).
-        - Explain methods (simulation, estimation, control, optimization) in educational language.
-        - Suggest parameter ranges/initial values based on the selected model and operating mode.
-        - Suggest bibliographic references aligned with the active topic.
-
-        **Suggested technical approach (minimal-risk)**
-        1. Add a new sidebar panel: **"AI Guide (beta)"** with explicit "for educational support" notice.
-        2. Use a local free model via Ollama (e.g., `llama3.1:8b` or `qwen2.5:7b`) to avoid paid APIs.
-        3. Build prompts from the current page context (equations, selected method, user inputs).
-        4. Restrict responses to project context and include references from a curated list.
-        5. Add low/high bounds to suggestions and show confidence/warning messages.
-
-        **Validation plan before production**
-        - Technical: response time, memory/CPU usage, fallback if Ollama is unavailable.
-        - Functional: quality of explanations for equations/methods and relevance of suggested values.
-        - Safety: avoid hallucinated citations, enforce source-only references, educational disclaimer.
-        - UX: collect feedback from students/research users in a pilot.
+        The **AI Guide** is now integrated! Find it in the sidebar (🤖 AI Guide section).
+        
+        **What it does:**
+        - 📖 Explains equations and mathematical models
+        - 🧮 Describes simulation and control methods
+        - 📊 Suggests typical parameter ranges from literature
+        - 📚 Recommends relevant academic references
+        
+        **How to use it:**
+        1. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+        2. Download a model: `ollama pull llama3.1:8b`
+        3. Start server: `ollama serve`
+        4. Enable in sidebar: Check "Activar Asistente IA"
+        5. Ask questions or use quick action buttons!
+        
+        **Features:**
+        - ✅ Free and runs locally (no API costs)
+        - ✅ Curated academic references only
+        - ✅ Works offline after model download
+        - ✅ App works normally even if Ollama is unavailable
+        
+        See the [README](https://github.com/CesarGarech/Biocontrol_modeling_project#-ai-guide-llm-assistant-ollama-based) for detailed setup instructions.
         """)
 
     st.markdown("---") # Visual separator

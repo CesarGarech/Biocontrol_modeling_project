@@ -13,4 +13,5 @@ scikit-fuzzy
 networkx
 pythonnet>=3.0.0
 optree
+requests>=2.28.0
 # casadi ipopt

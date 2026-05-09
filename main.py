@@ -25,6 +25,12 @@ try:
 except ImportError:
     pass
 
+# --- Import LLM UI Component ---
+try:
+    from Utils.llm_ui_component import render_llm_sidebar
+except ImportError:
+    render_llm_sidebar = None  # Fallback if LLM component is not available
+
 # 1. Define la NUEVA estructura del menú jerárquico
 # --- MODIFICACIÓN AQUÍ ---
 menu_structure = {
@@ -88,6 +94,13 @@ def main():
 
     # --- Fin Navegación ---
 
+    # --- Add LLM AI Guide Sidebar Component ---
+    if render_llm_sidebar is not None:
+        try:
+            render_llm_sidebar(selected_page)
+        except Exception as e:
+            # Silent fallback - don't break the app if LLM component fails
+            st.sidebar.caption(f"⚠️ AI Guide no disponible: {str(e)[:50]}")
 
     # --- Carga de la Página Seleccionada (AÑADIR NUEVAS PÁGINAS DE CONTROL) ---
     st.subheader(f"Selected Page: {selected_page}")

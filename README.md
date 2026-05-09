@@ -20,29 +20,65 @@ The purpose of this project is to assist in teaching classical and advanced mode
   - SCADA data generation and analysis with outlier detection (IQR), moving average filtering, and WLS reconciliation
   - Machine Learning prediction of ethanol composition using multiple models (Neural Networks, Random Forest, Decision Tree, SVR, Gradient Boosting) with comprehensive performance comparison
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
+- **AI Guide (Beta):** Optional LLM-powered assistant using Ollama for contextual help with equations, methods, parameters, and references.
 
-## 🤖 Feasibility Plan: LLM Guide (Ollama, free/local)
-This is a proposed plan to evaluate whether an integrated LLM guide is viable for this project.
+## 🤖 AI Guide: LLM Assistant (Ollama-based) - **NOW IMPLEMENTED**
+The AI Guide is now available as an optional feature to assist with bioprocess modeling concepts.
 
-### Intended educational functions
-- Explain equations (variables, assumptions, units, interpretation).
-- Explain methods used in each module (modeling, estimation, control, optimization).
-- Suggest initial/range values for parameters based on the active model and operating mode.
-- Suggest references related to the selected topic.
+### ✅ Implemented Features
+- **Contextual Help:** Explains equations and methods based on the current page
+- **Parameter Suggestions:** Provides typical ranges from literature
+- **Reference Recommendations:** Curated bibliographic references for each topic
+- **Free & Local:** Uses Ollama (no API costs, data stays local)
+- **Graceful Fallback:** App works normally if Ollama is unavailable
 
-### Proposed implementation approach
-1. Add an **"AI Guide (beta)"** panel in Streamlit as an optional assistant.
-2. Connect to a **free local model through Ollama** (e.g., `llama3.1:8b`, `qwen2.5:7b`).
-3. Create contextual prompts from the current screen (equations + selected method + user inputs).
-4. Limit outputs to curated project context and return only references from a verified bibliography list.
-5. Add guardrails: disclaimer, bounded suggestions, no medical/operational guarantees.
+### 🚀 Quick Start Guide
 
-### Evaluation criteria (go/no-go)
-- **Performance:** acceptable latency and local resource usage.
-- **Quality:** clarity/accuracy of equation and method explanations.
-- **Usefulness:** practical quality of suggested parameter ranges.
-- **Reliability:** citation correctness and graceful fallback when Ollama is unavailable.
-- **User adoption:** positive feedback in a pilot with students/research users.
+#### 1. Install Ollama
+```bash
+# Linux/Mac
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows
+# Download from https://ollama.com/download
+```
+
+#### 2. Download a model
+```bash
+# Recommended: Fast and capable
+ollama pull llama3.1:8b
+
+# Alternatives:
+ollama pull qwen2.5:7b    # Good multilingual support
+ollama pull llama3.2:3b   # Smaller, faster
+```
+
+#### 3. Start Ollama server
+```bash
+ollama serve
+```
+
+#### 4. Enable in the app
+- Open the application (`streamlit run main.py`)
+- In the sidebar, find **"🤖 AI Guide (Beta)"**
+- Check **"Activar Asistente IA"**
+- Click **"🔍 Verificar Conexión"** to test
+
+### 💡 Usage Examples
+- **Explain equations:** Click "📖 Explicar método" to understand the current model
+- **Parameter help:** Click "📊 Sugerir parámetros" for typical ranges
+- **Custom questions:** Type in the text area, e.g., "¿Qué significa Ks en Monod?"
+
+### ⚙️ Configuration
+- **Model selection:** Choose from available Ollama models in settings
+- **Custom URL:** Configure if Ollama runs on a different port/host
+- **Chat history:** Last 3 interactions are preserved in the sidebar
+
+### ⚠️ Important Notes
+- **Educational use only:** Suggestions are orientative and require experimental validation
+- **No internet needed:** All processing is local (if using local Ollama)
+- **Model size:** Smaller models (3B-7B) are faster; larger models (13B+) are more capable
+- **References:** Only curated academic references from project documentation are provided
 
 ## 📦 Installation
 
