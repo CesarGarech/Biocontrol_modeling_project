@@ -94,7 +94,7 @@ def _build_neural_network(input_dim: int, seed: int = 42) -> keras.Model:
 # ── Helper: Train and evaluate all models ────────────────────────────────────
 def _train_and_evaluate_models(
     X_train, X_test, y_train, y_test, 
-    selected_models: list, seed: int = 42
+    selected_models: list, seed: int = 42, epochs: int = 100
 ) -> dict:
     """
     Train and evaluate selected ML models.
@@ -128,7 +128,7 @@ def _train_and_evaluate_models(
             # Neural network training with reduced verbosity
             history = model.fit(
                 X_train, y_train,
-                epochs=100,
+                epochs=epochs,
                 batch_size=16,
                 validation_split=0.2,
                 verbose=0,
@@ -301,11 +301,16 @@ def ml_prediction_page():
                 key="ml_test_size",
                 help="Percentage of data reserved for testing"
             )
-            random_state = int(st.number_input(
-                "Random seed", 0, 9999, 42,
+            nn_epochs = st.slider(
+                "Neural Network epochs", 50, 300, 100, 10,
+                key="ml_epochs",
+                help="Number of training epochs for Neural Network (only affects NN model)"
+            )
+            random_state = st.number_input(
+                "Random seed", 0, 9999, 42, step=1,
                 key="ml_seed",
                 help="Seed for reproducibility"
-            ))
+            )
     
     # ── Check if data is available ───────────────────────────────────────────
     if "da_df_raw" not in st.session_state:
@@ -375,10 +380,11 @@ def ml_prediction_page():
                                       'Q_cond_raw', 'Q_reb_raw']
                         X = df_ml[feature_cols].values
                         y = df_ml['Ethanol_Composition'].values
+                        indices = np.arange(len(df_ml))
                         
                         # Split data
                         X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
-                            X, y, np.arange(len(df_ml)),
+                            X, y, indices,
                             test_size=test_size/100,
                             random_state=random_state
                         )
@@ -392,7 +398,7 @@ def ml_prediction_page():
                         results = _train_and_evaluate_models(
                             X_train_scaled, X_test_scaled,
                             y_train, y_test,
-                            selected_models, random_state
+                            selected_models, random_state, nn_epochs
                         )
                         
                         # Store results
