@@ -116,7 +116,26 @@ def _build_neural_network(input_dim: int, seed: int = 42,
                          hidden_layers: list = None, 
                          dropout_rate: float = 0.2,
                          learning_rate: float = 0.001) -> keras.Model:
-    """Build a simple feedforward neural network for regression."""
+    """Build a simple feedforward neural network for regression.
+    
+    Parameters
+    ----------
+    input_dim : int
+        Number of input features
+    seed : int
+        Random seed for reproducibility
+    hidden_layers : list of int or None
+        List of neurons per hidden layer (e.g., [64, 32, 16])
+    dropout_rate : float
+        Dropout rate for regularization
+    learning_rate : float
+        Learning rate for Adam optimizer
+    
+    Returns
+    -------
+    keras.Model
+        Compiled neural network model
+    """
     if not _TF_AVAILABLE:
         raise RuntimeError("TensorFlow/Keras is not available.")
     
@@ -589,11 +608,14 @@ def ml_prediction_page():
                     key="svr_epsilon",
                     help="Epsilon in epsilon-SVR model. Larger = wider margin"
                 )
-                svr_gamma = st.selectbox(
-                    "Gamma", ['scale', 'auto', 0.001, 0.01, 0.1, 1.0],
+                # SVR gamma: keep string values but handle conversion
+                svr_gamma_option = st.selectbox(
+                    "Gamma", ['scale', 'auto'],
                     key="svr_gamma",
                     help="Kernel coefficient. 'scale' is recommended"
                 )
+                # Store as string for sklearn compatibility
+                svr_gamma = svr_gamma_option
             
             with tab4:
                 st.markdown("**Gradient Boosting Hyperparameters**")
