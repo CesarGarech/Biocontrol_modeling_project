@@ -4,9 +4,20 @@ import sys
 
 # --- Añadir carpetas relevantes al path (Ajusta según tu estructura) ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# --- Path resolution for resources (images, data, etc.) ---
+# Change to the script directory to resolve relative paths correctly
+# This is critical for when the app is installed or run from different locations
+os.chdir(script_dir)
+
 # sys.path.append(os.path.dirname(script_dir))
 # sys.path.append(os.path.join(script_dir, 'Body'))
 # sys.path.append(os.path.join(script_dir, 'Utils'))
+
+# --- Path resolution for resources (images, data, etc.) ---
+# Change to the script directory to resolve relative paths correctly
+# This is critical for when the app is installed or run from different locations
+os.chdir(script_dir)
 
 # --- Asumiendo que Utils.kinetics está accesible ---
 try:
