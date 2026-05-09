@@ -21,6 +21,29 @@ The purpose of this project is to assist in teaching classical and advanced mode
   - Machine Learning prediction of ethanol composition using multiple models (Neural Networks, Random Forest, Decision Tree, SVR, Gradient Boosting) with comprehensive performance comparison
 - **Interactive User Interface:** Built with Streamlit (`main.py`) for easy navigation and visualization using Matplotlib.
 
+## 🤖 Feasibility Plan: LLM Guide (Ollama, free/local)
+This is a proposed plan to evaluate whether an integrated LLM guide is viable for this project.
+
+### Intended educational functions
+- Explain equations (variables, assumptions, units, interpretation).
+- Explain methods used in each module (modeling, estimation, control, optimization).
+- Suggest initial/range values for parameters based on the active model and operating mode.
+- Suggest references related to the selected topic.
+
+### Proposed implementation approach
+1. Add an **"AI Guide (beta)"** panel in Streamlit as an optional assistant.
+2. Connect to a **free local model through Ollama** (e.g., `llama3.1:8b`, `qwen2.5:7b`).
+3. Create contextual prompts from the current screen (equations + selected method + user inputs).
+4. Limit outputs to curated project context and return only references from a verified bibliography list.
+5. Add guardrails: disclaimer, bounded suggestions, no medical/operational guarantees.
+
+### Evaluation criteria (go/no-go)
+- **Performance:** acceptable latency and local resource usage.
+- **Quality:** clarity/accuracy of equation and method explanations.
+- **Usefulness:** practical quality of suggested parameter ranges.
+- **Reliability:** citation correctness and graceful fallback when Ollama is unavailable.
+- **User adoption:** positive feedback in a pilot with students/research users.
+
 ## 📦 Installation
 
 ### ⚠️ Important: Python Version Requirement

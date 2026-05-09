@@ -25,6 +25,30 @@ def home_page():
         (**Camacho & Bordons, 2007; Rawlings et al., 2017**).
         """)
 
+    with st.expander("🤖 Proposed LLM Guide Plan (evaluation stage)"):
+        st.markdown("""
+        This is a feasibility proposal to evaluate a **free local LLM assistant (Ollama-based)** in the app.
+
+        **Target capabilities**
+        - Explain equations shown in each section (meaning, variables, assumptions, units).
+        - Explain methods (simulation, estimation, control, optimization) in educational language.
+        - Suggest parameter ranges/initial values based on the selected model and operating mode.
+        - Suggest bibliographic references aligned with the active topic.
+
+        **Suggested technical approach (minimal-risk)**
+        1. Add a new sidebar panel: **"AI Guide (beta)"** with explicit "for educational support" notice.
+        2. Use a local free model via Ollama (e.g., `llama3.1:8b` or `qwen2.5:7b`) to avoid paid APIs.
+        3. Build prompts from the current page context (equations, selected method, user inputs).
+        4. Restrict responses to project context and include references from a curated list.
+        5. Add low/high bounds to suggestions and show confidence/warning messages.
+
+        **Validation plan before production**
+        - Technical: response time, memory/CPU usage, fallback if Ollama is unavailable.
+        - Functional: quality of explanations for equations/methods and relevance of suggested values.
+        - Safety: avoid hallucinated citations, enforce source-only references, educational disclaimer.
+        - UX: collect feedback from students/research users in a pilot.
+        """)
+
     st.markdown("---") # Visual separator
 
     # ========= NEW SECTION: IMPLEMENTED KINETIC MODELS =========
