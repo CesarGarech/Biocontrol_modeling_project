@@ -296,7 +296,7 @@ def _plot_plant_vs_model(y_test, y_pred, model_name: str, timestamps=None) -> pl
     return fig
 
 
-def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame) -> pd.DataFrame:
+def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
     """
     Run DWSIM simulations for test set conditions and return predictions.
     
@@ -306,6 +306,8 @@ def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame) -> pd.DataFrame:
         Dictionary containing 'idx_test' with test set indices
     df_ml : pd.DataFrame
         Full dataframe with all data including test set
+    seed : int, optional
+        Random seed for reproducibility (default: 42)
     
     Returns
     -------
@@ -316,15 +318,19 @@ def _run_dwsim_comparison(test_data: dict, df_ml: pd.DataFrame) -> pd.DataFrame:
     df_test = df_ml.iloc[test_idx].copy()
     
     # Extract feed flow perturbations from test set
-    # We need to calculate perturbations relative to base feed flow
+    # Validate that FLOW_FEED_BASE is available
+    if not hasattr(_cfg, 'FLOW_FEED_BASE'):
+        raise AttributeError("FLOW_FEED_BASE not found in config. Please ensure config.py is properly configured.")
+    
+    # Calculate perturbations relative to base feed flow
     perturbations = df_test['F_feed_raw'].values - _cfg.FLOW_FEED_BASE
     
     # Run DWSIM simulations
     df_dwsim = generate_dwsim_data(len(test_idx), perturbations=perturbations)
     
     # Generate ethanol composition for DWSIM data using the same correlation
-    # but with DWSIM's more accurate flow predictions
-    df_dwsim_composition = _generate_ethanol_composition(df_dwsim, seed=42)
+    # Use the same seed as the rest of the analysis for consistency
+    df_dwsim_composition = _generate_ethanol_composition(df_dwsim, seed=seed)
     
     return df_dwsim_composition
 
@@ -682,8 +688,8 @@ def ml_prediction_page():
                         else:
                             with st.spinner("Running DWSIM simulations for test set..."):
                                 try:
-                                    # Run DWSIM simulations
-                                    df_dwsim = _run_dwsim_comparison(test_data, df_ml)
+                                    # Run DWSIM simulations with same random seed for consistency
+                                    df_dwsim = _run_dwsim_comparison(test_data, df_ml, seed=random_state)
                                     
                                     # Store DWSIM results
                                     st.session_state["ml_dwsim_results"] = {
