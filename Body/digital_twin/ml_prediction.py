@@ -319,7 +319,7 @@ def ml_prediction_page():
             random_state = st.number_input(
                 "Random seed", 0, 9999, 42, step=1, format="%d",
                 key="ml_seed",
-                help="Seed for reproducibility (range 0-9999 provides consistent UI behavior)"
+                help="Seed for reproducibility of random operations (0-9999)"
             )
     
     # ── Check if data is available ───────────────────────────────────────────
@@ -392,8 +392,8 @@ def ml_prediction_page():
                         y = df_ml['Ethanol_Composition'].values
                         
                         # Split data and get indices
-                        ss = ShuffleSplit(n_splits=1, test_size=test_size/100, random_state=random_state)
-                        train_idx, test_idx = next(ss.split(X))
+                        splitter = ShuffleSplit(n_splits=1, test_size=test_size/100, random_state=random_state)
+                        train_idx, test_idx = next(splitter.split(X))
                         
                         X_train, X_test = X[train_idx], X[test_idx]
                         y_train, y_test = y[train_idx], y[test_idx]
