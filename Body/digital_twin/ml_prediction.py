@@ -14,7 +14,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, ShuffleSplit
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
@@ -42,6 +42,11 @@ import config as _cfg  # noqa: E402
 _EPSILON = 1e-9
 _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP  # Design target: 80 mol% ethanol
 
+# Composition model coefficients (empirical correlation)
+_ENERGY_RATIO_COEFF = 0.05     # Impact of Q_cond/Q_reb ratio on separation quality
+_FLOW_RATIO_COEFF = 0.03       # Impact of feed/distillate ratio on purity
+_COMPOSITION_NOISE_STD = 0.02  # Process variability (±2% standard deviation)
+
 
 # ── Helper: Generate ethanol composition based on process conditions ─────────
 def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
@@ -66,10 +71,14 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
     
     # Physical model: Higher energy ratio → better separation → higher ethanol purity
     # Lower feed/distillate ratio → better separation
-    base_composition = _TARGET_ETHANOL_TOP + 0.05 * q_ratio_norm - 0.03 * (f_feed_norm - f_top_norm)
+    base_composition = (
+        _TARGET_ETHANOL_TOP 
+        + _ENERGY_RATIO_COEFF * q_ratio_norm 
+        - _FLOW_RATIO_COEFF * (f_feed_norm - f_top_norm)
+    )
     
     # Add process noise (±2% variability)
-    noise = rng.normal(0, 0.02, len(df_out))
+    noise = rng.normal(0, _COMPOSITION_NOISE_STD, len(df_out))
     df_out['Ethanol_Composition'] = np.clip(base_composition + noise, 0.70, 0.95)
     
     return df_out
@@ -382,7 +391,6 @@ def ml_prediction_page():
                         y = df_ml['Ethanol_Composition'].values
                         
                         # Split data and get indices
-                        from sklearn.model_selection import ShuffleSplit
                         ss = ShuffleSplit(n_splits=1, test_size=test_size/100, random_state=random_state)
                         train_idx, test_idx = next(ss.split(X))
                         
