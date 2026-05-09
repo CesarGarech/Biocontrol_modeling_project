@@ -6,7 +6,7 @@ Provides connection to Ollama API and contextual prompt generation
 
 import json
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import streamlit as st
 
 
@@ -77,7 +77,7 @@ IMPORTANTE:
 
 def build_context_prompt(page_name: str, user_question: str, 
                          equations: Optional[List[str]] = None,
-                         parameters: Optional[Dict[str, any]] = None,
+                         parameters: Optional[Dict[str, Any]] = None,
                          method: Optional[str] = None) -> str:
     """
     Build a contextual prompt based on current page and user input.
@@ -257,7 +257,7 @@ def format_response_with_references(llm_response: str, references: List[str]) ->
     return formatted
 
 
-def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, any]:
+def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, Any]:
     """
     Suggest typical parameter ranges based on literature.
     

@@ -142,7 +142,11 @@ def render_llm_sidebar(current_page: str):
         
         # Show only last 3 interactions
         for i, interaction in enumerate(st.session_state.llm_chat_history[-3:]):
-            with st.sidebar.expander(f"Q{len(st.session_state.llm_chat_history)-3+i+1}: {interaction['question'][:50]}...", expanded=(i == len(st.session_state.llm_chat_history[-3:])-1)):
+            # Calculate question number for display
+            question_number = len(st.session_state.llm_chat_history) - 3 + i + 1
+            question_preview = interaction['question'][:50]
+            
+            with st.sidebar.expander(f"Q{question_number}: {question_preview}...", expanded=(i == len(st.session_state.llm_chat_history[-3:])-1)):
                 st.markdown(f"**P:** {interaction['question']}")
                 st.markdown(f"**R:** {interaction['response']}")
 
