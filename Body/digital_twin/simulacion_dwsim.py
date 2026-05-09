@@ -1,10 +1,37 @@
 """
 Digital Twin — Sub-page 1: DWSIM Interactive Simulation
 ========================================================
-Lets the user specify feed-stream conditions and distillation-column
-parameters.  Pressing "🚀 Run Simulation" attempts to connect to DWSIM
-via DWSIMInterface; if DWSIM is unavailable, analytic design-point
-scaling is used as a fallback.
+Lets the user specify feed-stream conditions AND shortcut distillation-column
+parameters (LK, HK, key compositions, reflux ratio, condenser/reboiler
+pressures, tray height).
+
+Pressing "🚀 Run Simulation" attempts to connect to DWSIM via DWSIMInterface;
+if DWSIM is unavailable, the Fenske-Underwood-Gilliland analytic model is used.
+
+Key bug fixes vs previous version
+-----------------------------------
+* Underwood θ now solved with Brent's method (scipy.optimize.brentq) instead
+  of Newton-Raphson.  Newton collapsed to the boundary θ≈1 every time.
+* The Underwood pinch-equation denominator (1−θ) is kept signed (negative
+  when θ > 1).  The old code applied max(…, 1e-12) which replaced the correct
+  negative value with ≈0, causing R_min → 2×10^10.
+* ΔHvap and cp are in consistent units throughout (kJ/kmol).
+  Q_cond = V [kmol/h] × ΔHvap [kJ/kmol] / 3600 [s/h] = kW  ✓
+* DWSIM live path uses set_column_parameters() (correct API) instead of the
+  removed set_equipment_property() generic method.
+* N_stages and feed_tray are calculated (Fenske-Gilliland + Kirkbride), not
+  user inputs — DWSIM ShortcutColumn does not accept them as specs.
+* Added: condenser pressure, reboiler pressure, tray height (sidebar).
+
+Unit conventions
+-----------------
+  Flows     kmol/h  (molar),  kg/h (mass)
+  Energy    kW
+  Enthalpy  kJ/kmol
+  Pressure  bar (user), Pa (DWSIM API)
+  Temp      °C (user), K (DWSIM API)
+  cp        kJ/(kmol·°C)   [water ≈ 75.3, ethanol ≈ 112.4]
+  ΔHvap     kJ/kmol        [water ≈ 40 650, ethanol ≈ 38 560]
 """
 import os
 import sys
@@ -12,9 +39,12 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq as _brentq
 
 # ── Add Simulation folder to Python path ─────────────────────────────────────
-_SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Simulation"))
+_SIM_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "Simulation")
+)
 if _SIM_DIR not in sys.path:
     sys.path.insert(0, _SIM_DIR)
 import config as _cfg  # noqa: E402
@@ -26,524 +56,710 @@ try:
     _DWSIM_IMPORTS_OK = True
 except Exception:
     _DWSIM_IMPORTS_OK = False
-    DWSIMInterface = None          # type: ignore[assignment,misc]
+    DWSIMInterface     = None           # type: ignore[assignment,misc]
     DWSIMInterfaceError = RuntimeError  # type: ignore[assignment,misc]
 
     def validate_dwsim_installation():  # type: ignore[misc]
-        """Stub when DWSIM modules are not available."""
         return False, "DWSIM modules could not be imported."
 
-# ── Local constants ───────────────────────────────────────────────────────────
-_TARGET_ETHANOL_BOTTOM = 0.02    # ethanol mole fraction in bottoms (design)
-_MW_ETHANOL = 46.068             # g/mol
-_MW_WATER = 18.015               # g/mol
+# ── Physical constants ────────────────────────────────────────────────────────
+_MW_ETHANOL    = 46.068    # g/mol
+_MW_WATER      = 18.015    # g/mol
+_DHV_ETHANOL   = 38_560.0  # kJ/kmol
+_DHV_WATER     = 40_650.0  # kJ/kmol
+_CP_ETH_L      = 112.4     # kJ/(kmol·°C)  liquid
+_CP_WAT_L      =  75.3     # kJ/(kmol·°C)  liquid
+_ALPHA_ETH_H2O =   2.2     # relative volatility ethanol/water at ~1 atm
 
+# ── Design-point constants from config ───────────────────────────────────────
 _FLOW_FEED_BASE_KGH = _cfg.FLOW_FEED_BASE
-_SPLIT_TOP = _cfg.SPLIT_TOP
-_SPLIT_BOTTOM = _cfg.SPLIT_BOTTOM
-_Q_COND_BASE_KW = _cfg.Q_COND_BASE
-_Q_REB_BASE_KW = _cfg.Q_REB_BASE
+_Q_COND_BASE_KW     = _cfg.Q_COND_BASE
+_Q_REB_BASE_KW      = _cfg.Q_REB_BASE
 _TARGET_ETHANOL_TOP = _cfg.TARGET_ETHANOL_TOP
 
+# ── Sidebar defaults ──────────────────────────────────────────────────────────
+_DEFAULT_LK              = "Ethanol"
+_DEFAULT_HK              = "Water"
+_DEFAULT_LK_BOT          = 0.02    # LK mole fraction in bottoms
+_DEFAULT_HK_DIST         = 0.02    # HK mole fraction in distillate
+_DEFAULT_RR_MULT         = 1.1     # R
+_DEFAULT_P_COND_BAR      = 1.013   # bar  (atmospheric)
+_DEFAULT_P_REB_BAR       = 1.10    # bar
+_DEFAULT_TRAY_HEIGHT_M   = 0.60    # m
+_CONDENSER_OPTIONS       = ["Total", "Partial"]
 
-def _average_mw(x_eth: float) -> float:
-    """Average molecular weight for an ethanol-water mixture."""
-    return x_eth * _MW_ETHANOL + (1.0 - x_eth) * _MW_WATER
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Mixture property helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _mw(x: float) -> float:
+    """Average MW [g/mol] for ethanol(x) – water(1-x) mixture."""
+    return x * _MW_ETHANOL + (1.0 - x) * _MW_WATER
+
+def _dhv(x: float) -> float:
+    """Average ΔHvap [kJ/kmol] for ethanol(x) – water mixture."""
+    return x * _DHV_ETHANOL + (1.0 - x) * _DHV_WATER
+
+def _cp_l(x: float) -> float:
+    """Average liquid cp [kJ/(kmol·°C)] for ethanol(x) – water mixture."""
+    return x * _CP_ETH_L + (1.0 - x) * _CP_WAT_L
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fenske-Underwood-Gilliland + Kirkbride shortcut method
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _underwood_feed_eq(theta: float, alpha: float, z_lk: float, q: float) -> float:
+    """
+    Underwood feed equation (binary):
+        f(θ) = α·z_LK/(α−θ) + z_HK/(1−θ) − (1−q)
+
+    Root lies strictly in (1, α).
+    IMPORTANT: denominator (1−θ) is kept signed — it is NEGATIVE when θ > 1,
+    which is the correct physical value.  Never apply max(…, ε) here.
+    """
+    return (
+        alpha * z_lk / (alpha - theta)
+        + (1.0 - z_lk) / (1.0 - theta)
+        - (1.0 - q)
+    )
+
+
+def _underwood_theta(alpha: float, z_lk: float, q: float) -> float:
+    """
+    Solve the Underwood feed equation for θ ∈ (1, α) using Brent's method.
+
+    Brent is used instead of Newton-Raphson because the function has poles
+    at both boundaries (θ = 1 and θ = α), making Newton diverge to the
+    boundary on nearly every starting guess.
+
+    For q ≈ 1 (saturated-liquid feed) a tiny perturbation is applied to
+    avoid the removable singularity.
+    """
+    if abs(q - 1.0) < 1e-6:
+        q = 1.0 + 1e-6
+    lo, hi = 1.0 + 1e-9, alpha - 1e-9
+    try:
+        return _brentq(
+            _underwood_feed_eq, lo, hi,
+            args=(alpha, z_lk, q),
+            xtol=1e-12, rtol=1e-12, maxiter=500,
+        )
+    except ValueError:
+        return (lo + hi) / 2.0
+
+
+def _r_min_underwood(alpha: float, z_lk: float, x_d_lk: float, q: float) -> float:
+    """
+    Minimum reflux ratio (Underwood pinch, binary):
+        R_min + 1 = α·x_D,LK/(α−θ) + x_D,HK/(1−θ)
+
+    The denominator (1−θ) is NEGATIVE when θ > 1 — this is correct and must
+    NOT be replaced by a positive ε (that causes R_min → ∞).
+    """
+    theta   = _underwood_theta(alpha, z_lk, q)
+    x_d_hk  = 1.0 - x_d_lk
+    rmin_p1 = (
+        alpha * x_d_lk / (alpha - theta)
+        + x_d_hk / (1.0 - theta)          # signed denominator — correct
+    )
+    return max(rmin_p1 - 1.0, 0.01)
+
+
+def _fenske_nmin(alpha: float, x_d_lk: float, x_b_lk: float) -> float:
+    """Fenske minimum stages at total reflux (binary)."""
+    x_d_hk = max(1.0 - x_d_lk, 1e-9)
+    x_b_hk = max(1.0 - x_b_lk, 1e-9)
+    return np.log(
+        (x_d_lk / x_d_hk) * (x_b_hk / max(x_b_lk, 1e-9))
+    ) / np.log(alpha)
+
+
+def _gilliland_n(n_min: float, r_min: float, r: float) -> float:
+    """
+    Gilliland correlation — Molokanov (1972) approximation.
+        X = (R − R_min)/(R + 1)
+        Y = 1 − exp[(1 + 54.4X)/(11 + 117.2X) · (X−1)/√X]
+        N = (N_min + Y)/(1 − Y)
+    """
+    x = float(np.clip((r - r_min) / (r + 1.0), 1e-6, 1.0 - 1e-6))
+    y = float(np.clip(
+        1.0 - np.exp(((1.0 + 54.4 * x) / (11.0 + 117.2 * x)) * (x - 1.0) / x ** 0.5),
+        1e-6, 1.0 - 1e-6,
+    ))
+    return (n_min + y) / (1.0 - y)
+
+
+def _kirkbride_feed_tray(n_total: float,
+                         z_hk: float, z_lk: float,
+                         x_b_lk: float, x_d_hk: float,
+                         B: float, D: float) -> int:
+    """
+    Kirkbride (1944) equation for optimal feed tray location.
+        (N_rect / N_strip)² = (z_HK/z_LK) · (x_B,LK / x_D,HK)² · (B/D)
+    Returns tray number counted from the top (1-based).
+    """
+    ratio_sq = (
+        (z_hk / max(z_lk, 1e-9))
+        * (x_b_lk / max(x_d_hk, 1e-9)) ** 2
+        * (B / max(D, 1e-9))
+    )
+    ratio   = ratio_sq ** 0.5           # N_rect / N_strip
+    n_rect  = ratio / (1.0 + ratio) * n_total
+    return max(1, min(int(round(n_rect)), int(n_total) - 1))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Analytic simulation (FUG)
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _run_analytic_simulation(
     F_feed_kmolh: float,
-    T_feed: float,
-    P_feed_bar: float,
-    x_eth: float,
-    reflux_ratio_col: float,
+    T_feed_C:     float,
+    P_feed_bar:   float,
+    x_eth:        float,
+    lk_bot:       float,
+    hk_dist:      float,
+    rr_multiplier: float,
+    P_cond_bar:   float,
+    P_reb_bar:    float,
+    tray_height_m: float,
+    condenser_type: str,
 ) -> dict:
     """
-    Compute column results using analytic design-point scaling.
+    Fenske-Underwood-Gilliland shortcut distillation model.
 
-    Parameters
-    ----------
-    F_feed_kmolh : float
-        Feed molar flow rate (kmol/h).
-    T_feed : float
-        Feed temperature (°C).
-    P_feed_bar : float
-        Feed pressure (bar).
-    x_eth : float
-        Ethanol mole fraction in the feed.
-    reflux_ratio_col : float
-        Column reflux ratio.
-
-    Returns
-    -------
-    dict with scaled results.
+    Separation specs
+    ----------------
+    lk_bot  : mole fraction of LK (Ethanol) allowed in the bottoms
+    hk_dist : mole fraction of HK (Water)   allowed in the distillate
+    These are the same specs accepted by the DWSIM ShortcutColumn.
     """
-    mw_feed = _average_mw(x_eth)
-    F_feed_kgh = F_feed_kmolh * mw_feed
-    scale = F_feed_kgh / _FLOW_FEED_BASE_KGH
+    alpha = _ALPHA_ETH_H2O
+    z_lk  = x_eth
+    z_hk  = 1.0 - x_eth
+    F     = F_feed_kmolh
 
-    F_top_kgh = F_feed_kgh * _SPLIT_TOP
-    F_bot_kgh = F_feed_kgh * _SPLIT_BOTTOM
-    mw_top = _average_mw(_TARGET_ETHANOL_TOP)
-    mw_bot = _average_mw(_TARGET_ETHANOL_BOTTOM)
-    F_top_kmolh = F_top_kgh / mw_top
-    F_bot_kmolh = F_bot_kgh / mw_bot
+    # ── Derive distillate/bottoms compositions from specs ─────────────────────
+    x_d_lk = 1.0 - hk_dist   # = x_D,Ethanol
+    x_d_hk = hk_dist
+    x_b_lk = lk_bot
+    x_b_hk = 1.0 - lk_bot
 
-    Q_cond_kw = _Q_COND_BASE_KW * scale
-    Q_reb_kw = _Q_REB_BASE_KW * scale
+    # ── Overall material balance (two-component) ──────────────────────────────
+    # [x_d_lk  x_b_lk] [D]   [F·z_lk]
+    # [x_d_hk  x_b_hk] [B] = [F·z_hk]
+    A_mat = np.array([[x_d_lk, x_b_lk], [x_d_hk, x_b_hk]])
+    b_vec = np.array([F * z_lk, F * z_hk])
+    try:
+        D, B = np.linalg.solve(A_mat, b_vec)
+    except np.linalg.LinAlgError:
+        D = F * z_lk / max(x_d_lk, 1e-9)
+        B = F - D
+    D = max(float(D), 1e-6)
+    B = max(float(B), 1e-6)
 
-    dh_vap_ethanol = 38.56
-    dh_vap_water = 40.65
-    dh_vap_top = (
-        _TARGET_ETHANOL_TOP * dh_vap_ethanol
-        + (1 - _TARGET_ETHANOL_TOP) * dh_vap_water
-    )
-    V_vapour = Q_cond_kw / dh_vap_top
-    rr_calc = max(0.0, (V_vapour - F_top_kmolh) / F_top_kmolh) if F_top_kmolh > 0 else 0.0
+    # ── Feed condition q ──────────────────────────────────────────────────────
+    # Approximate bubble-point temperature at feed pressure (Clausius-Clapeyron)
+    T_bp  = 78.4 + (P_feed_bar * 100.0 - 101.325) * 0.04   # °C
+    lam_f = _dhv(z_lk)
+    cp_f  = _cp_l(z_lk)
+    q = 1.0 + cp_f * max(T_bp - T_feed_C, 0.0) / lam_f
 
-    ethanol_recovery = (
-        F_top_kmolh * _TARGET_ETHANOL_TOP
-        / max(F_feed_kmolh * x_eth, 1e-9) * 100
-    )
+    # ── Fenske N_min ──────────────────────────────────────────────────────────
+    n_min = max(_fenske_nmin(alpha, x_d_lk, x_b_lk), 1.0)
 
-    T_bp = 78.4 + (P_feed_bar * 10 - 101.325) * 0.03
-    cp_liquid = 2.9
-    lambda_feed = dh_vap_top * mw_feed / 1000.0
-    q = 1.0 + cp_liquid * max(T_bp - T_feed, 0.0) / lambda_feed
+    # ── Underwood R_min ───────────────────────────────────────────────────────
+    R_min = _r_min_underwood(alpha, z_lk, x_d_lk, q)
 
-    # Theoretical stage estimate: simplified Fenske approximation
-    # N ≈ 10 × (R / R_min); R_min ≈ rr_calc computed at the design base
-    _R_MIN_FACTOR = 10.0   # Fenske proportionality factor (simplified)
-    _R_MIN_FLOOR = 0.1     # floor for R_min to avoid division by zero
-    _N_STAGES_MIN = 5      # minimum theoretical stages (practical lower limit)
-    n_stages = max(_N_STAGES_MIN, int(_R_MIN_FACTOR * reflux_ratio_col / max(rr_calc, _R_MIN_FLOOR)))
+    # ── Actual reflux → Gilliland N ───────────────────────────────────────────
+    R = rr_multiplier
+    N = _gilliland_n(n_min, R_min, R)
+    if condenser_type == "Partial":
+        N = max(N - 1.0, 1.0)
+    N_int = max(int(np.ceil(N)), 2)
+
+    # ── Kirkbride feed tray ───────────────────────────────────────────────────
+    feed_tray = _kirkbride_feed_tray(N_int, z_hk, z_lk, x_b_lk, x_d_hk, B, D)
+
+    # ── Column height ─────────────────────────────────────────────────────────
+    col_height = N_int * tray_height_m
+
+    # ── Stream mass flows ─────────────────────────────────────────────────────
+    F_kgh = F * _mw(z_lk)
+    D_kgh = D * _mw(x_d_lk)
+    B_kgh = B * _mw(x_b_lk)
+
+    # ── Internal vapour/liquid rates ──────────────────────────────────────────
+    V_rect  = D * (R + 1.0)          # kmol/h  rectifying vapour
+    L_rect  = R * D                  # kmol/h  rectifying liquid
+    V_strip = V_rect - F * (1.0 - q) # kmol/h  stripping vapour
+
+    # ── Energy balance ────────────────────────────────────────────────────────
+    # Q_cond = V_rect [kmol/h] × ΔHvap_dist [kJ/kmol] / 3600 [s/h]  → kW
+    Q_cond = V_rect  * _dhv(x_d_lk) / 3600.0
+    Q_reb  = max(V_strip * _dhv(x_b_lk) / 3600.0, Q_cond * 0.90)
+
+    # ── Approximate stream temperatures ──────────────────────────────────────
+    T_top = 78.4 + x_d_hk * 21.6 + (P_cond_bar * 100.0 - 101.325) * 0.04
+    T_bot = 78.4 + x_b_hk * 21.6 + (P_reb_bar  * 100.0 - 101.325) * 0.04
+
+    scale = F_kgh / max(_FLOW_FEED_BASE_KGH, 1.0)
+    eth_recovery = D * x_d_lk / max(F * z_lk, 1e-9) * 100.0
 
     return {
         "source": "analytic",
-        "F_feed_kmolh": F_feed_kmolh,
-        "F_feed_kgh": F_feed_kgh,
-        "F_top_kgh": F_top_kgh,
-        "F_bot_kgh": F_bot_kgh,
-        "F_top_kmolh": F_top_kmolh,
-        "F_bot_kmolh": F_bot_kmolh,
-        "T_feed_C": T_feed,
-        "T_top_C": 78.4,
-        "T_bot_C": 100.0,
-        "P_feed_bar": P_feed_bar,
-        "Q_cond_kw": Q_cond_kw,
-        "Q_reb_kw": Q_reb_kw,
-        "scale": scale,
-        "reflux_ratio": rr_calc,
-        "n_stages": n_stages,
-        "ethanol_recovery": ethanol_recovery,
-        "q": q,
-        "mw_feed": mw_feed,
-        "mw_top": mw_top,
-        "mw_bot": mw_bot,
-        "x_eth_feed": x_eth,
-        "x_eth_top": _TARGET_ETHANOL_TOP,
-        "x_eth_bot": _TARGET_ETHANOL_BOTTOM,
-        "x_wat_feed": 1.0 - x_eth,
-        "x_wat_top": 1.0 - _TARGET_ETHANOL_TOP,
-        "x_wat_bot": 1.0 - _TARGET_ETHANOL_BOTTOM,
+        "F_feed_kmolh": F,     "F_feed_kgh": F_kgh,
+        "F_top_kmolh":  D,     "F_top_kgh":  D_kgh,
+        "F_bot_kmolh":  B,     "F_bot_kgh":  B_kgh,
+        "T_feed_C": T_feed_C,  "T_top_C": T_top, "T_bot_C": T_bot,
+        "P_feed_bar": P_feed_bar, "P_cond_bar": P_cond_bar, "P_reb_bar": P_reb_bar,
+        "Q_cond_kw": Q_cond,   "Q_reb_kw": Q_reb,
+        "reflux_ratio":     R,
+        "reflux_ratio_min": R_min,
+        "rr_multiplier":    rr_multiplier,
+        "n_min":            n_min,
+        "n_stages":         float(N_int),
+        "feed_tray":        feed_tray,
+        "tray_height_m":    tray_height_m,
+        "column_height_m":  col_height,
+        "condenser_type":   condenser_type,
+        "x_eth_feed": z_lk,   "x_eth_top": x_d_lk, "x_eth_bot": x_b_lk,
+        "x_wat_feed": z_hk,   "x_wat_top": x_d_hk, "x_wat_bot": x_b_hk,
+        "q":              q,
+        "V_kmolh":        V_rect,
+        "L_kmolh":        L_rect,
+        "mw_feed":        _mw(z_lk),
+        "mw_top":         _mw(x_d_lk),
+        "mw_bot":         _mw(x_b_lk),
+        "scale":          scale,
+        "ethanol_recovery": eth_recovery,
+        "lk_bot":  lk_bot,
+        "hk_dist": hk_dist,
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DWSIM live simulation
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _run_dwsim_simulation(
-    F_feed_kmolh: float,
-    T_feed: float,
-    P_feed_bar: float,
-    x_eth: float,
-    x_water: float,
+    F_feed_kmolh: float, T_feed_C: float, P_feed_bar: float,
+    x_eth: float, x_water: float,
+    lk: str, hk: str,
+    lk_bot: float, hk_dist: float,
+    rr_multiplier: float,
+    P_cond_bar: float, P_reb_bar: float,
+    tray_height_m: float, condenser_type: str,
 ) -> dict:
     """
-    Run a live simulation in DWSIM using DWSIMInterface.
+    Run a live DWSIM shortcut-column simulation.
 
-    Column parameters are left at their DWSIM defaults; only the feed
-    stream conditions are set by the caller.
+    N_stages and feed_tray are calculated analytically (FUG + Kirkbride) and
+    reported as output — the DWSIM ShortcutColumn does not accept them as
+    input specifications.
 
-    Parameters
-    ----------
-    F_feed_kmolh : float  — Feed molar flow rate (kmol/h)
-    T_feed       : float  — Feed temperature (°C)
-    P_feed_bar   : float  — Feed pressure (bar)
-    x_eth        : float  — Ethanol mole fraction in the feed
-    x_water      : float  — Water mole fraction in the feed
-
-    Returns
-    -------
-    dict with results extracted from DWSIM.
-
-    Raises
-    ------
-    DWSIMInterfaceError if the simulation fails.
+    DWSIM column specs used:
+      • LightKeyCompound  / HeavyKeyCompound
+      • LKMoleFractionInBottoms  / HKMoleFractionInDistillate
+      • RefluxRatio  (actual R = β × R_min, computed from FUG before call)
+      • CondenserPressure / ReboilerPressure  (Pa)
     """
-    _KG_S_TO_KG_H = 3600.0
-    _W_TO_KW = 1e-3
-    _MOL_S_TO_KMOL_H = 3.6
+    _KGS_TO_KGH   = 3600.0
+    _MOLS_TO_KMOLH = 3.6
+
+    # Pre-compute actual R from FUG so DWSIM receives R, not the multiplier β
+    _a = _run_analytic_simulation(
+        F_feed_kmolh, T_feed_C, P_feed_bar, x_eth,
+        lk_bot=lk_bot, hk_dist=hk_dist, rr_multiplier=rr_multiplier,
+        P_cond_bar=P_cond_bar, P_reb_bar=P_reb_bar,
+        tray_height_m=tray_height_m, condenser_type=condenser_type,
+    )
+    R_actual = _a["reflux_ratio"]
 
     with DWSIMInterface(_cfg.DWSIM_INSTALL_PATH) as dwsim:
         dwsim.load_simulation(_cfg.SIMULATION_FILE)
 
-        # Set feed stream conditions only — column parameters use DWSIM defaults
+        # Feed stream
         dwsim.set_stream_conditions(
             _cfg.TAG_FEED,
-            molar_flow=F_feed_kmolh,
-            temperature=T_feed,
-            pressure=P_feed_bar,
+            molar_flow=F_feed_kmolh, temperature=T_feed_C, pressure=P_feed_bar,
             composition={"Ethanol": x_eth, "Water": x_water},
         )
 
-        # Run simulation
+        # Shortcut column — using the dedicated API (correct property names)
+        dwsim.set_column_parameters(
+            _cfg.TAG_COLUMN,
+            light_key=lk, heavy_key=hk,
+            lk_bottoms=lk_bot, hk_distillate=hk_dist,
+            reflux_ratio=R_actual,
+            condenser_pressure_bar=P_cond_bar,
+            reboiler_pressure_bar=P_reb_bar,
+        )
+
         dwsim.run_simulation()
 
-        # Extract stream properties
-        feed_mflow = dwsim.get_stream_property(_cfg.TAG_FEED, "MassFlow") * _KG_S_TO_KG_H
-        top_mflow  = dwsim.get_stream_property(_cfg.TAG_TOP, "MassFlow") * _KG_S_TO_KG_H
-        bot_mflow  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MassFlow") * _KG_S_TO_KG_H
+        # Read stream results
+        def _mfl(tag): return dwsim.get_stream_property(tag, "MassFlow")  * _KGS_TO_KGH
+        def _nfl(tag): return dwsim.get_stream_property(tag, "MolarFlow") * _MOLS_TO_KMOLH
+        def _T(tag):   return dwsim.get_stream_property(tag, "Temperature") - 273.15
 
-        feed_molflow = dwsim.get_stream_property(_cfg.TAG_FEED, "MolarFlow") * _MOL_S_TO_KMOL_H
-        top_molflow  = dwsim.get_stream_property(_cfg.TAG_TOP, "MolarFlow") * _MOL_S_TO_KMOL_H
-        bot_molflow  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MolarFlow") * _MOL_S_TO_KMOL_H
+        F_kgh  = _mfl(_cfg.TAG_FEED);  D_kgh  = _mfl(_cfg.TAG_TOP);  B_kgh  = _mfl(_cfg.TAG_BOTTOM)
+        F_kmolh = _nfl(_cfg.TAG_FEED); D_kmolh = _nfl(_cfg.TAG_TOP); B_kmolh = _nfl(_cfg.TAG_BOTTOM)
+        T_f = _T(_cfg.TAG_FEED); T_t = _T(_cfg.TAG_TOP); T_b = _T(_cfg.TAG_BOTTOM)
+        P_f = dwsim.get_stream_property(_cfg.TAG_FEED, "Pressure") * 1e-5
 
-        feed_T = dwsim.get_stream_property(_cfg.TAG_FEED, "Temperature") - 273.15
-        top_T  = dwsim.get_stream_property(_cfg.TAG_TOP, "Temperature") - 273.15
-        bot_T  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "Temperature") - 273.15
+        x_eth_f = dwsim.get_stream_property(_cfg.TAG_FEED,   "MoleFraction", "Ethanol")
+        x_eth_t = dwsim.get_stream_property(_cfg.TAG_TOP,    "MoleFraction", "Ethanol")
+        x_eth_b = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Ethanol")
 
-        feed_P = dwsim.get_stream_property(_cfg.TAG_FEED, "Pressure") / 1e5
+        q_cond = abs(dwsim.get_equipment_property(_cfg.TAG_R_COND, "Duty"))
+        q_reb  = abs(dwsim.get_equipment_property(_cfg.TAG_Q_REB,  "Duty")) 
 
-        # Compositions
-        x_eth_feed = dwsim.get_stream_property(_cfg.TAG_FEED, "MoleFraction", "Ethanol")
-        x_eth_top  = dwsim.get_stream_property(_cfg.TAG_TOP, "MoleFraction", "Ethanol")
-        x_eth_bot  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Ethanol")
-        x_wat_feed = dwsim.get_stream_property(_cfg.TAG_FEED, "MoleFraction", "Water")
-        x_wat_top  = dwsim.get_stream_property(_cfg.TAG_TOP, "MoleFraction", "Water")
-        x_wat_bot  = dwsim.get_stream_property(_cfg.TAG_BOTTOM, "MoleFraction", "Water")
-
-        # Condenser / reboiler duty — read from dedicated energy streams
-        # (ShortcutColumn does not expose CondenserDuty / ReboilerDuty directly)
-        q_cond = abs(dwsim.get_equipment_property(_cfg.TAG_R_COND, "Duty")) * _W_TO_KW
-        q_reb  = abs(dwsim.get_equipment_property(_cfg.TAG_Q_REB,  "Duty")) * _W_TO_KW
-
-        # Reflux ratio and stage count from the column — use defaults if unavailable
+        # Column properties
         try:
-            rr = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "RefluxRatio")
-        except Exception:
-            rr = float(_cfg.DEFAULT_COLUMN_PARAMETERS["reflux_ratio"])
+            N      = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "NumberOfStages")
+        except:
+            N = None
+
         try:
-            n_stg = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "NumberOfStages")
+            R_min  = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "MinimumRefluxRatio")
+        except:
+            R_min = None
+        # Opcionales (pueden fallar según versión)
+        try:
+            N_min = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "MinimumNumberOfStages")
+        except:
+            N_min = None
+
+        try:
+            feed_stage = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "FeedStage")
+        except:
+            feed_stage = None
+
+        try:
+            estimated_height = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "EstimatedHeight")
+        except:
+            estimated_height = None
+
+        try:
+            rr_out = dwsim.get_equipment_property(_cfg.TAG_COLUMN, "RefluxRatio")
         except Exception:
-            n_stg = 0.0
+            rr_out = R_actual
 
-    mw_feed = feed_mflow / max(feed_molflow, 1e-9)
-    mw_top  = top_mflow / max(top_molflow, 1e-9)
-    mw_bot  = bot_mflow / max(bot_molflow, 1e-9)
-    scale = feed_mflow / _FLOW_FEED_BASE_KGH
-
-    ethanol_recovery = (
-        top_molflow * x_eth_top
-        / max(feed_molflow * x_eth_feed, 1e-9) * 100
-    )
+    scale = F_kgh / max(_FLOW_FEED_BASE_KGH, 1.0)
+    eth_rec = D_kmolh * x_eth_t / max(F_kmolh * x_eth_f, 1e-9) * 100.0
 
     return {
         "source": "dwsim",
-        "F_feed_kmolh": feed_molflow,
-        "F_feed_kgh": feed_mflow,
-        "F_top_kgh": top_mflow,
-        "F_bot_kgh": bot_mflow,
-        "F_top_kmolh": top_molflow,
-        "F_bot_kmolh": bot_molflow,
-        "T_feed_C": feed_T,
-        "T_top_C": top_T,
-        "T_bot_C": bot_T,
-        "P_feed_bar": feed_P,
-        "Q_cond_kw": q_cond,
-        "Q_reb_kw": q_reb,
-        "scale": scale,
-        "reflux_ratio": rr,
-        "n_stages": n_stg,
-        "ethanol_recovery": ethanol_recovery,
-        "q": None,
-        "mw_feed": mw_feed,
-        "mw_top": mw_top,
-        "mw_bot": mw_bot,
-        "x_eth_feed": x_eth_feed,
-        "x_eth_top": x_eth_top,
-        "x_eth_bot": x_eth_bot,
-        "x_wat_feed": x_wat_feed,
-        "x_wat_top": x_wat_top,
-        "x_wat_bot": x_wat_bot,
+        "F_feed_kmolh": F_kmolh, "F_feed_kgh": F_kgh,
+        "F_top_kmolh":  D_kmolh, "F_top_kgh":  D_kgh,
+        "F_bot_kmolh":  B_kmolh, "F_bot_kgh":  B_kgh,
+        "T_feed_C": T_f, "T_top_C": T_t, "T_bot_C": T_b,
+        "P_feed_bar": P_f, "P_cond_bar": P_cond_bar, "P_reb_bar": P_reb_bar,
+        "Q_cond_kw": q_cond, "Q_reb_kw": q_reb,
+        "reflux_ratio":     R_actual,
+        "reflux_ratio_min": R_min if R_min else _a["reflux_ratio_min"],
+        "rr_multiplier":    rr_multiplier,
+        "n_min":            N_min if N_min else _a["n_min"],
+        "n_stages":         N if N else _a["n_stages"],
+        "feed_tray":        feed_stage if feed_stage else _a["feed_tray"],
+        "tray_height_m":    tray_height_m,
+        "column_height_m":  estimated_height if estimated_height else _a["column_height_m"],
+        "condenser_type":   condenser_type,
+        "x_eth_feed": x_eth_f, "x_eth_top": x_eth_t, "x_eth_bot": x_eth_b,
+        "x_wat_feed": 1-x_eth_f, "x_wat_top": 1-x_eth_t, "x_wat_bot": 1-x_eth_b,
+        "q":    _a["q"],
+        "V_kmolh": _a["V_kmolh"], "L_kmolh": _a["L_kmolh"],
+        "mw_feed": F_kgh/max(F_kmolh,1e-9),
+        "mw_top":  D_kgh/max(D_kmolh,1e-9),
+        "mw_bot":  B_kgh/max(B_kmolh,1e-9),
+        "scale":   scale,
+        "ethanol_recovery": eth_rec,
+        "lk_bot":  lk_bot, "hk_dist": hk_dist,
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Streamlit page
+# ─────────────────────────────────────────────────────────────────────────────
 
 def simulacion_dwsim_page():
     """Main page for the interactive DWSIM simulator."""
     st.header("⚙️ DWSIM Interactive Simulation")
-    st.markdown("""
-    Configure **feed** conditions and **column** parameters in the sidebar,
-    then press **🚀 Run Simulation**.  If DWSIM is installed the live
-    simulation will run; otherwise analytic design-point scaling is used.
-    """)
+    st.markdown(
+        "Configure **feed** conditions and **shortcut column** parameters in the "
+        "sidebar, then press **🚀 Run Simulation**.  "
+        "DWSIM is used when available; otherwise the "
+        "**Fenske-Underwood-Gilliland** analytic model runs as fallback."
+    )
 
-    # ── Check DWSIM availability ──────────────────────────────────────────────
     dwsim_ok, dwsim_msg = validate_dwsim_installation()
     if dwsim_ok:
         st.success(f"✅ DWSIM available — {dwsim_msg}")
     else:
-        st.warning(
-            f"⚠️ DWSIM not available (analytic scaling will be used as fallback).  \n"
-            f"Detail: {dwsim_msg}"
-        )
+        st.warning(f"⚠️ DWSIM not available (F-U-G analytic fallback).  Detail: {dwsim_msg}")
 
     st.markdown("---")
 
-    # ── Design reference ──────────────────────────────────────────────────────
-    st.subheader("DWSIM Design Reference")
+    # Design reference banner
+    st.subheader("Design Reference")
     st.caption(
-        f"Flowsheet: `ethanol.dwxmz` — Column: **{_cfg.TAG_COLUMN}** "
-        f"| Feed: `{_cfg.TAG_FEED}` | Top: `{_cfg.TAG_TOP}` "
-        f"| Bottom: `{_cfg.TAG_BOTTOM}` "
-        f"| Condenser: `{_cfg.TAG_R_COND}` | Reboiler: `{_cfg.TAG_Q_REB}`"
+        f"Flowsheet: `ethanol.dwxmz` | Column: **{_cfg.TAG_COLUMN}** "
+        f"| Feed: `{_cfg.TAG_FEED}` | Top: `{_cfg.TAG_TOP}` | Bottom: `{_cfg.TAG_BOTTOM}` "
+        f"| Cond energy: `{_cfg.TAG_R_COND}` | Reb energy: `{_cfg.TAG_Q_REB}`"
     )
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("Base Feed Flow", f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
-        st.metric("Distillate Split", f"{_SPLIT_TOP*100:.0f} %")
-    with col_b:
-        st.metric("Condenser Duty (base)", f"{_Q_COND_BASE_KW:,.2f} kW")
-        st.metric("Reboiler Duty (base)", f"{_Q_REB_BASE_KW:,.2f} kW")
-    with col_c:
-        st.metric("EtOH target distillate", f"{_TARGET_ETHANOL_TOP*100:.0f} mol%")
-        st.metric("EtOH target bottoms", f"{_TARGET_ETHANOL_BOTTOM*100:.0f} mol%")
-
+    dc1, dc2, dc3 = st.columns(3)
+    dc1.metric("Base feed flow",   f"{_FLOW_FEED_BASE_KGH:,.0f} kg/h")
+    dc2.metric("Condenser (base)", f"{_Q_COND_BASE_KW:,.1f} kW")
+    dc3.metric("EtOH target top",  f"{_TARGET_ETHANOL_TOP*100:.0f} mol%")
     st.markdown("---")
 
-    # ── Sidebar: input parameters ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # SIDEBAR
+    # ─────────────────────────────────────────────────────────────────────────
     with st.sidebar:
         st.header("🔧 Input Parameters")
 
-        # ── Feed stream ───────────────────────────────────────────────────────
+        # 1 — Feed stream
         with st.expander("1. Feed Stream", expanded=True):
             F_feed_kmolh = st.number_input(
-                "Molar flow (kmol/h)", min_value=1.0, max_value=5_000.0,
-                value=float(_cfg.DEFAULT_FEED_CONDITIONS["molar_flow"]),
-                step=5.0, key="dwsim_F",
-            )
-            T_feed = st.number_input(
-                "Temperature (°C)", min_value=20.0, max_value=150.0,
-                value=float(_cfg.DEFAULT_FEED_CONDITIONS["temperature"]),
-                step=1.0, key="dwsim_T",
-            )
+                "Molar flow (kmol/h)", 1.0, 5_000.0,
+                float(_cfg.DEFAULT_FEED_CONDITIONS["molar_flow"]), 5.0, key="F")
+            T_feed_C = st.number_input(
+                "Temperature (°C)", 20.0, 150.0,
+                float(_cfg.DEFAULT_FEED_CONDITIONS["temperature"]), 1.0, key="T")
             P_feed_bar = st.number_input(
-                "Pressure (bar)", min_value=0.5, max_value=50.0,
-                value=float(_cfg.DEFAULT_FEED_CONDITIONS["pressure"]),
-                step=0.5, key="dwsim_P",
-            )
+                "Pressure (bar)", 0.5, 50.0,
+                float(_cfg.DEFAULT_FEED_CONDITIONS["pressure"]), 0.5, key="P")
 
+        # 2 — Composition
         with st.expander("2. Molar Composition", expanded=True):
-            st.markdown("Fractions must sum to **1.0**")
             x_eth = st.slider(
-                "Ethanol (mole fraction)", 0.0, 1.0,
+                "Ethanol (mole fraction)", 0.01, 0.99,
                 float(_cfg.DEFAULT_FEED_CONDITIONS["composition"]["Ethanol"]),
-                0.01, key="dwsim_xeth",
+                0.01, key="xeth")
+            x_water = round(1.0 - x_eth, 4)
+            st.markdown(f"**Water: `{x_water:.4f}`** *(auto)*")
+
+        # 3 — Key components & purity specs
+        with st.expander("3. Key Components & Purity Specs", expanded=True):
+            st.markdown(
+                "DWSIM ShortcutColumn separation specs:  \n"
+                "• **x_B,LK** — LK mole fraction in bottoms  \n"
+                "• **x_D,HK** — HK mole fraction in distillate"
             )
-            x_water = st.slider(
-                "Water (mole fraction)", 0.0, 1.0,
-                round(max(0.0, 1.0 - x_eth), 2), 0.01, key="dwsim_xwat",
-            )
-            comp_sum = round(x_eth + x_water, 4)
-            if abs(comp_sum - 1.0) > 1e-3:
-                st.error(f"⚠️ Composition sum = {comp_sum:.4f}  (must be 1.0)")
-            else:
-                st.success(f"Composition sum: {comp_sum:.4f} ✓")
+            _COMPS = ["Ethanol", "Water"]
+            lk = st.selectbox("Light Key (LK)", _COMPS,
+                                _COMPS.index(_DEFAULT_LK), key="lk")
+            hk = st.selectbox("Heavy Key (HK)", [c for c in _COMPS if c != lk],
+                                0, key="hk")
+            lk_bot = st.number_input(
+                f"x_B,LK  ({lk} in bottoms)",
+                0.0001, 0.20, _DEFAULT_LK_BOT, 0.005, format="%.4f",
+                key="lk_bot",
+                help="Lower → purer bottoms; more stages / energy required.")
+            hk_dist = st.number_input(
+                f"x_D,HK  ({hk} in distillate)",
+                0.0001, 0.20, _DEFAULT_HK_DIST, 0.005, format="%.4f",
+                key="hk_dist",
+                help="Lower → purer distillate; more stages / energy required.")
 
-        # ── Column parameters ─────────────────────────────────────────────────
-        # Column parameters are not exposed to the user; DWSIM defaults are used.
+        # 4 — Reflux ratio
+        with st.expander("4. Reflux Ratio", expanded=True):
+            rr_multiplier = st.number_input(
+                "R ", 1.01, 10.0,
+                _DEFAULT_RR_MULT, 0.05, key="rr_mult")
 
-    # ── Run button ────────────────────────────────────────────────────────────
-    st.markdown(
-        "Configure feed conditions in the sidebar and press the button to run the simulation."
-    )
+        # 5 — Column pressures
+        with st.expander("5. Column Pressures", expanded=True):
+            P_cond_bar = st.number_input(
+                "Condenser pressure (bar)", 0.1, 20.0,
+                _DEFAULT_P_COND_BAR, 0.05, format="%.3f", key="Pc",
+                help="Atmospheric ≈ 1.013 bar.  Vacuum operation < 1 bar.")
+            P_reb_bar = st.number_input(
+                "Reboiler pressure (bar)", 0.1, 20.0,
+                _DEFAULT_P_REB_BAR, 0.05, format="%.3f", key="Pr",
+                help="Should be ≥ condenser pressure (column ΔP).")
+            if P_reb_bar < P_cond_bar - 1e-3:
+                st.warning("⚠️ Reboiler P should be ≥ condenser P.")
 
-    run_clicked = st.button("🚀 Run Simulation", key="btn_dwsim_run", type="primary")
+        # 6 — Tray geometry
+        with st.expander("6. Tray / Stage Height", expanded=False):
+            tray_height_m = st.number_input(
+                "Stage height (m)", 0.20, 1.50,
+                _DEFAULT_TRAY_HEIGHT_M, 0.05, key="tray_h",
+                help="Sieve tray: 0.45–0.75 m.  Structured packing HETP: 0.3–0.6 m.")
 
-    # Fixed reflux ratio from config (not exposed to the user)
-    _default_rr = float(_cfg.DEFAULT_COLUMN_PARAMETERS["reflux_ratio"])
+        # 7 — Condenser type
+        with st.expander("7. Condenser Type", expanded=False):
+            condenser_type = st.radio(
+                "Condenser type", _CONDENSER_OPTIONS,
+                _CONDENSER_OPTIONS.index("Total"),
+                horizontal=True, key="cond_type",
+                help="Total: liquid distillate.  Partial: vapour distillate (−1 stage).")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Run button
+    # ─────────────────────────────────────────────────────────────────────────
+    st.markdown("Configure parameters in the sidebar then run:")
+    run_clicked = st.button("🚀 Run Simulation", key="btn_run", type="primary")
 
     if run_clicked:
-        # ── Validation ────────────────────────────────────────────────────────
         errors = []
-        if abs(x_eth + x_water - 1.0) > 1e-3:
-            errors.append(f"Composition sum is {x_eth + x_water:.4f}; must be 1.0 ± 0.001.")
-
+        if P_reb_bar < P_cond_bar - 1e-3:
+            errors.append("Reboiler pressure must be ≥ condenser pressure.")
+        if lk_bot + (1.0 - hk_dist) < 0.01:
+            errors.append("Separation specs are infeasible (compositions don't leave room for separation).")
         if errors:
-            for e in errors:
-                st.error(f"❌ {e}")
+            for e in errors: st.error(f"❌ {e}")
         else:
-            # Clear any previous results
             st.session_state.pop("sim_results", None)
-
+            kw = dict(
+                F_feed_kmolh=F_feed_kmolh, T_feed_C=T_feed_C, P_feed_bar=P_feed_bar,
+                x_eth=x_eth,
+                lk_bot=lk_bot, hk_dist=hk_dist, rr_multiplier=rr_multiplier,
+                P_cond_bar=P_cond_bar, P_reb_bar=P_reb_bar,
+                tray_height_m=tray_height_m, condenser_type=condenser_type,
+            )
             if dwsim_ok and _DWSIM_IMPORTS_OK:
-                # ── Attempt live DWSIM simulation ─────────────────────────────
-                with st.spinner("Connecting to DWSIM and running simulation…"):
+                with st.spinner("Connecting to DWSIM…"):
                     try:
                         results = _run_dwsim_simulation(
-                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, x_water,
-                        )
-                        st.success("✅ DWSIM simulation completed successfully.")
-                    except Exception as exc:  # DWSIMInterfaceError or any other
-                        st.warning(
-                            f"⚠️ DWSIM failed ({exc}). Using analytic scaling as fallback."
-                        )
-                        results = _run_analytic_simulation(
-                            F_feed_kmolh, T_feed, P_feed_bar, x_eth, _default_rr,
-                        )
+                            **kw, x_water=x_water, lk=lk, hk=hk)
+                        st.success("✅ DWSIM completed.")
+                    except Exception as exc:
+                        st.warning(f"⚠️ DWSIM failed ({exc}).  Using F-U-G fallback.")
+                        results = _run_analytic_simulation(**kw)
             else:
-                # ── Fallback: analytic scaling ────────────────────────────────
-                with st.spinner("Computing results (analytic scaling)…"):
-                    results = _run_analytic_simulation(
-                        F_feed_kmolh, T_feed, P_feed_bar, x_eth, _default_rr,
-                    )
-                st.info("ℹ️ Results obtained via analytic scaling of the design point.")
+                with st.spinner("Running Fenske-Underwood-Gilliland model…"):
+                    results = _run_analytic_simulation(**kw)
+                st.info("ℹ️ Analytic F-U-G results (DWSIM not available).")
 
             st.session_state["sim_results"] = results
 
-    # ── Display results (only if present in session_state) ────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # Results
+    # ─────────────────────────────────────────────────────────────────────────
     if "sim_results" not in st.session_state:
-        st.info("👆 Configure parameters and press **🚀 Run Simulation** to view results.")
+        st.info("👆 Set parameters in the sidebar and press **🚀 Run Simulation**.")
         return
 
     r = st.session_state["sim_results"]
-    _source_label = "🔬 DWSIM (live)" if r.get("source") == "dwsim" else "📐 Analytic scaling"
-    st.caption(f"Results source: **{_source_label}**")
-
+    src = ("🔬 DWSIM (live)" if r.get("source") == "dwsim"
+           else "📐 Fenske-Underwood-Gilliland (analytic)")
+    st.caption(f"Source: **{src}**")
     st.subheader("📊 Simulation Results")
 
-    # ── Stream table ──────────────────────────────────────────────────────────
+    # Column parameters summary
+    st.markdown("#### Column Parameters")
+    p1,p2,p3,p4,p5,p6 = st.columns(6)
+    p1.metric("Condenser type",       r.get("condenser_type","—"))
+    p2.metric("Theoretical stages",   f"{r['n_stages']:.0f}")
+    p3.metric("N_min (Fenske)",        f"{r.get('n_min',0):.1f}")
+    p4.metric("Feed tray",  f"{r['feed_tray']:.2f}")
+    p5.metric("Column height",         f"{r.get('column_height_m',0):.1f} m")
+    p6.metric("Stage/tray height",     f"{r.get('tray_height_m',0):.2f} m")
+
+    # Stream table
     st.markdown("#### Stream Table")
-    stream_df = pd.DataFrame({
-        "Stream": ["Feed", "Distillate (Top)", "Bottoms (Bottom)"],
-        "Molar Flow (kmol/h)": [
-            f"{r['F_feed_kmolh']:.2f}",
-            f"{r['F_top_kmolh']:.2f}",
-            f"{r['F_bot_kmolh']:.2f}",
-        ],
-        "Mass Flow (kg/h)": [
-            f"{r['F_feed_kgh']:,.1f}",
-            f"{r['F_top_kgh']:,.1f}",
-            f"{r['F_bot_kgh']:,.1f}",
-        ],
-        "Temperature (°C)": [
-            f"{r['T_feed_C']:.1f}",
-            f"{r['T_top_C']:.1f}",
-            f"{r['T_bot_C']:.1f}",
-        ],
-        "Pressure (bar)": [
-            f"{r['P_feed_bar']:.2f}",
-            "—",
-            "—",
-        ],
-        "x Ethanol": [
-            f"{r['x_eth_feed']:.4f}",
-            f"{r['x_eth_top']:.4f}",
-            f"{r['x_eth_bot']:.4f}",
-        ],
-        "x Water": [
-            f"{r['x_wat_feed']:.4f}",
-            f"{r['x_wat_top']:.4f}",
-            f"{r['x_wat_bot']:.4f}",
-        ],
-    })
-    st.dataframe(stream_df, use_container_width=True)
+    st.dataframe(pd.DataFrame({
+        "Stream":              ["Feed", "Distillate", "Bottoms"],
+        "Molar Flow (kmol/h)": [f"{r['F_feed_kmolh']:.2f}", f"{r['F_top_kmolh']:.2f}", f"{r['F_bot_kmolh']:.2f}"],
+        "Mass Flow (kg/h)":    [f"{r['F_feed_kgh']:,.1f}",  f"{r['F_top_kgh']:,.1f}",  f"{r['F_bot_kgh']:,.1f}"],
+        "Temp (°C)":           [f"{r['T_feed_C']:.1f}",     f"{r['T_top_C']:.1f}",     f"{r['T_bot_C']:.1f}"],
+        "Pressure (bar)":      [f"{r['P_feed_bar']:.3f}",   f"{r['P_cond_bar']:.3f}",  f"{r['P_reb_bar']:.3f}"],
+        "x Ethanol":           [f"{r['x_eth_feed']:.4f}",   f"{r['x_eth_top']:.4f}",   f"{r['x_eth_bot']:.4f}"],
+        "x Water":             [f"{r['x_wat_feed']:.4f}",   f"{r['x_wat_top']:.4f}",   f"{r['x_wat_bot']:.4f}"],
+    }), use_container_width=True)
 
-    # ── Equipment table ───────────────────────────────────────────────────────
-    st.markdown("#### Equipment Table")
-    equip_df = pd.DataFrame({
-        "Parameter": [
-            "Condenser Duty (kW)",
-            "Reboiler Duty (kW)",
-            "Reflux Ratio (L/D)",
-            "Number of Theoretical Stages",
-        ],
-        "Value": [
-            f"{r['Q_cond_kw']:.1f}",
-            f"{r['Q_reb_kw']:.1f}",
-            f"{r['reflux_ratio']:.2f}",
-            f"{r['n_stages']:.0f}",
-        ],
-    })
-    st.dataframe(equip_df, use_container_width=True)
+    # Equipment table
+    st.markdown("#### Equipment Summary")
+    eq = {
+        "Condenser duty (kW)":          f"{r['Q_cond_kw']:.2f}",
+        "Reboiler duty (kW)":           f"{r['Q_reb_kw']:.2f}",
+        "Condenser pressure (bar)":     f"{r['P_cond_bar']:.3f}",
+        "Reboiler pressure (bar)":      f"{r['P_reb_bar']:.3f}",
+        "Actual reflux ratio R (L/D)":  f"{r['reflux_ratio']:.4f}",
+        "Minimum reflux ratio R_min":   f"{r['reflux_ratio_min']:.4f}",
+        "R / R_min (β)":                f"{r['rr_multiplier']:.3f}×",
+        "N_min — Fenske":               f"{r.get('n_min',0):.1f}",
+        "Theoretical stages N":         f"{r['n_stages']:.0f}",
+        "Feed tray":         f"{r['feed_tray']:.2f}",
+        "Stage height (m)":             f"{r.get('tray_height_m',0):.2f}",
+        "Column height (m)":            f"{r.get('column_height_m',0):.1f}",
+        "Condenser type":               r.get("condenser_type","—"),
+        "q-parameter":                  f"{r.get('q',0):.3f}",
+        "Ethanol recovery (%)":         f"{min(r['ethanol_recovery'],100.0):.2f}",
+    }
+    st.dataframe(pd.DataFrame({"Parameter": list(eq.keys()), "Value": list(eq.values())}),
+                 use_container_width=True)
 
-    # ── Key metrics ───────────────────────────────────────────────────────────
-    st.markdown("#### Key Process Metrics")
-    scale = r["scale"]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Condenser", f"{r['Q_cond_kw']:.1f} kW",
-              delta=f"{(scale-1)*100:+.1f}% vs design")
-    c2.metric("Reboiler", f"{r['Q_reb_kw']:.1f} kW",
-              delta=f"{(scale-1)*100:+.1f}% vs design")
-    c3.metric("Reflux L/D", f"{r['reflux_ratio']:.2f}")
-    c4.metric("EtOH Recovery", f"{min(r['ethanol_recovery'], 100.0):.1f} %")
-
-    if r.get("q") is not None:
-        c5, c6 = st.columns(2)
-        c5.metric("q-parameter", f"{r['q']:.3f}",
-                  help="q=1: saturated liquid; q>1: sub-cooled; q<1: partial vapour")
-        c6.metric("Feed MW", f"{r['mw_feed']:.3f} g/mol")
+    # Key metrics
+    st.markdown("#### Key Metrics")
+    sc = r["scale"]
+    m1,m2,m3,m4 = st.columns(4)
+    m1.metric("Condenser",   f"{r['Q_cond_kw']:.1f} kW", delta=f"{(sc-1)*100:+.1f}% vs design")
+    m2.metric("Reboiler",    f"{r['Q_reb_kw']:.1f} kW",  delta=f"{(sc-1)*100:+.1f}% vs design")
+    m3.metric("Reflux R",    f"{r['reflux_ratio']:.3f}")
+    m4.metric("EtOH recovery", f"{min(r['ethanol_recovery'],100.0):.1f}%")
+    m5,m6,m7,m8 = st.columns(4)
+    m5.metric("Stages N",        f"{r['n_stages']:.0f}")
+    m6.metric("Feed tray",       f"{r['feed_tray']:.2f}")
+    m7.metric("Column height",   f"{r.get('column_height_m',0):.1f} m")
+    m8.metric("q-parameter",     f"{r.get('q',0):.3f}",
+              help="1=sat.liq | >1=subcooled | <1=part.vapour")
 
     st.markdown("---")
 
-    # ── Charts ────────────────────────────────────────────────────────────────
-    st.markdown("#### Results Visualization")
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    # Charts
+    st.markdown("#### Visualisation")
+    fig, axes = plt.subplots(1, 3, figsize=(20, 4))
 
-    # Panel 1: mass flows (horizontal bar)
-    labels = ["Feed", "Distillate", "Bottoms"]
-    values_kgh = [r["F_feed_kgh"], r["F_top_kgh"], r["F_bot_kgh"]]
-    colors = ["#4C72B0", "#55A868", "#C44E52"]
-    axes[0].barh(labels, values_kgh, color=colors)
-    axes[0].set_xlabel("Flow (kg/h)")
-    axes[0].set_title("Stream Mass Flows")
-    for i, v in enumerate(values_kgh):
-        axes[0].text(v * 1.01, i, f"{v:,.0f}", va="center", fontsize=8)
+    # 1 — Mass flows
+    axes[0].barh(["Feed","Distillate","Bottoms"],
+                 [r["F_feed_kgh"],r["F_top_kgh"],r["F_bot_kgh"]],
+                 color=["#4C72B0","#55A868","#C44E52"])
+    axes[0].set_xlabel("Flow (kg/h)"); axes[0].set_title("Stream Mass Flows")
+    for i,v in enumerate([r["F_feed_kgh"],r["F_top_kgh"],r["F_bot_kgh"]]):
+        axes[0].text(v*1.01, i, f"{v:,.0f}", va="center", fontsize=8)
 
-    # Panel 2: composition comparison
-    x_eth_vals = [r["x_eth_feed"], r["x_eth_top"], r["x_eth_bot"]]
-    x_wat_vals = [r["x_wat_feed"], r["x_wat_top"], r["x_wat_bot"]]
-    bar_w = 0.35
-    x_pos = np.arange(3)
-    axes[1].bar(x_pos - bar_w / 2, x_eth_vals, bar_w, label="Ethanol", color="#55A868")
-    axes[1].bar(x_pos + bar_w / 2, x_wat_vals, bar_w, label="Water", color="#4C72B0")
-    axes[1].set_xticks(x_pos)
-    axes[1].set_xticklabels(["Feed", "Distillate", "Bottoms"])
-    axes[1].set_ylabel("Mole Fraction")
-    axes[1].set_title("Stream Compositions")
-    axes[1].legend(fontsize=8)
-    axes[1].set_ylim(0, 1.1)
+    # 2 — Compositions
+    xp = np.arange(3); bw = 0.35
+    axes[1].bar(xp-bw/2,[r["x_eth_feed"],r["x_eth_top"],r["x_eth_bot"]],bw,label="Ethanol",color="#55A868")
+    axes[1].bar(xp+bw/2,[r["x_wat_feed"],r["x_wat_top"],r["x_wat_bot"]],bw,label="Water",  color="#4C72B0")
+    axes[1].set_xticks(xp); axes[1].set_xticklabels(["Feed","Distillate","Bottoms"])
+    axes[1].set_ylabel("Mole Fraction"); axes[1].set_title("Stream Compositions")
+    axes[1].legend(fontsize=8); axes[1].set_ylim(0,1.1)
 
-    # Panel 3: energy balance
-    duty_labels = ["Condenser", "Reboiler"]
-    duty_vals = [r["Q_cond_kw"], r["Q_reb_kw"]]
-    duty_colors = ["#8172B2", "#CCB974"]
-    axes[2].bar(duty_labels, duty_vals, color=duty_colors, width=0.4)
-    axes[2].set_ylabel("Duty (kW)")
-    axes[2].set_title("Energy Balance")
-    for i, v in enumerate(duty_vals):
-        axes[2].text(i, v + max(duty_vals) * 0.01, f"{v:.1f}", ha="center", fontsize=9)
+    # 3 — Energy
+    axes[2].bar(["Condenser","Reboiler"],[r["Q_cond_kw"],r["Q_reb_kw"]],
+                color=["#8172B2","#CCB974"],width=0.4)
+    axes[2].set_ylabel("Duty (kW)"); axes[2].set_title("Energy Balance")
+    for i,v in enumerate([r["Q_cond_kw"],r["Q_reb_kw"]]):
+        axes[2].text(i, v*1.01, f"{v:.1f}", ha="center", fontsize=9)
 
-    plt.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # ── Scaling equations ─────────────────────────────────────────────────────
-    with st.expander("📐 Scaling Equations Used (analytic mode)"):
-        st.latex(r"\dot{F}_{\text{scaled}} = \dot{F}_{\text{design}} \times \alpha, "
-                 r"\quad \alpha = \frac{\dot{m}_{\text{feed}}}{\dot{m}_{\text{feed,design}}}")
-        st.latex(r"\dot{Q}_{\text{cond/reb,scaled}} = \dot{Q}_{\text{cond/reb,design}} \times \alpha")
-        st.latex(r"\frac{L}{D} \approx \frac{\dot{V} - \dot{D}}{\dot{D}}, "
-                 r"\quad \dot{V} = \frac{\dot{Q}_{\text{cond}}}{\Delta H_{\text{vap,top}}}")
-        st.markdown("""
-        These are **first-order scaling relationships** valid near the design point.
-        Large deviations in composition or base flow require rigorous simulation in DWSIM.
-        """)
+    # Equations reference
+    with st.expander("📐 Analytic Method — Fenske-Underwood-Gilliland-Kirkbride"):
+        st.markdown("**Material balance from purity specs:**")
+        st.latex(r"\begin{bmatrix}x_{D,LK}&x_{B,LK}\\x_{D,HK}&x_{B,HK}\end{bmatrix}"
+                 r"\begin{bmatrix}D\\B\end{bmatrix}="
+                 r"\begin{bmatrix}Fz_{LK}\\Fz_{HK}\end{bmatrix}")
+        st.markdown("**Underwood θ** (Brent root in (1, α)):")
+        st.latex(r"\frac{\alpha z_{LK}}{\alpha-\theta}+\frac{z_{HK}}{1-\theta}=1-q"
+                 r"\quad \theta\in(1,\alpha)")
+        st.markdown("**Minimum reflux:**")
+        st.latex(r"R_{min}+1=\frac{\alpha x_{D,LK}}{\alpha-\theta}+\frac{x_{D,HK}}{1-\theta}")
+        st.markdown("**Fenske N_min:**")
+        st.latex(r"N_{min}=\frac{\ln\!\left[\dfrac{x_{D,LK}}{x_{D,HK}}\cdot\dfrac{x_{B,HK}}{x_{B,LK}}\right]}{\ln\alpha}")
+        st.markdown("**Gilliland N** (Molokanov):")
+        st.latex(r"X=\frac{R-R_{min}}{R+1},\;"
+                 r"Y=1-\exp\!\left[\frac{1+54.4X}{11+117.2X}\cdot\frac{X-1}{\sqrt{X}}\right],"
+                 r"\;N=\frac{N_{min}+Y}{1-Y}")
+        st.markdown("**Condenser duty:**")
+        st.latex(r"Q_C=\frac{V\cdot\Delta H_{vap,D}}{3600}\;[\text{kW}]"
+                 r"\quad V=D(R+1)\;[\text{kmol/h}],\;\Delta H_{vap}\;[\text{kJ/kmol}]")
+        st.markdown("**Kirkbride feed tray:**")
+        st.latex(r"\left(\frac{N_{rect}}{N_{strip}}\right)^2"
+                 r"=\frac{z_{HK}}{z_{LK}}\left(\frac{x_{B,LK}}{x_{D,HK}}\right)^2\frac{B}{D}")

@@ -12,7 +12,6 @@ with open("README.md", "r", encoding="utf-8") as fh:
 with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
-# Collect image files
 image_files = []
 if os.path.exists("Images"):
     for file in os.listdir("Images"):
@@ -47,7 +46,7 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "": ["*.xlsx", "*.png", "*.jpg", "*.pdf", "*.css"],
+       "": ["*.xlsx", "*.png", "*.jpg", "*.pdf", "*.css"],
     },
     data_files=[
         ("Images", image_files),

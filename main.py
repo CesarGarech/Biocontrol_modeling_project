@@ -14,6 +14,11 @@ os.chdir(script_dir)
 # sys.path.append(os.path.join(script_dir, 'Body'))
 # sys.path.append(os.path.join(script_dir, 'Utils'))
 
+# --- Path resolution for resources (images, data, etc.) ---
+# Change to the script directory to resolve relative paths correctly
+# This is critical for when the app is installed or run from different locations
+os.chdir(script_dir)
+
 # --- Asumiendo que Utils.kinetics está accesible ---
 try:
     from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa, mu_fermentacion

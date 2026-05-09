@@ -7,11 +7,11 @@
 ;   - installer\dependencies\dotnet-runtime-8.0-win-x64.exe (download separately)
 ;   - installer\dependencies\DWSIM\* (copy from DWSIM install)
 ; Compile:
-;   iscc /DAppVersion=1.0.0 biocontrol_setup.iss
+;   iscc /DAppVersion=1.0.1 biocontrol_setup.iss
 ; =============================================================================
 
 #define AppName        "Biocontrol Dashboard"
-#define AppVersion     "1.0.0"
+#define AppVersion     "1.0.1"
 #define AppPublisher   "César Augusto García Echeverry"
 #define AppURL         "https://github.com/CesarGarech/Biocontrol_modeling_project"
 #define AppExeName     "run_dashboard.bat"
