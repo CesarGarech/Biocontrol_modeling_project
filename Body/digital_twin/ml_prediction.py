@@ -295,7 +295,8 @@ def ml_prediction_page():
             
             if not _TF_AVAILABLE:
                 st.warning("⚠️ TensorFlow not available. Neural Network disabled.")
-                available_models.remove('Neural Network')
+                # Create a copy to avoid modifying the original list
+                available_models = [m for m in available_models if m != 'Neural Network']
             
             selected_models = st.multiselect(
                 "Select models to train and compare:",
@@ -318,7 +319,7 @@ def ml_prediction_page():
             random_state = st.number_input(
                 "Random seed", 0, 9999, 42, step=1, format="%d",
                 key="ml_seed",
-                help="Seed for reproducibility"
+                help="Seed for reproducibility (range 0-9999 provides consistent UI behavior)"
             )
     
     # ── Check if data is available ───────────────────────────────────────────
