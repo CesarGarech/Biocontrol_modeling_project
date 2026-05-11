@@ -25,7 +25,7 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
-DefaultDirName={autopf}\BiocontrolDashboard
+DefaultDirName={pf}\BiocontrolDashboard
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 ArchitecturesAllowed=x64
@@ -92,7 +92,7 @@ Source: "post_install.bat"; DestDir: "{app}"; Flags: ignoreversion deleteafterin
 [Icons]
 Name: "{group}\{#AppName}";            Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";     Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";      Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
 ; DWSIM Desktop Shortcut
 Name: "{autodesktop}\DWSIM";          Filename: "{pf}\DWSIM\DWSIM.exe"; WorkingDir: "{pf}\DWSIM"; Tasks: desktopicon
 
@@ -154,7 +154,8 @@ begin
 end;
 
 procedure InstallDotNet;
-var InstallerPath: String; ResultCode: Integer;
+var InstallerPath: String;
+ResultCode: Integer;
 begin
   if IsDotNet8OrHigherInstalled then Exit;
   InstallerPath := ExpandConstant('{tmp}\dotnet-sdk-8.0.419-win-x64.exe');

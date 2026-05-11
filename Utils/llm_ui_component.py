@@ -47,39 +47,39 @@ def render_llm_sidebar(current_page: str):
     
     # Enable/disable toggle
     llm_enabled = st.sidebar.checkbox(
-        "Activar Asistente IA",
+        "Enable AI Assistant",
         value=st.session_state.llm_enabled,
         key="llm_enable_checkbox",
-        help="Activa el asistente basado en Ollama para obtener ayuda contextual"
+        help="Enable the Ollama-based assistant for contextual help"
     )
     st.session_state.llm_enabled = llm_enabled
     
     if not llm_enabled:
-        st.sidebar.info("📖 El asistente está desactivado. Actívalo para obtener ayuda con ecuaciones, métodos y parámetros.")
+        st.sidebar.info("📖 The assistant is disabled. Enable it to get help with equations, methods, and parameters.")
         return
     
     # Configuration expander
-    with st.sidebar.expander("⚙️ Configuración", expanded=False):
+    with st.sidebar.expander("⚙️ Settings", expanded=False):
         # Ollama URL
         ollama_url = st.text_input(
-            "URL de Ollama",
+            "Ollama URL",
             value=st.session_state.llm_ollama_url,
-            help="URL del servidor Ollama (por defecto: http://localhost:11434)"
+            help="Ollama server URL (default: http://localhost:11434)"
         )
         st.session_state.llm_ollama_url = ollama_url
         
         # Model selection
         model = st.selectbox(
-            "Modelo",
+            "Model",
             options=AVAILABLE_MODELS,
             index=AVAILABLE_MODELS.index(st.session_state.llm_model) if st.session_state.llm_model in AVAILABLE_MODELS else 0,
-            help="Selecciona el modelo de Ollama a usar. Modelos más pequeños son más rápidos."
+            help="Select the Ollama model to use. Smaller models are faster."
         )
         st.session_state.llm_model = model
         
         # Check connection button
-        if st.button("🔍 Verificar Conexión", key="llm_check_connection"):
-            with st.spinner("Verificando..."):
+        if st.button("🔍 Check Connection", key="llm_check_connection"):
+            with st.spinner("Checking..."):
                 is_available, message = check_ollama_availability(ollama_url)
                 if is_available:
                     st.success(f"✅ {message}")
@@ -90,55 +90,55 @@ def render_llm_sidebar(current_page: str):
         
         # Show last check status
         if st.session_state.llm_last_check == "success":
-            st.caption("✅ Última verificación: OK")
+            st.caption("✅ Last check: OK")
         elif st.session_state.llm_last_check == "failed":
-            st.caption("❌ Última verificación: Falló")
+            st.caption("❌ Last check: Failed")
     
     # Disclaimer
-    st.sidebar.info("ℹ️ **Uso educativo:** Las respuestas son orientativas y deben validarse.")
+    st.sidebar.info("ℹ️ **Educational Use:** Responses are for guidance and must be validated.")
     
     # Quick actions
-    st.sidebar.markdown("**Acciones rápidas:**")
+    st.sidebar.markdown("**Quick Actions:**")
     col1, col2 = st.sidebar.columns(2)
     
     with col1:
-        if st.button("📖 Explicar método", key="llm_explain_method"):
-            question = f"Explica el método o modelo usado en la página '{current_page}' de forma educativa y clara."
+        if st.button("📖 Explain method", key="llm_explain_method"):
+            question = f"Explain the method or model used in the '{current_page}' page clearly and educationally."
             _process_question(question, current_page)
     
     with col2:
-        if st.button("📊 Sugerir parámetros", key="llm_suggest_params"):
-            question = f"Sugiere rangos típicos de parámetros para el modelo/método en la página '{current_page}'."
+        if st.button("📊 Suggest params", key="llm_suggest_params"):
+            question = f"Suggest typical parameter ranges for the model/method in the '{current_page}' page."
             _process_question(question, current_page)
     
     # Chat interface
     st.sidebar.markdown("---")
-    st.sidebar.markdown("**💬 Pregunta al asistente:**")
+    st.sidebar.markdown("**💬 Ask the assistant:**")
     
     user_question = st.sidebar.text_area(
-        "Tu pregunta:",
+        "Your question:",
         height=100,
         key="llm_user_question",
-        placeholder="Ej: ¿Qué significa el parámetro Ks en la ecuación de Monod?"
+        placeholder="Ex: What does the Ks parameter mean in the Monod equation?"
     )
     
     col1, col2 = st.sidebar.columns([2, 1])
     with col1:
-        if st.button("🚀 Preguntar", key="llm_ask_button", use_container_width=True):
+        if st.button("🚀 Ask", key="llm_ask_button", use_container_width=True):
             if user_question.strip():
                 _process_question(user_question, current_page)
             else:
-                st.sidebar.warning("Por favor escribe una pregunta.")
+                st.sidebar.warning("Please write a question.")
     
     with col2:
-        if st.button("🗑️ Limpiar", key="llm_clear_button", use_container_width=True):
+        if st.button("🗑️ Clear", key="llm_clear_button", use_container_width=True):
             st.session_state.llm_chat_history = []
             st.rerun()
     
     # Show chat history
     if st.session_state.llm_chat_history:
         st.sidebar.markdown("---")
-        st.sidebar.markdown("**📜 Historial:**")
+        st.sidebar.markdown("**📜 History:**")
         
         # Show only last 3 interactions
         for i, interaction in enumerate(st.session_state.llm_chat_history[-3:]):
@@ -147,8 +147,8 @@ def render_llm_sidebar(current_page: str):
             question_preview = interaction['question'][:50]
             
             with st.sidebar.expander(f"Q{question_number}: {question_preview}...", expanded=(i == len(st.session_state.llm_chat_history[-3:])-1)):
-                st.markdown(f"**P:** {interaction['question']}")
-                st.markdown(f"**R:** {interaction['response']}")
+                st.markdown(f"**Q:** {interaction['question']}")
+                st.markdown(f"**A:** {interaction['response']}")
 
 
 def _process_question(question: str, current_page: str):
@@ -159,7 +159,7 @@ def _process_question(question: str, current_page: str):
         question: User's question
         current_page: Current page name for context
     """
-    with st.sidebar.spinner("🤔 Pensando..."):
+    with st.sidebar.spinner("🤔 Thinking..."):
         # Build context
         prompt = build_context_prompt(
             page_name=current_page,
@@ -187,7 +187,7 @@ def _process_question(question: str, current_page: str):
                 'page': current_page
             })
             
-            st.sidebar.success("✅ Respuesta generada")
+            st.sidebar.success("✅ Response generated")
             st.rerun()
         else:
             st.sidebar.error(f"❌ Error: {response}")
@@ -201,7 +201,7 @@ def show_llm_response_in_main_area():
     if st.session_state.get('llm_enabled', False) and st.session_state.llm_chat_history:
         last_interaction = st.session_state.llm_chat_history[-1]
         
-        with st.expander("💬 Última respuesta del Asistente IA", expanded=True):
-            st.markdown(f"**Pregunta:** {last_interaction['question']}")
-            st.markdown("**Respuesta:**")
+        with st.expander("💬 Last response from AI Assistant", expanded=True):
+            st.markdown(f"**Question:** {last_interaction['question']}")
+            st.markdown("**Answer:**")
             st.markdown(last_interaction['response'])

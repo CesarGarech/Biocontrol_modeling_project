@@ -60,20 +60,20 @@ AVAILABLE_MODELS = [
 ]
 
 # ==================== PROMPT TEMPLATES ====================
-SYSTEM_PROMPT = """Eres un asistente educativo especializado en ingeniería de bioprocesos, modelado matemático y control de procesos. 
+SYSTEM_PROMPT = """You are an educational assistant specialized in bioprocess engineering, mathematical modeling, and process control.
 
-Tu rol es:
-1. Explicar ecuaciones y modelos matemáticos de forma clara y educativa
-2. Describir métodos de simulación, estimación y control en lenguaje accesible
-3. Sugerir rangos razonables de parámetros basados en literatura
-4. Recomendar referencias bibliográficas apropiadas
+Your role is to:
+1. Explain mathematical equations and models in a clear and educational way
+2. Describe simulation, estimation, and control methods in accessible language
+3. Suggest reasonable parameter ranges based on the literature
+4. Recommend appropriate bibliographic references
 
-IMPORTANTE:
-- Solo usa información técnica fundamentada y referencias que te proporcionen
-- Indica rangos típicos de parámetros con disclaimers sobre validación experimental
-- Siempre menciona que las sugerencias son orientativas y requieren validación
-- Responde en español de forma clara y concisa
-- Si no tienes información suficiente, indícalo honestamente"""
+IMPORTANT:
+- Only use technically sound information and the references provided to you
+- Indicate typical parameter ranges with disclaimers regarding experimental validation
+- Always mention that the suggestions are for guidance and require validation
+- Respond in English clearly and concisely
+- If you do not have sufficient information, state it honestly"""
 
 def build_context_prompt(page_name: str, user_question: str, 
                          equations: Optional[List[str]] = None,
@@ -92,22 +92,22 @@ def build_context_prompt(page_name: str, user_question: str,
     Returns:
         Formatted prompt string for the LLM
     """
-    context_parts = [f"Contexto: Estoy en la página '{page_name}' de la aplicación de modelado de bioprocesos."]
+    context_parts = [f"Context: I am on the '{page_name}' page of the bioprocess modeling app."]
     
     if method:
-        context_parts.append(f"Método/Modelo actual: {method}")
+        context_parts.append(f"Current Method/Model: {method}")
     
     if equations:
-        context_parts.append("\nEcuaciones relevantes:")
+        context_parts.append("\nRelevant equations:")
         for eq in equations:
             context_parts.append(f"  - {eq}")
     
     if parameters:
-        context_parts.append("\nParámetros actuales del usuario:")
+        context_parts.append("\nCurrent user parameters:")
         for key, value in parameters.items():
             context_parts.append(f"  - {key}: {value}")
     
-    context_parts.append(f"\nPregunta del usuario: {user_question}")
+    context_parts.append(f"\nUser question: {user_question}")
     
     return "\n".join(context_parts)
 
@@ -177,15 +177,15 @@ def check_ollama_availability(base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool,
         if response.status_code == 200:
             data = response.json()
             models = [m['name'] for m in data.get('models', [])]
-            return True, f"Conectado. Modelos disponibles: {', '.join(models[:3])}"
+            return True, f"Connected. Available models: {', '.join(models[:3])}"
         else:
-            return False, f"Error de conexión (código {response.status_code})"
+            return False, f"Connection error (code {response.status_code})"
     except requests.exceptions.ConnectionError:
-        return False, "No se puede conectar con Ollama. Asegúrate de que esté ejecutándose (ollama serve)"
+        return False, "Cannot connect to Ollama. Make sure it is running (ollama serve)"
     except requests.exceptions.Timeout:
-        return False, "Tiempo de espera agotado al conectar con Ollama"
+        return False, "Timeout connecting to Ollama"
     except Exception as e:
-        return False, f"Error inesperado: {str(e)}"
+        return False, f"Unexpected error: {str(e)}"
 
 
 def query_ollama(prompt: str, model: str = DEFAULT_MODEL, 
@@ -223,16 +223,16 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
         
         if response.status_code == 200:
             result = response.json()
-            return True, result.get('response', 'Sin respuesta')
+            return True, result.get('response', 'No response')
         else:
-            return False, f"Error del servidor: {response.status_code}"
+            return False, f"Server error: {response.status_code}"
             
     except requests.exceptions.Timeout:
-        return False, "La solicitud tardó demasiado tiempo. Intenta con un modelo más pequeño."
+        return False, "Request took too long. Try a smaller model."
     except requests.exceptions.ConnectionError:
-        return False, "No se puede conectar con Ollama. Verifica que esté ejecutándose."
+        return False, "Cannot connect to Ollama. Verify it is running."
     except Exception as e:
-        return False, f"Error inesperado: {str(e)}"
+        return False, f"Unexpected error: {str(e)}"
 
 
 def format_response_with_references(llm_response: str, references: List[str]) -> str:
@@ -248,11 +248,11 @@ def format_response_with_references(llm_response: str, references: List[str]) ->
     """
     formatted = f"{llm_response}\n\n"
     formatted += "---\n\n"
-    formatted += "**📚 Referencias relevantes:**\n\n"
+    formatted += "**📚 Relevant references:**\n\n"
     for i, ref in enumerate(references, 1):
         formatted += f"{i}. {ref}\n"
-    formatted += "\n**⚠️ Nota:** Esta información es orientativa y debe validarse experimentalmente. "
-    formatted += "Consulta siempre literatura especializada para tu aplicación específica."
+    formatted += "\n**⚠️ Note:** This information is for guidance and must be experimentally validated. "
+    formatted += "Always consult specialized literature for your specific application."
     
     return formatted
 
@@ -271,22 +271,22 @@ def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, 
     # Common bioprocess parameters
     ranges = {
         "mumax": {"min": 0.1, "max": 1.5, "typical": 0.5, "unit": "h⁻¹", 
-                  "description": "Tasa específica máxima de crecimiento"},
+                  "description": "Maximum specific growth rate"},
         "Ks": {"min": 0.01, "max": 5.0, "typical": 0.5, "unit": "g/L",
-               "description": "Constante de saturación de Monod"},
+               "description": "Monod saturation constant"},
         "Yxs": {"min": 0.3, "max": 0.8, "typical": 0.5, "unit": "g_X/g_S",
-                "description": "Rendimiento biomasa/sustrato"},
+                "description": "Biomass/substrate yield"},
         "kd": {"min": 0.001, "max": 0.05, "typical": 0.01, "unit": "h⁻¹",
-               "description": "Constante de muerte celular"},
+               "description": "Cell death constant"},
         "kla": {"min": 10, "max": 300, "typical": 100, "unit": "h⁻¹",
-                "description": "Coeficiente de transferencia de oxígeno"},
+                "description": "Volumetric mass transfer coefficient for oxygen"},
         # PID parameters
         "Kc": {"min": 0.1, "max": 10.0, "typical": 1.0, "unit": "adim.",
-               "description": "Ganancia proporcional del controlador"},
+               "description": "Proportional controller gain"},
         "Ti": {"min": 0.1, "max": 10.0, "typical": 1.0, "unit": "min",
-               "description": "Tiempo integral"},
+               "description": "Integral time"},
         "Td": {"min": 0.01, "max": 1.0, "typical": 0.1, "unit": "min",
-               "description": "Tiempo derivativo"}
+               "description": "Derivative time"}
     }
     
     param_lower = parameter_name.lower()
@@ -295,4 +295,4 @@ def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, 
             return value
     
     return {"min": None, "max": None, "typical": None, "unit": "?",
-            "description": "Parámetro no reconocido en la base de datos"}
+            "description": "Parameter not recognized in the database"}
