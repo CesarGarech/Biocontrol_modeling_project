@@ -5,6 +5,7 @@
 ;   - Inno Setup 6.x  (https://jrsoftware.org/isinfo.php)
 ;   - installer\dependencies\python-3.10.9-amd64.exe      (download separately)
 ;   - installer\dependencies\dotnet-sdk-8.0.x-win-x64.exe (download separately)
+;   - installer\dependencies\OllamaSetup.exe              (download separately)
 ;   - installer\dependencies\DWSIM\* (copy from DWSIM install)
 ; Compile:
 ;   iscc /DAppVersion=1.0.1 biocontrol_setup.iss
@@ -41,8 +42,8 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0 or higher%n  - Python 3.10.x (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
-english.InstallingLibraries=Installing Python libraries, please wait...
+english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0 or higher%n  - Python 3.10.x%n  - DWSIM process simulator%n  - Ollama (Local LLM engine)%n  - All required Python libraries%n%nClick Next to continue.
+english.InstallingLibraries=Installing Python libraries and starting services, please wait...
 
 [Tasks]
 Name: "desktopicon";     Description: "{cm:CreateDesktopIcon}";          GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -55,8 +56,10 @@ Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flag
 ; Python 3.10.9 installer
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
+; Ollama installer
+Source: "..\dependencies\OllamaSetup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsOllamaInstalled
+
 ; DWSIM files - Preprocessor directive checks for folder during COMPILATION
-; Check if the main DWSIM DLL exists to confirm the folder is ready
 #if FileExists("..\dependencies\DWSIM\DWSIM.Automation.dll")
 Source: "..\dependencies\DWSIM\*"; DestDir: "{pf}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
@@ -115,10 +118,6 @@ Type: filesandordirs; Name: "{app}\Output"
 
 [Code]
 
-// ---------------------------------------------------------------------------
-// IsDotNet8OrHigherInstalled
-// Checks if .NET 8, 9 or higher is installed in the registry.
-// ---------------------------------------------------------------------------
 function IsDotNet8OrHigherInstalled: Boolean;
 var
   Versions: TArrayOfString;
@@ -126,7 +125,6 @@ var
   BaseKey: String;
 begin
   Result := False;
-  // Check official 64-bit key
   BaseKey := 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
   if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
   begin
@@ -136,16 +134,10 @@ begin
       if PosDot > 0 then
       begin
         MajorVersion := StrToIntDef(Copy(Versions[I], 1, PosDot - 1), 0);
-        if MajorVersion >= 8 then
-        begin
-          Result := True;
-          Exit;
-        end;
+        if MajorVersion >= 8 then begin Result := True; Exit; end;
       end;
     end;
   end;
-
-  // Check WOW6432Node key
   BaseKey := 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
   if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
   begin
@@ -155,131 +147,68 @@ begin
       if PosDot > 0 then
       begin
         MajorVersion := StrToIntDef(Copy(Versions[I], 1, PosDot - 1), 0);
-        if MajorVersion >= 8 then
-        begin
-          Result := True;
-          Exit;
-        end;
+        if MajorVersion >= 8 then begin Result := True; Exit; end;
       end;
     end;
   end;
 end;
 
-// ---------------------------------------------------------------------------
-// InstallDotNet
-// Runs the bundled .NET installer silently if requirements are not met
-// ---------------------------------------------------------------------------
 procedure InstallDotNet;
-var
-  InstallerPath: String;
-  ResultCode: Integer;
+var InstallerPath: String; ResultCode: Integer;
 begin
-  if IsDotNet8OrHigherInstalled then
-  begin
-    Log('.NET >= 8 Runtime already installed - skipping.');
-    Exit;
-  end;
-
+  if IsDotNet8OrHigherInstalled then Exit;
   InstallerPath := ExpandConstant('{tmp}\dotnet-sdk-8.0.419-win-x64.exe');
-  Log('Installing .NET from: ' + InstallerPath);
-  if not FileExists(InstallerPath) then
-  begin
-    MsgBox('.NET installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
-           'Please ensure the installer was bundled correctly.', mbError, MB_OK);
-    Exit;
-  end;
-
-  // Silent execution for Microsoft installer (/install /quiet /norestart)
-  if not Exec(InstallerPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    MsgBox('.NET installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
-  end
-  else
-  begin
-    Log('.NET installed successfully (exit code ' + IntToStr(ResultCode) + ').');
-  end;
+  if FileExists(InstallerPath) then
+    Exec(InstallerPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// ---------------------------------------------------------------------------
-// IsPython310Installed
-// Checks HKLM and HKCU for any Python 3.10.x installation.
-// ---------------------------------------------------------------------------
 function IsPython310Installed: Boolean;
-var
-  SubKey: String;
-  InstalledPath: String;
+var SubKey, InstalledPath: String;
 begin
   Result := False;
-
   SubKey := 'SOFTWARE\Python\PythonCore\3.10\InstallPath';
-  if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) then
-  begin
-    if InstalledPath <> '' then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
-
-  if RegQueryStringValue(HKCU, SubKey, '', InstalledPath) then
-  begin
-    if InstalledPath <> '' then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
-
+  if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) and (InstalledPath <> '') then begin Result := True; Exit; end;
+  if RegQueryStringValue(HKCU, SubKey, '', InstalledPath) and (InstalledPath <> '') then begin Result := True; Exit; end;
   SubKey := 'SOFTWARE\WOW6432Node\Python\PythonCore\3.10\InstallPath';
-  if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) then
-  begin
-    if InstalledPath <> '' then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
+  if RegQueryStringValue(HKLM, SubKey, '', InstalledPath) and (InstalledPath <> '') then begin Result := True; Exit; end;
 end;
 
-// ---------------------------------------------------------------------------
-// InstallPython
-// Runs the bundled Python 3.10.9 installer with progress bar.
-// ---------------------------------------------------------------------------
 procedure InstallPython;
-var
-  InstallerPath: String;
-  ResultCode: Integer;
+var InstallerPath: String; ResultCode: Integer;
 begin
-  if IsPython310Installed then
-  begin
-    Log('Python 3.10 already installed - skipping.');
-    Exit;
-  end;
-
+  if IsPython310Installed then Exit;
   InstallerPath := ExpandConstant('{tmp}\python-3.10.9-amd64.exe');
-  Log('Installing Python 3.10.9 from: ' + InstallerPath);
-  if not FileExists(InstallerPath) then
-  begin
-    MsgBox('Python 3.10.9 installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
-           'Please ensure the installer was bundled correctly.', mbError, MB_OK);
-    Exit;
-  end;
-
-  // Use /passive instead of /quiet to show a progress bar without requiring user clicks
-  if not Exec(InstallerPath, '/passive InstallAllUsers=1 TargetDir="' + ExpandConstant('{pf}\Python310') + '" PrependPath=1 Include_pip=1 Include_test=0', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
-  begin
-    MsgBox('Python 3.10.9 installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
-  end
-  else
-  begin
-    Log('Python 3.10.9 installed successfully (exit code ' + IntToStr(ResultCode) + ').');
-  end;
+  if FileExists(InstallerPath) then
+    Exec(InstallerPath, '/passive InstallAllUsers=1 TargetDir="' + ExpandConstant('{pf}\Python310') + '" PrependPath=1 Include_pip=1 Include_test=0', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
 end;
 
 // ---------------------------------------------------------------------------
-// CurStepChanged event hook
-// Installs .NET and Python after extracting files to {tmp}.
+// Ollama Installation Logic
 // ---------------------------------------------------------------------------
+function IsOllamaInstalled: Boolean;
+begin
+  // Standard Ollama installation path
+  Result := FileExists(ExpandConstant('{localappdata}\Programs\Ollama\ollama.exe'));
+end;
+
+procedure InstallOllama;
+var InstallerPath: String; ResultCode: Integer;
+begin
+  if IsOllamaInstalled then
+  begin
+    Log('Ollama is already installed - skipping.');
+    Exit;
+  end;
+
+  InstallerPath := ExpandConstant('{tmp}\OllamaSetup.exe');
+  Log('Installing Ollama from: ' + InstallerPath);
+  if FileExists(InstallerPath) then
+  begin
+    // Ollama installation is usually silent by default with /SILENT
+    Exec(InstallerPath, '/SILENT', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   case CurStep of
@@ -287,6 +216,7 @@ begin
       begin
         InstallDotNet;
         InstallPython;
+        InstallOllama;
       end;
   end;
 end;

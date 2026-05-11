@@ -28,7 +28,6 @@ echo.
 echo [INFO] Evaluating Python 3.10.x...
 set "PYTHON_EXE="
 
-:: Check in Program Files first (New default)
 if exist "%ProgramFiles%\Python310\python.exe" set "PYTHON_EXE=%ProgramFiles%\Python310\python.exe"
 if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
 if exist "C:\Python310\python.exe" set "PYTHON_EXE=C:\Python310\python.exe"
@@ -39,7 +38,6 @@ if defined PYTHON_EXE (
     echo [INFO] Python 3.10 not detected. Starting download...
     curl -# -L -o python_installer.exe "https://www.python.org/ftp/python/%PYTHON_VER%/python-%PYTHON_VER%-amd64.exe"
     echo [INFO] Installing Python (Showing progress bar)...
-    :: /passive shows progress bar. InstallAllUsers=1 forces it to Program Files
     start /wait python_installer.exe /passive InstallAllUsers=1 TargetDir="%ProgramFiles%\Python310" PrependPath=1 Include_pip=1
     set "PYTHON_EXE=%ProgramFiles%\Python310\python.exe"
 )
@@ -51,7 +49,6 @@ echo [INFO] Evaluating DWSIM v%DWSIM_VER%...
 set "DWSIM_FOUND=0"
 set "DWSIM_PATH=%ProgramFiles%\DWSIM"
 
-:: Check for the DLL in Program Files to confirm it's installed
 if exist "%DWSIM_PATH%\DWSIM.Automation.dll" (
     set "DWSIM_FOUND=1"
 ) else if exist "%LOCALAPPDATA%\DWSIM\DWSIM.Automation.dll" (
@@ -63,7 +60,6 @@ if "%DWSIM_FOUND%"=="0" (
     echo [INFO] DWSIM not detected in Program Files. Downloading installer...
     curl -# -L -o dwsim_installer.exe "https://github.com/DanWBR/dwsim/releases/download/v%DWSIM_VER%/DWSIM_bin_v905_setup_win7_win8_win10_win11_64bit.exe"
     echo [INFO] Installing DWSIM (Showing progress bar)...
-    :: /SILENT shows a progress bar without asking questions (unlike /VERYSILENT which hides everything)
     start /wait dwsim_installer.exe /SILENT /SUPPRESSMSGBOXES /NORESTART /DIR="%ProgramFiles%\DWSIM"
     echo [SUCCESS] DWSIM installed successfully.
 ) else (
@@ -76,7 +72,6 @@ if "%DWSIM_FOUND%"=="0" (
 echo [INFO] Evaluating .NET Runtime (requires v%DOTNET_VER% or higher)...
 set "DOTNET_OK=0"
 
-:: Extract installed versions and verify if any is >= 8
 for /f "tokens=2" %%A in ('dotnet --list-runtimes 2^>nul ^| findstr "Microsoft.NETCore.App"') do (
     for /f "tokens=1 delims=." %%V in ("%%A") do (
         if %%V GEQ 8 set "DOTNET_OK=1"
@@ -91,7 +86,32 @@ if "!DOTNET_OK!"=="0" (
 )
 
 :: ---------------------------------------------------------------------------
-:: Step 4 — Create Virtual Environment
+:: Step 4 — Evaluate, Install and Start Ollama
+:: ---------------------------------------------------------------------------
+echo [INFO] Evaluating Ollama...
+set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+set "OLLAMA_APP=%LOCALAPPDATA%\Programs\Ollama\ollama app.exe"
+
+if exist "%OLLAMA_EXE%" (
+    echo [SKIP] Ollama detected at %OLLAMA_EXE%
+) else (
+    echo [INFO] Ollama not detected. Downloading fallback installer...
+    curl -# -L -o ollama_installer.exe "https://ollama.com/download/OllamaSetup.exe"
+    echo [INFO] Installing Ollama...
+    start /wait ollama_installer.exe /SILENT
+)
+
+echo [INFO] Starting Ollama server in background...
+if exist "%OLLAMA_APP%" (
+    :: Starts the system tray app, which silently handles the API server
+    start "" "%OLLAMA_APP%"
+) else if exist "%OLLAMA_EXE%" (
+    :: Fallback if the tray app doesn't exist
+    start "" /B "%OLLAMA_EXE%" serve
+)
+
+:: ---------------------------------------------------------------------------
+:: Step 5 — Create Virtual Environment
 :: ---------------------------------------------------------------------------
 set "VENV_DIR=%INSTALL_DIR%\.venv"
 if not exist "%VENV_DIR%\Scripts\activate.bat" (
@@ -102,7 +122,7 @@ if not exist "%VENV_DIR%\Scripts\activate.bat" (
 )
 
 :: ---------------------------------------------------------------------------
-:: Step 5 — Activate and Install Dependencies
+:: Step 6 — Activate and Install Dependencies
 :: ---------------------------------------------------------------------------
 call "%VENV_DIR%\Scripts\activate.bat"
 echo [INFO] Updating package manager pip...
