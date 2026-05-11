@@ -4,7 +4,7 @@
 ; Prerequisites:
 ;   - Inno Setup 6.x  (https://jrsoftware.org/isinfo.php)
 ;   - installer\dependencies\python-3.10.9-amd64.exe      (download separately)
-;   - installer\dependencies\dotnet-runtime-8.0-win-x64.exe (download separately)
+;   - installer\dependencies\dotnet-sdk-8.0.x-win-x64.exe (download separately)
 ;   - installer\dependencies\DWSIM\* (copy from DWSIM install)
 ; Compile:
 ;   iscc /DAppVersion=1.0.1 biocontrol_setup.iss
@@ -12,7 +12,7 @@
 
 #define AppName        "Biocontrol Dashboard"
 #define AppVersion     "1.0.2"
-#define AppPublisher   "César Augusto García Echeverry"
+#define AppPublisher   "Cesar Augusto Garcia Echeverry"
 #define AppURL         "https://github.com/CesarGarech/Biocontrol_modeling_project"
 #define AppExeName     "run_dashboard.bat"
 
@@ -39,14 +39,10 @@ WizardStyle=modern
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0 or higher%n  - Python 3.10.9 (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
-spanish.WelcomeLabel2=Este asistente instalará [name/ver] en su computador.%n%nSe instalarán automáticamente los siguientes componentes:%n  - .NET Runtime 8.0 o superior%n  - Python 3.10.9 (si no está instalado)%n  - Simulador de procesos DWSIM%n  - Todas las librerías Python necesarias%n%nHaga clic en Siguiente para continuar.
-
+english.WelcomeLabel2=This wizard will install [name/ver] on your computer.%n%nThe following components will be installed automatically:%n  - .NET Runtime 8.0 or higher%n  - Python 3.10.x (if not already present)%n  - DWSIM process simulator%n  - All required Python libraries%n%nClick Next to continue.
 english.InstallingLibraries=Installing Python libraries, please wait...
-spanish.InstallingLibraries=Instalando librerías Python, por favor espere...
 
 [Tasks]
 Name: "desktopicon";     Description: "{cm:CreateDesktopIcon}";          GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -60,9 +56,9 @@ Source: "..\dependencies\dotnet-sdk-8.0.419-win-x64.exe"; DestDir: "{tmp}"; Flag
 Source: "..\dependencies\python-3.10.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsPython310Installed
 
 ; DWSIM files - Preprocessor directive checks for folder during COMPILATION
-; Verificamos si existe el DLL principal de DWSIM para confirmar que la carpeta está lista
+; Check if the main DWSIM DLL exists to confirm the folder is ready
 #if FileExists("..\dependencies\DWSIM\DWSIM.Automation.dll")
-Source: "..\dependencies\DWSIM\*"; DestDir: "{localappdata}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dependencies\DWSIM\*"; DestDir: "{pf}\DWSIM"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
 
 ; Project root files
@@ -93,7 +89,9 @@ Source: "post_install.bat"; DestDir: "{app}"; Flags: ignoreversion deleteafterin
 [Icons]
 Name: "{group}\{#AppName}";            Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";     Filename: "{app}\run_dashboard.bat"; WorkingDir: "{app}"; Tasks: desktopicon
+; DWSIM Desktop Shortcut
+Name: "{autodesktop}\DWSIM";          Filename: "{pf}\DWSIM\DWSIM.exe"; WorkingDir: "{pf}\DWSIM"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\post_install.bat"; \
@@ -119,7 +117,7 @@ Type: filesandordirs; Name: "{app}\Output"
 
 // ---------------------------------------------------------------------------
 // IsDotNet8OrHigherInstalled
-// Verifica si existe .NET 8, 9 o superior en el registro.
+// Checks if .NET 8, 9 or higher is installed in the registry.
 // ---------------------------------------------------------------------------
 function IsDotNet8OrHigherInstalled: Boolean;
 var
@@ -128,8 +126,7 @@ var
   BaseKey: String;
 begin
   Result := False;
-  
-  // Revisar clave oficial de 64 bits
+  // Check official 64-bit key
   BaseKey := 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
   if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
   begin
@@ -148,7 +145,7 @@ begin
     end;
   end;
 
-  // Revisar clave de WOW6432Node
+  // Check WOW6432Node key
   BaseKey := 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App';
   if RegGetSubkeyNames(HKLM, BaseKey, Versions) then
   begin
@@ -170,7 +167,7 @@ end;
 
 // ---------------------------------------------------------------------------
 // InstallDotNet
-// Ejecuta el instalador de .NET silenciosamente si no se cumple el requisito
+// Runs the bundled .NET installer silently if requirements are not met
 // ---------------------------------------------------------------------------
 procedure InstallDotNet;
 var
@@ -179,13 +176,12 @@ var
 begin
   if IsDotNet8OrHigherInstalled then
   begin
-    Log('.NET >= 8 Runtime already installed — skipping.');
+    Log('.NET >= 8 Runtime already installed - skipping.');
     Exit;
   end;
 
   InstallerPath := ExpandConstant('{tmp}\dotnet-sdk-8.0.419-win-x64.exe');
   Log('Installing .NET from: ' + InstallerPath);
-
   if not FileExists(InstallerPath) then
   begin
     MsgBox('.NET installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
@@ -193,7 +189,7 @@ begin
     Exit;
   end;
 
-  // Ejecución silenciosa para el instalador de Microsoft (/install /quiet /norestart)
+  // Silent execution for Microsoft installer (/install /quiet /norestart)
   if not Exec(InstallerPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     MsgBox('.NET installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
@@ -247,7 +243,7 @@ end;
 
 // ---------------------------------------------------------------------------
 // InstallPython
-// Runs the bundled Python 3.10.9 installer silently.
+// Runs the bundled Python 3.10.9 installer with progress bar.
 // ---------------------------------------------------------------------------
 procedure InstallPython;
 var
@@ -256,13 +252,12 @@ var
 begin
   if IsPython310Installed then
   begin
-    Log('Python 3.10 already installed — skipping.');
+    Log('Python 3.10 already installed - skipping.');
     Exit;
   end;
 
   InstallerPath := ExpandConstant('{tmp}\python-3.10.9-amd64.exe');
   Log('Installing Python 3.10.9 from: ' + InstallerPath);
-
   if not FileExists(InstallerPath) then
   begin
     MsgBox('Python 3.10.9 installer not found at:' + #13#10 + InstallerPath + #13#10#13#10 +
@@ -270,7 +265,8 @@ begin
     Exit;
   end;
 
-  if not Exec(InstallerPath, '/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1 Include_test=0', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  // Use /passive instead of /quiet to show a progress bar without requiring user clicks
+  if not Exec(InstallerPath, '/passive InstallAllUsers=1 TargetDir="' + ExpandConstant('{pf}\Python310') + '" PrependPath=1 Include_pip=1 Include_test=0', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
   begin
     MsgBox('Python 3.10.9 installation failed with code: ' + IntToStr(ResultCode), mbError, MB_OK);
   end
@@ -282,7 +278,7 @@ end;
 
 // ---------------------------------------------------------------------------
 // CurStepChanged event hook
-// Installs .NET y Python después de extraer los archivos a {tmp}.
+// Installs .NET and Python after extracting files to {tmp}.
 // ---------------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
 begin

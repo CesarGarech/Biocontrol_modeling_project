@@ -13,13 +13,23 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # DWSIM installation path.
 # Resolution order (first match wins):
 #   1. Environment variable DWSIM_INSTALL_PATH  (set by Docker / CI / power users)
-#   2. %LOCALAPPDATA%\DWSIM  (default Windows location used by the installer)
-#   3. /usr/lib/dwsim         (default Linux/Docker location)
-#   4. Bare fallback so the app still starts without DWSIM
-_default_dwsim = os.path.join(
-    os.environ.get("LOCALAPPDATA") or os.path.expandvars("%LOCALAPPDATA%") or "C:\\",
-    "DWSIM"
-) if os.name == "nt" else "/usr/lib/dwsim"
+#   2. C:\Program Files\DWSIM  (default Windows location used by the new installer)
+#   3. %LOCALAPPDATA%\DWSIM    (fallback for old installations)
+#   4. /usr/lib/dwsim          (default Linux/Docker location)
+#   5. Bare fallback so the app still starts without DWSIM
+
+if os.name == "nt":
+    _program_files = os.environ.get("ProgramFiles") or "C:\\Program Files"
+    _local_appdata = os.environ.get("LOCALAPPDATA") or os.path.expandvars("%LOCALAPPDATA%")
+    
+    # Try Program Files first, then LocalAppData
+    if os.path.exists(os.path.join(_program_files, "DWSIM", "DWSIM.Automation.dll")):
+        _default_dwsim = os.path.join(_program_files, "DWSIM")
+    else:
+        _default_dwsim = os.path.join(_local_appdata, "DWSIM")
+else:
+    _default_dwsim = "/usr/lib/dwsim"
+
 DWSIM_INSTALL_PATH = os.environ.get("DWSIM_INSTALL_PATH", _default_dwsim)
 
 # DWSIM simulation file
@@ -49,7 +59,7 @@ FLOW_FEED_BASE = 10000.0   # Feed to column
 SPLIT_TOP = 0.35           # Fraction of feed that exits as distillate (Top)
 SPLIT_BOTTOM = 0.65        # Fraction of feed that exits as bottoms (Bottom)
 
-# Energy duties (kW) — from DWSIM diagram
+# Energy duties (kW) - from DWSIM diagram
 Q_COND_BASE = 1207.87      # Condenser duty
 Q_REB_BASE = 1524.29       # Reboiler duty
 
