@@ -79,19 +79,7 @@ def build_context_prompt(page_name: str, user_question: str,
                          equations: Optional[List[str]] = None,
                          parameters: Optional[Dict[str, Any]] = None,
                          method: Optional[str] = None) -> str:
-    """
-    Build a contextual prompt based on current page and user input.
-    
-    Args:
-        page_name: Name of the current page/module
-        user_question: User's question or request
-        equations: List of equations shown in the current page
-        parameters: Dictionary of current parameter values
-        method: Current method/model being used
-        
-    Returns:
-        Formatted prompt string for the LLM
-    """
+    """Build a contextual prompt based on current page and user input."""
     context_parts = [f"Context: I am on the '{page_name}' page of the bioprocess modeling app."]
     
     if method:
@@ -113,19 +101,9 @@ def build_context_prompt(page_name: str, user_question: str,
 
 
 def get_relevant_references(page_name: str, keywords: List[str]) -> List[str]:
-    """
-    Get relevant bibliographic references based on page and keywords.
-    
-    Args:
-        page_name: Name of the current page
-        keywords: List of relevant keywords
-        
-    Returns:
-        List of reference strings
-    """
+    """Get relevant bibliographic references based on page and keywords."""
     references = []
     
-    # Map page names to reference categories
     page_mapping = {
         "Batch": ["monod", "bioprocess"],
         "Fed-Batch": ["monod", "bioprocess"],
@@ -141,17 +119,14 @@ def get_relevant_references(page_name: str, keywords: List[str]) -> List[str]:
         "Fuzzy Control": ["fuzzy_control"]
     }
     
-    # Get references for the current page
     if page_name in page_mapping:
         for ref_key in page_mapping[page_name]:
             if ref_key in CURATED_REFERENCES:
                 references.extend(CURATED_REFERENCES[ref_key])
     
-    # Add general bioprocess references if no specific ones found
     if not references:
         references.extend(CURATED_REFERENCES["bioprocess"])
     
-    # Remove duplicates while preserving order
     seen = set()
     unique_refs = []
     for ref in references:
@@ -159,19 +134,11 @@ def get_relevant_references(page_name: str, keywords: List[str]) -> List[str]:
             seen.add(ref)
             unique_refs.append(ref)
     
-    return unique_refs[:5]  # Return max 5 references
+    return unique_refs[:5]
 
 
 def check_ollama_availability(base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool, str]:
-    """
-    Check if Ollama service is available.
-    
-    Args:
-        base_url: Base URL for Ollama API
-        
-    Returns:
-        Tuple of (is_available: bool, message: str)
-    """
+    """Check if Ollama service is available and list local models."""
     try:
         response = requests.get(f"{base_url}/api/tags", timeout=2)
         if response.status_code == 200:
@@ -187,26 +154,35 @@ def check_ollama_availability(base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool,
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
+def pull_ollama_model(model_name: str, base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool, str]:
+    """
+    Programmatically pull (download) an Ollama model.
+    Uses a long timeout as model downloads can take minutes depending on bandwidth.
+    """
+    try:
+        url = f"{base_url}/api/pull"
+        data = {"name": model_name, "stream": False}
+        # Timeout is set to 600 seconds (10 minutes) to allow large models to download
+        response = requests.post(url, json=data, timeout=600)
+        
+        if response.status_code == 200:
+            return True, f"✅ Model '{model_name}' successfully downloaded and ready."
+        else:
+            return False, f"Server error while pulling: {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "⏳ Request timed out, but the download might still be running in the background. Check your terminal."
+    except requests.exceptions.ConnectionError:
+        return False, "Cannot connect to Ollama. Verify it is running."
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
 
 def query_ollama(prompt: str, model: str = DEFAULT_MODEL, 
                 base_url: str = DEFAULT_OLLAMA_URL,
                 temperature: float = 0.7,
                 max_tokens: int = 1000) -> Tuple[bool, str]:
-    """
-    Send a query to Ollama API and get response.
-    
-    Args:
-        prompt: The prompt to send
-        model: Model name to use
-        base_url: Base URL for Ollama API
-        temperature: Sampling temperature (0-1)
-        max_tokens: Maximum tokens in response
-        
-    Returns:
-        Tuple of (success: bool, response: str)
-    """
+    """Send a query to Ollama API and get response."""
     try:
-        # Prepare the request
         url = f"{base_url}/api/generate"
         data = {
             "model": model,
@@ -218,7 +194,6 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
             }
         }
         
-        # Make the request
         response = requests.post(url, json=data, timeout=60)
         
         if response.status_code == 200:
@@ -228,7 +203,7 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
             return False, f"Server error: {response.status_code}"
             
     except requests.exceptions.Timeout:
-        return False, "Request took too long. Try a smaller model."
+        return False, "Request took too long. Try a smaller model or verify if it's downloaded."
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Ollama. Verify it is running."
     except Exception as e:
@@ -236,16 +211,7 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
 
 
 def format_response_with_references(llm_response: str, references: List[str]) -> str:
-    """
-    Format LLM response with references and disclaimers.
-    
-    Args:
-        llm_response: Raw response from LLM
-        references: List of reference strings
-        
-    Returns:
-        Formatted response string
-    """
+    """Format LLM response with references and disclaimers."""
     formatted = f"{llm_response}\n\n"
     formatted += "---\n\n"
     formatted += "**📚 Relevant references:**\n\n"
@@ -258,17 +224,7 @@ def format_response_with_references(llm_response: str, references: List[str]) ->
 
 
 def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, Any]:
-    """
-    Suggest typical parameter ranges based on literature.
-    
-    Args:
-        parameter_name: Name of the parameter
-        model_type: Type of model (e.g., 'Monod', 'PID', etc.)
-        
-    Returns:
-        Dictionary with suggested ranges and units
-    """
-    # Common bioprocess parameters
+    """Suggest typical parameter ranges based on literature."""
     ranges = {
         "mumax": {"min": 0.1, "max": 1.5, "typical": 0.5, "unit": "h⁻¹", 
                   "description": "Maximum specific growth rate"},
@@ -280,7 +236,6 @@ def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, 
                "description": "Cell death constant"},
         "kla": {"min": 10, "max": 300, "typical": 100, "unit": "h⁻¹",
                 "description": "Volumetric mass transfer coefficient for oxygen"},
-        # PID parameters
         "Kc": {"min": 0.1, "max": 10.0, "typical": 1.0, "unit": "adim.",
                "description": "Proportional controller gain"},
         "Ti": {"min": 0.1, "max": 10.0, "typical": 1.0, "unit": "min",

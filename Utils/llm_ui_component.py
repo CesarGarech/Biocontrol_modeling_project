@@ -8,6 +8,7 @@ import streamlit as st
 from typing import Optional
 from Utils.llm_helper import (
     check_ollama_availability,
+    pull_ollama_model,
     query_ollama,
     build_context_prompt,
     get_relevant_references,
@@ -88,6 +89,17 @@ def render_llm_sidebar(current_page: str):
                     st.error(f"❌ {message}")
                     st.session_state.llm_last_check = "failed"
         
+        # Model Installation Section
+        st.divider()
+        st.caption("📦 Model Management")
+        if st.button(f"⬇️ Download Model", key="llm_download_model", help=f"Downloads {st.session_state.llm_model} directly from Ollama servers."):
+            with st.spinner(f"Downloading {st.session_state.llm_model}... This may take several minutes depending on your internet connection."):
+                success, msg = pull_ollama_model(st.session_state.llm_model, ollama_url)
+                if success:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+                    
         # Show last check status
         if st.session_state.llm_last_check == "success":
             st.caption("✅ Last check: OK")
@@ -140,9 +152,7 @@ def render_llm_sidebar(current_page: str):
         st.sidebar.markdown("---")
         st.sidebar.markdown("**📜 History:**")
         
-        # Show only last 3 interactions
         for i, interaction in enumerate(st.session_state.llm_chat_history[-3:]):
-            # Calculate question number for display
             question_number = len(st.session_state.llm_chat_history) - 3 + i + 1
             question_preview = interaction['question'][:50]
             
@@ -152,24 +162,15 @@ def render_llm_sidebar(current_page: str):
 
 
 def _process_question(question: str, current_page: str):
-    """
-    Process a question and get response from LLM.
-    
-    Args:
-        question: User's question
-        current_page: Current page name for context
-    """
+    """Process a question and get response from LLM."""
     with st.sidebar.spinner("🤔 Thinking..."):
-        # Build context
         prompt = build_context_prompt(
             page_name=current_page,
             user_question=question
         )
         
-        # Get references
         references = get_relevant_references(current_page, [])
         
-        # Query LLM
         success, response = query_ollama(
             prompt=prompt,
             model=st.session_state.llm_model,
@@ -177,10 +178,8 @@ def _process_question(question: str, current_page: str):
         )
         
         if success:
-            # Format with references
             formatted_response = format_response_with_references(response, references)
             
-            # Add to history
             st.session_state.llm_chat_history.append({
                 'question': question,
                 'response': formatted_response,
@@ -194,10 +193,7 @@ def _process_question(question: str, current_page: str):
 
 
 def show_llm_response_in_main_area():
-    """
-    Optionally show the last LLM response in the main content area.
-    Call this from the page if you want to show responses there instead of sidebar.
-    """
+    """Optionally show the last LLM response in the main content area."""
     if st.session_state.get('llm_enabled', False) and st.session_state.llm_chat_history:
         last_interaction = st.session_state.llm_chat_history[-1]
         
