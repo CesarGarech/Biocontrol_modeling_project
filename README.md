@@ -104,29 +104,6 @@ You can also click **🛠️ Build Custom Assistant** in the app sidebar.
 - **Model size:** Smaller models (3B-7B) are faster; larger models (13B+) are more capable
 - **References:** Only curated academic references from project documentation are provided
 
-### 🛠️ Troubleshooting the `biocontrol-llama` model
-
-Recent Ollama releases (v0.5+) changed the `/api/create` request schema. The
-previous code only sent the deprecated `modelfile` field, which now fails with
-`400 - {"error":"neither 'from' or 'files' was specified"}`. The fix (v1.0.4)
-makes the AI Guide robust:
-
-| Symptom | Cause | What the app now does |
-| --- | --- | --- |
-| `Server error while creating model: 400 - neither 'from' or 'files' was specified` | Old `/api/create` payload (only `modelfile`) rejected by Ollama v0.5+ | `create_custom_model` sends the modern `from`/`system`/`parameters` schema, falling back to the legacy `modelfile` payload for older servers |
-| `Server error while pulling: 500` | Trying to `ollama pull biocontrol-llama` — the custom model is **local-only** and not in the registry | `pull_ollama_model` detects the custom model and tells you to pull the base model and build the assistant instead |
-| `Error: Server error: 404` | Querying `biocontrol-llama` before it was built | `query_ollama` now returns an actionable message: pull `llama3.1:8b` and click **🛠️ Build Custom Assistant** |
-
-**Correct setup order:**
-1. `ollama serve`
-2. `ollama pull llama3.1:8b` (or click **⬇️ Download Model** with the base model selected)
-3. Click **🛠️ Build Custom Assistant** (or run `python installer/ollama/build_model.py`)
-4. Select `biocontrol-llama` and start asking questions
-
-If you prefer not to build the custom model, simply select any pulled base model
-(e.g. `llama3.1:8b`); the app injects the same Biocontrol system prompt at query
-time, so the assistant stays grounded.
-
 ## 📦 Installation
 
 ### ⚠️ Important: Python Version Requirement

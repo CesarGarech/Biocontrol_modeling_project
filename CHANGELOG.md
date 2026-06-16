@@ -1,47 +1,5 @@
 # Changelog
 
-## [1.0.4] - 2026-06-16 — Checkpoint: Fix biocontrol-llama Ollama API errors (Test_Chatbot)
-
-### 🤖 AI Guide / Llama Chatbot — Bug Fix
-
-This checkpoint repairs the customized **`biocontrol-llama`** workflow, which broke
-against newer Ollama releases (v0.5+). The base models continued to work, but
-building/using the grounded custom model failed. The developer should recompile
-after this checkpoint to produce `BiocontrolDashboard-Setup-v1.0.4.exe`.
-
-#### Fixed
-- **`create_custom_model` → `400 - {"error":"neither 'from' or 'files' was specified"}`.**
-  Ollama v0.5+ replaced the deprecated `modelfile` body field of `/api/create`
-  with a structured schema. `Utils/llm_helper.py` now sends the modern
-  `from`/`system`/`parameters` payload and transparently falls back to the legacy
-  `modelfile` payload for older Ollama servers. A pre-flight check verifies the
-  base model is installed and returns an actionable message if it is not.
-- **`pull_ollama_model` → `Server error while pulling: 500`.** Attempting to
-  `pull` the local-only `biocontrol-llama` model from the public registry returned
-  500. The function now detects the custom model and instructs the user to pull the
-  base model and build the assistant instead. Pull also sends the new `model` key
-  (keeping `name` for backward compatibility) and surfaces the server's error body.
-- **`query_ollama` → `Server error: 404`.** Querying `biocontrol-llama` before it
-  was built returned an opaque 404. The 404 case now returns a clear, actionable
-  message (pull the base model and build the custom assistant, or pull the selected
-  base model).
-
-#### Added
-- **`model_exists()`** helper in `Utils/llm_helper.py` to check whether a model
-  (exact tag or bare name) is installed locally.
-- **`CUSTOM_MODEL_PARAMETERS`** constant shared by the Modelfile builder and the
-  modern `/api/create` payload to keep generation parameters in a single source.
-- **`_extract_error_message()`** helper to parse Ollama's JSON `error` field for
-  clearer UI messages.
-- README **"🛠️ Troubleshooting the `biocontrol-llama` model"** section explaining
-  the errors, root causes, fixes and the correct setup order.
-
-#### Changed
-- Version bumped to **1.0.4** in `version.py`, `setup.py` and
-  `installer/biocontrol_setup.iss`.
-
----
-
 ## [1.0.3] - 2026-06-15 — Checkpoint: AI Guide grounded on all screens (Test_Chatbot)
 
 ### 🤖 AI Guide / Llama Chatbot — Major Enhancement
