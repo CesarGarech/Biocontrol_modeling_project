@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.0.3] - 2026-06-15 — Checkpoint: AI Guide grounded on all screens (Test_Chatbot)
+
+### 🤖 AI Guide / Llama Chatbot — Major Enhancement
+
+This checkpoint makes the Ollama/Llama-powered **AI Guide** context-aware for **every**
+screen of the application and able to suggest screen-specific parameters. The developer
+should recompile after this checkpoint to produce `BiocontrolDashboard-Setup-v1.0.3.exe`.
+
+#### Added
+- **`Utils/llm_knowledge_base.py`** — Single source of truth that *grounds* the Llama model.
+  Contains a curated, per-screen knowledge base (`PAGE_KNOWLEDGE`) for all 24 screens:
+  - Modeling: `Batch`, `Fed-Batch`, `Continuous`, `Fermentation`
+  - Analysis: `Sensitivity Analysis`
+  - Parameter Optimization: `Batch / Fed-Batch / Fermentation Parameter Adjustment`
+  - State Estimation: `EKF`, `ANN`
+  - Regulatory Control: `Identification (pH)`, `Temperature`, `pH`, `Oxygen`,
+    `Cascade-Oxygen`, `On-Off Feeding`
+  - Advanced Control: `RTO`, `RTO Ferm`, `NMPC`, `LMPC`, `EKF-NMPC`, `Fuzzy Control`
+  - Digital Twin: distillation (DWSIM/FUG), SCADA reconciliation, ML prediction
+  - Each entry includes the method, description, governing equations, tunable parameters
+    (typical value + range + unit + description) and curated references.
+  - Page-name normalization (`resolve_page_key`) handles emoji/aggregate menu labels.
+- **`installer/ollama/biocontrol_assistant.Modelfile`** — Ollama Modelfile that customizes
+  ("re-trains"/specializes) `llama3.1:8b` into the grounded `biocontrol-llama` model by
+  embedding the Biocontrol system prompt and recommended generation parameters.
+- **`installer/ollama/build_model.py`** — CLI helper to build the `biocontrol-llama` model
+  from the command line (`python installer/ollama/build_model.py`).
+- **"🛠️ Build Custom Assistant"** button in the AI Guide sidebar to create the
+  `biocontrol-llama` model directly from the app via the Ollama `/api/create` endpoint.
+- **Offline page parameter table** — the sidebar now shows the typical parameter ranges of
+  the current screen even when Ollama is not running.
+- **Context indicator** — the sidebar shows which application area/method the assistant is
+  currently grounded on.
+
+#### Changed
+- **`Utils/llm_helper.py`**:
+  - `SYSTEM_PROMPT` rewritten to describe the full application scope (all 7 areas).
+  - `build_context_prompt` now auto-injects the per-page method, equations and parameter
+    ranges from the knowledge base, so answers/suggestions are specific to the active screen.
+  - `get_relevant_references` now returns curated references for **every** screen via the
+    knowledge base (with a legacy fallback for unknown pages).
+  - `suggest_parameter_ranges` is now **page-aware** (uses the current screen's parameters
+    first, then a global fallback table).
+  - Added `BASE_MODEL`, `CUSTOM_MODEL_NAME`, `build_modelfile()` and `create_custom_model()`.
+  - `query_ollama` no longer double-applies the system prompt when the customized
+    `biocontrol-llama` model is used.
+  - The customized `biocontrol-llama` is now the default model in `AVAILABLE_MODELS`.
+- **`Utils/llm_ui_component.py`**: imports the knowledge base, injects page context into all
+  prompts, page-aware "📊 Suggest params" action, "Build Custom Assistant" workflow.
+
+#### Version
+- Bumped application version to **1.0.3** (`version.py`, `setup.py`,
+  `installer/biocontrol_setup.iss` → output `BiocontrolDashboard-Setup-v1.0.3.exe`).
+
+---
+
 ## [Unreleased] - 2025-10-31
 
 ### Repository Cleanup and Restructuring

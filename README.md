@@ -26,11 +26,26 @@ The purpose of this project is to assist in teaching classical and advanced mode
 The AI Guide is now available as an optional feature to assist with bioprocess modeling concepts.
 
 ### ✅ Implemented Features
-- **Contextual Help:** Explains equations and methods based on the current page
-- **Parameter Suggestions:** Provides typical ranges from literature
-- **Reference Recommendations:** Curated bibliographic references for each topic
-- **Free & Local:** Uses Ollama (no API costs, data stays local)
-- **Graceful Fallback:** App works normally if Ollama is unavailable
+- **Contextual Help on Every Screen:** The assistant is *grounded* on a per-screen knowledge
+  base (`Utils/llm_knowledge_base.py`) covering **all 24 screens** — modeling, sensitivity
+  analysis, parameter optimization, state estimation (EKF/ANN), regulatory control, advanced
+  control (RTO/NMPC/LMPC/EKF-NMPC/Fuzzy) and the digital twin. It explains the equations and
+  methods specific to the page you are on.
+- **Screen-Aware Parameter Suggestions:** Suggests typical ranges using the actual parameters
+  of the current screen; an offline parameter table is also shown when Ollama is not running.
+- **Reference Recommendations:** Curated bibliographic references for each topic/screen.
+- **Customized ("re-trained") Llama model:** A derived `biocontrol-llama` Ollama model embeds
+  the application's domain system prompt. Build it from the sidebar
+  (**🛠️ Build Custom Assistant**), via `python installer/ollama/build_model.py`, or with
+  `ollama create biocontrol-llama -f installer/ollama/biocontrol_assistant.Modelfile`.
+- **Free & Local:** Uses Ollama (no API costs, data stays local).
+- **Graceful Fallback:** App works normally if Ollama is unavailable.
+
+> **How the grounding works:** instead of GPU fine-tuning, Llama is specialized in two
+> complementary ways: (1) the `biocontrol-llama` Ollama model embeds the domain system prompt,
+> and (2) at query time the per-screen method, equations and parameter ranges are injected into
+> the prompt from `Utils/llm_knowledge_base.py`. This lets the chatbot answer and suggest
+> parameters for any screen of the dashboard.
 
 ### 🚀 Quick Start Guide
 
@@ -58,11 +73,20 @@ ollama pull llama3.2:3b   # Smaller, faster
 ollama serve
 ```
 
-#### 4. Enable in the app
+#### 4. (Recommended) Build the grounded Biocontrol assistant
+Create the customized `biocontrol-llama` model so the chatbot is specialized for this app:
+```bash
+ollama create biocontrol-llama -f installer/ollama/biocontrol_assistant.Modelfile
+# or, equivalently:
+python installer/ollama/build_model.py
+```
+You can also click **🛠️ Build Custom Assistant** in the app sidebar.
+
+#### 5. Enable in the app
 - Open the application (`streamlit run main.py`)
 - In the sidebar, find **"🤖 AI Guide (Beta)"**
-- Check **"Activar Asistente IA"**
-- Click **"🔍 Verificar Conexión"** to test
+- Check **"Enable AI Assistant"**
+- Select the `biocontrol-llama` model and click **"🔍 Check Connection"** to test
 
 ### 💡 Usage Examples
 - **Explain equations:** Click "📖 Explicar método" to understand the current model

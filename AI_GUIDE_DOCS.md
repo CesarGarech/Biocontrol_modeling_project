@@ -247,7 +247,14 @@ Found a bug? Have a suggestion? Want to improve the curated references?
 
 ## Version History
 
-**v1.0.0 (Current)**
+**v1.0.3 (Current) — Grounded on all screens**
+- Per-screen knowledge base (`Utils/llm_knowledge_base.py`) covering all 24 screens
+- Automatic injection of page method/equations/parameters into the prompt
+- Screen-aware parameter suggestions + offline parameter table
+- Customized `biocontrol-llama` Ollama model (Modelfile + "Build Custom Assistant" button)
+- Full reference coverage for every screen
+
+**v1.0.0**
 - Initial implementation
 - Support for 5 Ollama models
 - 9 reference categories
