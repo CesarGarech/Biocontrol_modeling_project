@@ -9,6 +9,20 @@ import requests
 from typing import Dict, List, Optional, Tuple, Any
 import streamlit as st
 
+# Page knowledge base used to ground the Llama model on every app screen.
+try:
+    from Utils.llm_knowledge_base import (
+        get_page_knowledge,
+        get_page_parameters,
+        format_parameter_table,
+        resolve_page_key,
+    )
+except Exception:  # pragma: no cover - keep helper importable in isolation
+    get_page_knowledge = lambda page: None  # type: ignore
+    get_page_parameters = lambda page: {}  # type: ignore
+    format_parameter_table = lambda params: ""  # type: ignore
+    resolve_page_key = lambda page: None  # type: ignore
+
 
 # ==================== CURATED REFERENCES ====================
 CURATED_REFERENCES = {
@@ -50,38 +64,98 @@ CURATED_REFERENCES = {
 
 # ==================== OLLAMA API CONFIGURATION ====================
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "llama3.1:8b"
+
+# Base Llama model that the assistant is built on.
+BASE_MODEL = "llama3.1:8b"
+
+# Name of the customized ("re-trained") domain model created from BASE_MODEL
+# using the Modelfile in installer/ollama/biocontrol_assistant.Modelfile.
+# When this model exists in Ollama it is preferred because it already embeds the
+# Biocontrol system prompt and recommended generation parameters.
+CUSTOM_MODEL_NAME = "biocontrol-llama"
+
+DEFAULT_MODEL = CUSTOM_MODEL_NAME
 AVAILABLE_MODELS = [
+    CUSTOM_MODEL_NAME,   # Customized Biocontrol assistant (preferred)
     "llama3.1:8b",
-    "llama3.2:3b", 
+    "llama3.2:3b",
     "qwen2.5:7b",
     "mistral:7b",
     "phi3:mini"
 ]
 
 # ==================== PROMPT TEMPLATES ====================
-SYSTEM_PROMPT = """You are an educational assistant specialized in bioprocess engineering, mathematical modeling, and process control.
+SYSTEM_PROMPT = """You are the Biocontrol AI Guide, an educational assistant embedded in an interactive
+Streamlit application for modeling, simulation, analysis and control of bioprocesses
+(developed at LADES - COPPE/UFRJ).
+
+You must be able to help with EVERY screen of the application:
+1. Modeling: Batch, Fed-Batch, Continuous (chemostat) and Alcoholic Fermentation reactors.
+2. Sensitivity Analysis of kinetic parameters.
+3. Parameter Optimization: fitting Batch, Fed-Batch and Fermentation kinetic parameters to data.
+4. State Estimation: Extended Kalman Filter (EKF) and Artificial Neural Network (ANN) soft sensors.
+5. Regulatory Control: pH identification, PID temperature, split-range pH, dissolved oxygen,
+   cascade oxygen and on-off feeding.
+6. Advanced Control: RTO, RTO for fermentation, NMPC, LMPC, EKF-NMPC and Fuzzy control.
+7. Digital Twin: distillation column simulation (DWSIM/FUG), SCADA data reconciliation and
+   machine-learning composition prediction.
 
 Your role is to:
-1. Explain mathematical equations and models in a clear and educational way
-2. Describe simulation, estimation, and control methods in accessible language
-3. Suggest reasonable parameter ranges based on the literature
-4. Recommend appropriate bibliographic references
+1. Explain mathematical equations and models clearly and educationally.
+2. Describe simulation, estimation, optimization and control methods in accessible language.
+3. Suggest reasonable parameter ranges based on the literature AND on the parameters of the
+   current screen that are provided to you in the context.
+4. Recommend appropriate bibliographic references.
 
 IMPORTANT:
-- Only use technically sound information and the references provided to you
-- Indicate typical parameter ranges with disclaimers regarding experimental validation
-- Always mention that the suggestions are for guidance and require validation
-- Respond in English clearly and concisely
-- If you do not have sufficient information, state it honestly"""
+- Use the page context (method, equations and parameters) provided to you to give answers that
+  are specific to the screen the user is currently on.
+- When suggesting parameter values, prefer the typical ranges of the current screen and always
+  add a disclaimer that they must be validated experimentally.
+- Respond in English, clearly and concisely.
+- If you do not have sufficient information, state it honestly."""
 
 def build_context_prompt(page_name: str, user_question: str, 
                          equations: Optional[List[str]] = None,
                          parameters: Optional[Dict[str, Any]] = None,
-                         method: Optional[str] = None) -> str:
-    """Build a contextual prompt based on current page and user input."""
+                         method: Optional[str] = None,
+                         use_knowledge_base: bool = True) -> str:
+    """Build a contextual prompt based on current page and user input.
+
+    When ``use_knowledge_base`` is True (default), the per-page knowledge base
+    (method, description, equations and typical parameter ranges for the current
+    screen) is automatically injected so the model can answer/suggest parameters
+    specifically for the screen the user is on. Explicitly passed ``equations``,
+    ``parameters`` or ``method`` always take precedence over the knowledge base.
+    """
+    knowledge = get_page_knowledge(page_name) if use_knowledge_base else None
+
+    if knowledge:
+        method = method or knowledge.get("method")
+        if equations is None and knowledge.get("equations"):
+            equations = knowledge["equations"]
+        if parameters is None and knowledge.get("parameters"):
+            # Flatten descriptor dicts into a readable "typical [range] unit" string.
+            parameters = {}
+            for name, info in knowledge["parameters"].items():
+                if isinstance(info, dict):
+                    default = info.get("default")
+                    mn, mx = info.get("min"), info.get("max")
+                    unit = info.get("unit", "")
+                    desc = info.get("description", "")
+                    rng = f" (range {mn}-{mx})" if mn is not None and mx is not None else ""
+                    unit_str = f" {unit}" if unit and unit != "-" else ""
+                    parameters[name] = f"typical {default}{rng}{unit_str} - {desc}".strip()
+                else:
+                    parameters[name] = info
+
     context_parts = [f"Context: I am on the '{page_name}' page of the bioprocess modeling app."]
-    
+
+    if knowledge:
+        context_parts.append(f"Application area: {knowledge.get('section', 'N/A')}")
+        if knowledge.get("description"):
+            context_parts.append(f"Page description: {knowledge['description']}")
+
     if method:
         context_parts.append(f"Current Method/Model: {method}")
     
@@ -91,7 +165,7 @@ def build_context_prompt(page_name: str, user_question: str,
             context_parts.append(f"  - {eq}")
     
     if parameters:
-        context_parts.append("\nCurrent user parameters:")
+        context_parts.append("\nParameters used on this screen (typical values and ranges):")
         for key, value in parameters.items():
             context_parts.append(f"  - {key}: {value}")
     
@@ -101,39 +175,52 @@ def build_context_prompt(page_name: str, user_question: str,
 
 
 def get_relevant_references(page_name: str, keywords: List[str]) -> List[str]:
-    """Get relevant bibliographic references based on page and keywords."""
-    references = []
-    
-    page_mapping = {
-        "Batch": ["monod", "bioprocess"],
-        "Fed-Batch": ["monod", "bioprocess"],
-        "Continuous": ["monod", "bioprocess"],
-        "Fermentation": ["luedeking_piret", "bioprocess"],
-        "Temperature": ["pid_control"],
-        "pH": ["pid_control"],
-        "Oxygen": ["pid_control"],
-        "RTO": ["rto", "mpc"],
-        "NMPC": ["mpc"],
-        "EKF": ["ekf"],
-        "ANN": ["bioprocess", "parameter_estimation"],
-        "Fuzzy Control": ["fuzzy_control"]
-    }
-    
-    if page_name in page_mapping:
-        for ref_key in page_mapping[page_name]:
-            if ref_key in CURATED_REFERENCES:
-                references.extend(CURATED_REFERENCES[ref_key])
-    
+    """Get relevant bibliographic references based on page and keywords.
+
+    The reference keys are taken from the per-page knowledge base so that every
+    screen (modeling, parameter optimization, estimation, regulatory/advanced
+    control and digital twin) returns curated references. A legacy mapping is
+    kept as a fallback for page names not present in the knowledge base.
+    """
+    references: List[str] = []
+
+    # Preferred source: per-page knowledge base.
+    knowledge = get_page_knowledge(page_name)
+    ref_keys: List[str] = []
+    if knowledge and knowledge.get("references"):
+        ref_keys = list(knowledge["references"])
+    else:
+        # Legacy fallback mapping (kept for backward compatibility).
+        legacy_mapping = {
+            "Batch": ["monod", "bioprocess"],
+            "Fed-Batch": ["monod", "bioprocess"],
+            "Continuous": ["monod", "bioprocess"],
+            "Fermentation": ["luedeking_piret", "bioprocess"],
+            "Temperature": ["pid_control"],
+            "pH": ["pid_control"],
+            "Oxygen": ["pid_control"],
+            "RTO": ["rto", "mpc"],
+            "NMPC": ["mpc"],
+            "EKF": ["ekf"],
+            "ANN": ["bioprocess", "parameter_estimation"],
+            "Fuzzy Control": ["fuzzy_control"],
+        }
+        ref_keys = legacy_mapping.get(page_name, [])
+
+    for ref_key in ref_keys:
+        if ref_key in CURATED_REFERENCES:
+            references.extend(CURATED_REFERENCES[ref_key])
+
     if not references:
         references.extend(CURATED_REFERENCES["bioprocess"])
-    
+
     seen = set()
     unique_refs = []
     for ref in references:
         if ref not in seen:
             seen.add(ref)
             unique_refs.append(ref)
-    
+
     return unique_refs[:5]
 
 
@@ -181,12 +268,21 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
                 base_url: str = DEFAULT_OLLAMA_URL,
                 temperature: float = 0.7,
                 max_tokens: int = 1000) -> Tuple[bool, str]:
-    """Send a query to Ollama API and get response."""
+    """Send a query to Ollama API and get response.
+
+    For the customized ``biocontrol-llama`` model the system prompt is already
+    embedded in the Modelfile, so it is not prepended again. For any other base
+    model the global ``SYSTEM_PROMPT`` is prepended to ground the answer.
+    """
     try:
         url = f"{base_url}/api/generate"
+        if model == CUSTOM_MODEL_NAME:
+            full_prompt = prompt
+        else:
+            full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
         data = {
             "model": model,
-            "prompt": f"{SYSTEM_PROMPT}\n\n{prompt}",
+            "prompt": full_prompt,
             "stream": False,
             "options": {
                 "temperature": temperature,
@@ -210,6 +306,56 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
         return False, f"Unexpected error: {str(e)}"
 
 
+# ==================== CUSTOM MODEL ("RE-TRAINING") ====================
+def build_modelfile(base_model: str = BASE_MODEL) -> str:
+    """Build the Ollama Modelfile content used to create the customized model.
+
+    This is the practical way to "re-train" / specialize Llama for this app
+    without GPU fine-tuning: the domain ``SYSTEM`` prompt and recommended
+    generation parameters are embedded into a derived Ollama model so the
+    chatbot is grounded on every screen of the application.
+    """
+    escaped_prompt = SYSTEM_PROMPT.replace('"""', '\\"\\"\\"')
+    return (
+        f"FROM {base_model}\n\n"
+        f"# Recommended generation parameters for educational, focused answers\n"
+        f"PARAMETER temperature 0.6\n"
+        f"PARAMETER top_p 0.9\n"
+        f"PARAMETER num_ctx 4096\n\n"
+        f'SYSTEM """\n{escaped_prompt}\n"""\n'
+    )
+
+
+def create_custom_model(base_url: str = DEFAULT_OLLAMA_URL,
+                        base_model: str = BASE_MODEL,
+                        model_name: str = CUSTOM_MODEL_NAME) -> Tuple[bool, str]:
+    """Create the customized Biocontrol model in Ollama via the /api/create API.
+
+    Requires that the base model (e.g. llama3.1:8b) is already pulled. The call
+    can take a while the first time because Ollama materializes the new model.
+    """
+    try:
+        url = f"{base_url}/api/create"
+        data = {
+            "name": model_name,
+            "modelfile": build_modelfile(base_model),
+            "stream": False,
+        }
+        response = requests.post(url, json=data, timeout=600)
+        if response.status_code == 200:
+            return True, (
+                f"✅ Custom model '{model_name}' created from '{base_model}'. "
+                f"Select it in the model list to use the grounded assistant."
+            )
+        return False, f"Server error while creating model: {response.status_code} - {response.text[:200]}"
+    except requests.exceptions.Timeout:
+        return False, "⏳ Model creation timed out. It may still be finishing in the background."
+    except requests.exceptions.ConnectionError:
+        return False, "Cannot connect to Ollama. Verify it is running (ollama serve)."
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
+
 def format_response_with_references(llm_response: str, references: List[str]) -> str:
     """Format LLM response with references and disclaimers."""
     formatted = f"{llm_response}\n\n"
@@ -223,8 +369,31 @@ def format_response_with_references(llm_response: str, references: List[str]) ->
     return formatted
 
 
-def suggest_parameter_ranges(parameter_name: str, model_type: str) -> Dict[str, Any]:
-    """Suggest typical parameter ranges based on literature."""
+def suggest_parameter_ranges(parameter_name: str, model_type: str,
+                             page_name: Optional[str] = None) -> Dict[str, Any]:
+    """Suggest typical parameter ranges based on literature.
+
+    If ``page_name`` is given, the per-page knowledge base is consulted first so
+    the suggestion is specific to the current screen. Otherwise (or if the
+    parameter is not registered for that page) a global table is used.
+    """
+    # 1) Page-specific parameters take priority.
+    if page_name:
+        page_params = get_page_parameters(page_name)
+        param_lower = parameter_name.lower()
+        for key, info in page_params.items():
+            if not isinstance(info, dict):
+                continue
+            if key.lower() in param_lower or param_lower in key.lower():
+                return {
+                    "min": info.get("min"),
+                    "max": info.get("max"),
+                    "typical": info.get("default"),
+                    "unit": info.get("unit", "?"),
+                    "description": info.get("description", ""),
+                }
+
+    # 2) Global fallback table.
     ranges = {
         "mumax": {"min": 0.1, "max": 1.5, "typical": 0.5, "unit": "h⁻¹", 
                   "description": "Maximum specific growth rate"},

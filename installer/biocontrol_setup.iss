@@ -8,11 +8,11 @@
 ;   - installer\dependencies\OllamaSetup.exe              (download separately)
 ;   - installer\dependencies\DWSIM\* (copy from DWSIM install)
 ; Compile:
-;   iscc /DAppVersion=1.0.1 biocontrol_setup.iss
+;   iscc /DAppVersion=1.0.3 biocontrol_setup.iss
 ; =============================================================================
 
 #define AppName        "Biocontrol Dashboard"
-#define AppVersion     "1.0.2"
+#define AppVersion     "1.0.3"
 #define AppPublisher   "Cesar Augusto Garcia Echeverry"
 #define AppURL         "https://github.com/CesarGarech/Biocontrol_modeling_project"
 #define AppExeName     "run_dashboard.bat"

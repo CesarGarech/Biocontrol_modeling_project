@@ -9,6 +9,7 @@ from typing import Optional
 from Utils.llm_helper import (
     check_ollama_availability,
     pull_ollama_model,
+    create_custom_model,
     query_ollama,
     build_context_prompt,
     get_relevant_references,
@@ -16,7 +17,14 @@ from Utils.llm_helper import (
     suggest_parameter_ranges,
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
-    DEFAULT_OLLAMA_URL
+    DEFAULT_OLLAMA_URL,
+    BASE_MODEL,
+    CUSTOM_MODEL_NAME,
+)
+from Utils.llm_knowledge_base import (
+    get_page_knowledge,
+    get_page_parameters,
+    format_parameter_table,
 )
 
 
@@ -99,6 +107,22 @@ def render_llm_sidebar(current_page: str):
                     st.success(msg)
                 else:
                     st.error(msg)
+
+        # Customized ("re-trained") assistant model creation
+        st.caption("🧠 Biocontrol Assistant (grounded model)")
+        st.caption(
+            f"Builds the customized `{CUSTOM_MODEL_NAME}` model from `{BASE_MODEL}` "
+            f"with the Biocontrol system prompt embedded. Pull `{BASE_MODEL}` first."
+        )
+        if st.button("🛠️ Build Custom Assistant", key="llm_build_custom",
+                     help=f"Creates the '{CUSTOM_MODEL_NAME}' Ollama model grounded on this app."):
+            with st.spinner(f"Creating '{CUSTOM_MODEL_NAME}' from '{BASE_MODEL}'..."):
+                success, msg = create_custom_model(ollama_url, BASE_MODEL, CUSTOM_MODEL_NAME)
+                if success:
+                    st.success(msg)
+                    st.session_state.llm_model = CUSTOM_MODEL_NAME
+                else:
+                    st.error(msg)
                     
         # Show last check status
         if st.session_state.llm_last_check == "success":
@@ -109,6 +133,13 @@ def render_llm_sidebar(current_page: str):
     # Disclaimer
     st.sidebar.info("ℹ️ **Educational Use:** Responses are for guidance and must be validated.")
     
+    # Show which page context the assistant is using
+    page_knowledge = get_page_knowledge(current_page)
+    if page_knowledge:
+        st.sidebar.caption(
+            f"🧭 Context: **{page_knowledge.get('section', '')}** — {page_knowledge.get('method', '')}"
+        )
+
     # Quick actions
     st.sidebar.markdown("**Quick Actions:**")
     col1, col2 = st.sidebar.columns(2)
@@ -120,8 +151,18 @@ def render_llm_sidebar(current_page: str):
     
     with col2:
         if st.button("📊 Suggest params", key="llm_suggest_params"):
-            question = f"Suggest typical parameter ranges for the model/method in the '{current_page}' page."
+            question = (
+                f"Suggest typical parameter ranges for the model/method on the "
+                f"'{current_page}' page, using the parameters provided in the context. "
+                f"Present them as a short table and add a validation disclaimer."
+            )
             _process_question(question, current_page)
+
+    # Offline-capable parameter reference for the current page
+    page_params = get_page_parameters(current_page)
+    if page_params:
+        with st.sidebar.expander("📋 Page parameter ranges (offline)", expanded=False):
+            st.markdown(format_parameter_table(page_params))
     
     # Chat interface
     st.sidebar.markdown("---")
