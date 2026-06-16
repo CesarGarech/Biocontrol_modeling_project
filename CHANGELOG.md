@@ -2,6 +2,29 @@
 
 ## [1.0.3] - 2026-06-15 — Checkpoint: AI Guide grounded on all screens (Test_Chatbot)
 
+### 🔌 AI Guide / Ollama connection fix (2026-06-16, within v1.0.3)
+
+Fixes **"❌ Cannot connect to Ollama. Make sure it is running (ollama serve)"**,
+where no model connected or downloaded. Root cause: the everyday launcher
+`run_dashboard.bat` never started the Ollama **server** — only `post_install.bat`
+started it once at install time, so after a reboot or closing the tray app the
+server was down. See **`TROUBLESHOOTING.md`** for the full analysis.
+
+#### Fixed
+- **`run_dashboard.bat`** — added an `EnsureOllama` step that detects whether the
+  Ollama API answers on `http://localhost:11434`, starts the server
+  (`ollama app.exe` / `ollama serve` / `ollama` on PATH) if not, and waits for it
+  to come up before launching Streamlit. The chatbot now connects on every run.
+- **`installer/post_install.bat`** — the Ollama startup step now waits and confirms
+  the server is reachable instead of fire-and-forget.
+
+#### Added
+- **`TROUBLESHOOTING.md`** — problem analysis, fix description, verification and
+  manual recovery steps for the Ollama connection error (also shipped by the
+  installer and linked from the README).
+
+> Version intentionally kept at **1.0.3** (no checkpoint bump for this fix).
+
 ### 🤖 AI Guide / Llama Chatbot — Major Enhancement
 
 This checkpoint makes the Ollama/Llama-powered **AI Guide** context-aware for **every**

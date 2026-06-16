@@ -110,6 +110,23 @@ if exist "%OLLAMA_APP%" (
     start "" /B "%OLLAMA_EXE%" serve
 )
 
+:: Wait (up to ~20s) for the Ollama API to become reachable so the first launch
+:: of the dashboard finds the AI Guide already connected.
+echo [INFO] Waiting for the Ollama server to initialize...
+set /a _ollama_tries=0
+:WaitOllamaInstall
+timeout /t 2 /nobreak >nul
+curl -s -o nul --max-time 3 http://localhost:11434/api/tags
+if !ERRORLEVEL!==0 (
+    echo [SUCCESS] Ollama server is running.
+    goto :OllamaReady
+)
+set /a _ollama_tries+=1
+if !_ollama_tries! LSS 10 goto :WaitOllamaInstall
+echo [WARNING] Ollama server did not confirm startup. It will be started automatically
+echo           the next time you launch the dashboard.
+:OllamaReady
+
 :: ---------------------------------------------------------------------------
 :: Step 5 — Create Virtual Environment
 :: ---------------------------------------------------------------------------

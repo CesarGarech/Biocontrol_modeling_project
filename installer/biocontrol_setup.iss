@@ -75,6 +75,7 @@ Source: "..\run_dashboard.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\verify_python.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\version.py";          DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CHANGELOG.md";        DestDir: "{app}"; Flags: ignoreversion
+Source: "..\TROUBLESHOOTING.md";  DestDir: "{app}"; Flags: ignoreversion
 
 ; Project directories (recursive)
 Source: "..\Body\*";        DestDir: "{app}\Body";        Flags: recursesubdirs createallsubdirs ignoreversion

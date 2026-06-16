@@ -104,6 +104,14 @@ You can also click **🛠️ Build Custom Assistant** in the app sidebar.
 - **Model size:** Smaller models (3B-7B) are faster; larger models (13B+) are more capable
 - **References:** Only curated academic references from project documentation are provided
 
+### 🛠️ Troubleshooting: "Cannot connect to Ollama"
+If the AI Guide shows **"❌ Cannot connect to Ollama. Make sure it is running
+(ollama serve)"** and no model connects or downloads, the local Ollama **server**
+is not running. Starting with v1.0.3, `run_dashboard.bat` **auto-starts the Ollama
+server** before launching the dashboard, so the chatbot connects on every run.
+See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for the full analysis and manual
+recovery steps.
+
 ## 📦 Installation
 
 ### ⚠️ Important: Python Version Requirement

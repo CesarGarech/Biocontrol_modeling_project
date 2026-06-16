@@ -138,6 +138,10 @@ echo ============================================================
 echo  Starting Biocontrol Dashboard ...
 echo ============================================================
 echo.
+
+:: Ensure the Ollama server is running so the AI Guide chatbot can connect.
+call :EnsureOllama
+
 streamlit run main.py
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -148,3 +152,59 @@ if %ERRORLEVEL% NEQ 0 (
     echo.
     pause
 )
+exit /b %ERRORLEVEL%
+
+:: ---------------------------------------------------------------------------
+:: EnsureOllama — make sure the local Ollama server is up before launching.
+:: ---------------------------------------------------------------------------
+:: The AI Guide talks to Ollama's REST API on http://localhost:11434. The
+:: installer starts Ollama once during post-install, but on every normal launch
+:: (e.g. after a reboot or after the tray app was closed) the server may be
+:: down. This routine detects that situation and starts the server, so the
+:: chatbot can connect and download/pull models without manual intervention.
+:: ---------------------------------------------------------------------------
+:EnsureOllama
+set "OLLAMA_DIR=%LOCALAPPDATA%\Programs\Ollama"
+set "OLLAMA_APP=%OLLAMA_DIR%\ollama app.exe"
+set "OLLAMA_EXE=%OLLAMA_DIR%\ollama.exe"
+
+:: 1) Already reachable? Nothing to do.
+curl -s -o nul --max-time 3 http://localhost:11434/api/tags
+if !ERRORLEVEL!==0 (
+    echo [INFO] Ollama server already running.
+    exit /b 0
+)
+
+:: 2) Not reachable — try to start it from the known install location or PATH.
+echo [INFO] Ollama server not responding. Attempting to start it...
+if exist "%OLLAMA_APP%" (
+    start "" "%OLLAMA_APP%"
+) else if exist "%OLLAMA_EXE%" (
+    start "" /B "%OLLAMA_EXE%" serve
+) else (
+    where ollama >nul 2>nul && (
+        echo [INFO] Starting Ollama found on PATH...
+        start "" /B ollama serve
+    ) || (
+        echo [WARNING] Ollama is not installed. The AI Guide will be unavailable.
+        echo           Install it from https://ollama.com/download and re-launch.
+        exit /b 0
+    )
+)
+
+:: 3) Wait (up to ~20s) for the server API to become reachable.
+echo [INFO] Waiting for Ollama to initialize...
+set /a _ollama_tries=0
+:WaitOllama
+timeout /t 2 /nobreak >nul
+curl -s -o nul --max-time 3 http://localhost:11434/api/tags
+if !ERRORLEVEL!==0 (
+    echo [INFO] Ollama server is now running.
+    exit /b 0
+)
+set /a _ollama_tries+=1
+if !_ollama_tries! LSS 10 goto :WaitOllama
+
+echo [WARNING] Could not confirm the Ollama server started.
+echo           The AI Guide may be unavailable. Start it manually with: ollama serve
+exit /b 0
