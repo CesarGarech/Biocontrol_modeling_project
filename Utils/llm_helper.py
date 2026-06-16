@@ -241,22 +241,66 @@ def check_ollama_availability(base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool,
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
+def model_exists(model_name: str, base_url: str = DEFAULT_OLLAMA_URL) -> bool:
+    """Return True if ``model_name`` is already available locally in Ollama.
+
+    Matches both the exact tag and the bare name (e.g. ``llama3.1`` matches
+    ``llama3.1:8b``) so the helper works regardless of how the user typed it.
+    """
+    try:
+        response = requests.get(f"{base_url}/api/tags", timeout=5)
+        if response.status_code != 200:
+            return False
+        local = [m.get("name", "") for m in response.json().get("models", [])]
+        if model_name in local:
+            return True
+        base = model_name.split(":")[0]
+        return any(name.split(":")[0] == base for name in local)
+    except Exception:
+        return False
+
+
+def _extract_error_message(response: requests.Response) -> str:
+    """Best-effort extraction of Ollama's JSON ``error`` field from a response."""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("error"):
+            return str(payload["error"])
+    except Exception:
+        pass
+    return response.text[:200] if response.text else ""
+
+
 def pull_ollama_model(model_name: str, base_url: str = DEFAULT_OLLAMA_URL) -> Tuple[bool, str]:
     """
     Programmatically pull (download) an Ollama model.
     Uses a long timeout as model downloads can take minutes depending on bandwidth.
     """
+    # The customized assistant only exists locally; it is NOT published on the
+    # Ollama registry, so attempting to ``pull`` it returns a 500 error. Guide
+    # the user to build it instead of hitting the registry.
+    if model_name == CUSTOM_MODEL_NAME:
+        return False, (
+            f"'{CUSTOM_MODEL_NAME}' is a local custom model and cannot be downloaded "
+            f"from the Ollama registry. Pull the base model '{BASE_MODEL}' first, then "
+            f"use '🛠️ Build Custom Assistant' (or run "
+            f"`python installer/ollama/build_model.py`) to create it."
+        )
+
     try:
         url = f"{base_url}/api/pull"
-        data = {"name": model_name, "stream": False}
+        # The newer API uses 'model'; 'name' is kept for backward compatibility.
+        data = {"model": model_name, "name": model_name, "stream": False}
         # Timeout is set to 600 seconds (10 minutes) to allow large models to download
         response = requests.post(url, json=data, timeout=600)
-        
+
         if response.status_code == 200:
             return True, f"✅ Model '{model_name}' successfully downloaded and ready."
         else:
-            return False, f"Server error while pulling: {response.status_code}"
-            
+            detail = _extract_error_message(response)
+            detail = f" - {detail}" if detail else ""
+            return False, f"Server error while pulling: {response.status_code}{detail}"
+
     except requests.exceptions.Timeout:
         return False, "⏳ Request timed out, but the download might still be running in the background. Check your terminal."
     except requests.exceptions.ConnectionError:
@@ -295,8 +339,24 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
         if response.status_code == 200:
             result = response.json()
             return True, result.get('response', 'No response')
+        elif response.status_code == 404:
+            # Ollama returns 404 when the requested model is not installed locally.
+            if model == CUSTOM_MODEL_NAME:
+                hint = (
+                    f"The custom model '{model}' is not installed. Pull the base model "
+                    f"'{BASE_MODEL}' and click '🛠️ Build Custom Assistant' (or run "
+                    f"`python installer/ollama/build_model.py`) to create it."
+                )
+            else:
+                hint = (
+                    f"Model '{model}' is not installed. Click '⬇️ Download Model' "
+                    f"or run `ollama pull {model}` first."
+                )
+            return False, f"Model not found (404). {hint}"
         else:
-            return False, f"Server error: {response.status_code}"
+            detail = _extract_error_message(response)
+            detail = f" - {detail}" if detail else ""
+            return False, f"Server error: {response.status_code}{detail}"
             
     except requests.exceptions.Timeout:
         return False, "Request took too long. Try a smaller model or verify if it's downloaded."
@@ -307,6 +367,17 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
 
 
 # ==================== CUSTOM MODEL ("RE-TRAINING") ====================
+
+# Recommended generation parameters embedded into the customized model so the
+# assistant gives focused, educational answers. Shared by the Modelfile builder
+# and the structured (modern) /api/create payload.
+CUSTOM_MODEL_PARAMETERS: Dict[str, Any] = {
+    "temperature": 0.6,
+    "top_p": 0.9,
+    "num_ctx": 4096,
+}
+
+
 def build_modelfile(base_model: str = BASE_MODEL) -> str:
     """Build the Ollama Modelfile content used to create the customized model.
 
@@ -316,12 +387,13 @@ def build_modelfile(base_model: str = BASE_MODEL) -> str:
     chatbot is grounded on every screen of the application.
     """
     escaped_prompt = SYSTEM_PROMPT.replace('"""', '\\"\\"\\"')
+    params = "".join(
+        f"PARAMETER {name} {value}\n" for name, value in CUSTOM_MODEL_PARAMETERS.items()
+    )
     return (
         f"FROM {base_model}\n\n"
         f"# Recommended generation parameters for educational, focused answers\n"
-        f"PARAMETER temperature 0.6\n"
-        f"PARAMETER top_p 0.9\n"
-        f"PARAMETER num_ctx 4096\n\n"
+        f"{params}\n"
         f'SYSTEM """\n{escaped_prompt}\n"""\n'
     )
 
@@ -333,21 +405,54 @@ def create_custom_model(base_url: str = DEFAULT_OLLAMA_URL,
 
     Requires that the base model (e.g. llama3.1:8b) is already pulled. The call
     can take a while the first time because Ollama materializes the new model.
+
+    Newer Ollama releases (v0.5+) replaced the deprecated ``modelfile`` body
+    field with a structured schema (``from``/``system``/``parameters``). Sending
+    only ``modelfile`` now fails with
+    ``400 - {"error":"neither 'from' or 'files' was specified"}``. This function
+    therefore sends the modern schema first and transparently falls back to the
+    legacy ``modelfile`` payload for older Ollama servers.
     """
+    # Helpful pre-flight: if the base model is missing the create call fails.
+    if not model_exists(base_model, base_url):
+        return False, (
+            f"Base model '{base_model}' is not installed. Pull it first with "
+            f"'⬇️ Download Model' or `ollama pull {base_model}`, then build the "
+            f"custom assistant again."
+        )
+
+    url = f"{base_url}/api/create"
+    # Modern structured payload (Ollama v0.5+). 'model' is the new key for the
+    # created model name; 'from' is the base model to derive from.
+    modern_payload = {
+        "model": model_name,
+        "from": base_model,
+        "system": SYSTEM_PROMPT,
+        "parameters": CUSTOM_MODEL_PARAMETERS,
+        "stream": False,
+    }
+    # Legacy payload for older Ollama servers that still accept 'modelfile'.
+    legacy_payload = {
+        "name": model_name,
+        "modelfile": build_modelfile(base_model),
+        "stream": False,
+    }
+
     try:
-        url = f"{base_url}/api/create"
-        data = {
-            "name": model_name,
-            "modelfile": build_modelfile(base_model),
-            "stream": False,
-        }
-        response = requests.post(url, json=data, timeout=600)
+        response = requests.post(url, json=modern_payload, timeout=600)
+
+        # Older servers may reject the modern schema; retry with the legacy one.
+        if response.status_code == 400:
+            response = requests.post(url, json=legacy_payload, timeout=600)
+
         if response.status_code == 200:
             return True, (
                 f"✅ Custom model '{model_name}' created from '{base_model}'. "
                 f"Select it in the model list to use the grounded assistant."
             )
-        return False, f"Server error while creating model: {response.status_code} - {response.text[:200]}"
+        detail = _extract_error_message(response)
+        detail = f" - {detail}" if detail else ""
+        return False, f"Server error while creating model: {response.status_code}{detail}"
     except requests.exceptions.Timeout:
         return False, "⏳ Model creation timed out. It may still be finishing in the background."
     except requests.exceptions.ConnectionError:
