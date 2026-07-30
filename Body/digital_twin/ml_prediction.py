@@ -116,7 +116,7 @@ def _generate_ethanol_composition(df: pd.DataFrame, seed: int = 42) -> pd.DataFr
 def _build_neural_network(input_dim: int, seed: int = 42, 
                          hidden_layers: Optional[List[int]] = None, 
                          dropout_rate: float = 0.2,
-                         learning_rate: float = 0.001) -> keras.Model:
+                         learning_rate: float = 0.001):
     """Build a simple feedforward neural network for regression.
     
     Parameters

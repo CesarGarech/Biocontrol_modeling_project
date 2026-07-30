@@ -171,7 +171,8 @@ def mu_fermentacion(S, P, O2,
                            mumax_aerob, Ks_aerob, KO_aerob, # Params mu1 (aerobio)
                            mumax_anaerob, Ks_anaerob, KiS_anaerob, # Params mu2 (anaerobio) - Sustrato
                            KP_anaerob, n_p,                 # Params mu2 (anaerobio) - Producto
-                           KO_inhib_anaerob):              # Params mu2 (anaerobio) - O2 (Inhibición)
+                           KO_inhib_anaerob,               # Params mu2 (anaerobio) - O2 (Inhibición)
+                           considerar_O2=None):            # Control de fase: None=mixto, True=aerobio, False=anaerobio
     """
     Mixed aerobic/anaerobic fermentation model for yeast metabolism.
     
@@ -275,8 +276,13 @@ def mu_fermentacion(S, P, O2,
 
     mu2 = mumax_anaerob * term_S_anaerob * term_P_anaerob * term_O2_inhib_anaerob
 
-    # --- Tasa de crecimiento total ---
-    mu_total = mu1 + mu2
+    # --- Combinación de tasas según el parámetro considerar_O2 ---
+    if considerar_O2 is True:    # Solo componente aerobia
+        mu_total = mu1
+    elif considerar_O2 is False: # Solo componente anaerobia
+        mu_total = mu2
+    else:                        # Modelo mixto (suma, por defecto)
+        mu_total = mu1 + mu2
 
     # Asegurar que la tasa de crecimiento final no sea negativa
     return max(0.0, mu_total)

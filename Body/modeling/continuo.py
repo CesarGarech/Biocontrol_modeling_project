@@ -22,6 +22,11 @@ def continuo_page():
     Sin = st.sidebar.slider("Substrate in Feed (Sin)", 0.0, 100.0, 50.0)
     D = st.sidebar.slider("Dilution Rate D (1/h)", 0.0, 1.0, 0.01)
 
+    # Parámetros adicionales para "Monod with restrictions"
+    if tipo_mu == "Monod with restrictions":
+        KO = st.sidebar.slider("O2 saturation constant KO [mg/L]", 0.01, 5.0, 0.5)
+        KP = st.sidebar.slider("Product inhibition constant KP [g/L]", 0.1, 100.0, 50.0)
+
     X0 = st.sidebar.number_input("Initial Biomass  (g/L)", 0.1, 10.0, 0.5)
     S0 = st.sidebar.number_input("Initial Substrate (g/L)", 0.1, 100.0, 20.0)
     P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
@@ -36,28 +41,40 @@ def continuo_page():
 
     def modelo_continuo(t, y):
         X, S, P, O2 = y
+        # Clamp de estados para evitar valores físicamente imposibles
+        X = max(0.0, X)
+        S = max(0.0, S)
+        P = max(0.0, P)
+        O2 = max(0.0, O2)
+
         if tipo_mu == "Simple Monod":
             mu = mu_monod(S, mumax, Ks)
         elif tipo_mu == "Sigmoidal Monod":
             mu = mu_sigmoidal(S, mumax, Ks, n=n_sigmoidal)
         elif tipo_mu == "Monod with restrictions":
-            mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
+            mu = mu_completa(S, O2, P, mumax, Ks, KO=KO, KP=KP)
+        else:
+            mu = 0.0
 
         dXdt = mu * X - Kd * X - D * X
-        dSdt = -1/Yxs * mu * X - ms * X + D * (Sin - S)
+        dSdt = -1.0 / Yxs * mu * X - ms * X + D * (Sin - S)
         dPdt = Ypx * mu * X - D * P
-        dOdt = Kla * (Cs - O2) - 1/Yxo * mu * X - mo * X - D * O2
+        dOdt = Kla * (Cs - O2) - 1.0 / Yxo * mu * X - mo * X - D * O2
         return [dXdt, dSdt, dPdt, dOdt]
 
     y0 = [X0, S0, P0, O0]
     sol = solve_ivp(modelo_continuo, [0, t_final], y0, t_eval=t_eval, atol=atol, rtol=rtol)
 
+    if not sol.success:
+        st.error(f"Integration failed: {sol.message}")
+        st.stop()
+
     st.subheader("Simulation Results")
     fig, ax = plt.subplots()
     ax.plot(sol.t, sol.y[0], label='Biomass (X)')
-    ax.plot(sol.t, sol.y[1], label='Substrate (S)')
+    ax.plot(sol.t, np.maximum(sol.y[1], 0), label='Substrate (S)')
     ax.plot(sol.t, sol.y[2], label='Product (P)')
-    ax.plot(sol.t, sol.y[3], label='Dissolved Oxygen (O2)')
+    ax.plot(sol.t, np.maximum(sol.y[3], 0), label='Dissolved Oxygen (O2)')
     ax.set_xlabel("Time (h)")
     ax.set_ylabel("Concentration (g/L o mg/L)")
     ax.legend()

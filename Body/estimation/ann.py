@@ -19,7 +19,7 @@ def ann_page():
     Creates the Streamlit page for ANN-based state estimation.
     """
     st.header("Estimation of States and Parameters with Artificial Neural Network (ANN)")
-    st.markdown("""
+    st.markdown(r"""
     This page demonstrates the use of an ANN as a **soft sensor**. The network is trained to predict the process states (X, S, P) and key kinetic parameters ($\mu_{max}$, $Y_{X/S}$) using only the available online measurements (DO, pH, T).
 
     **Workflow:**

@@ -2,28 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-# Asumiendo que tienes un archivo Utils/kinetics.py con las funciones mu
-# Si no, puedes definirlas directamente aquí o ajustar la importación.
-# Ejemplo de definiciones (si no tienes kinetics.py):
-def mu_monod(S, mumax, Ks):
-    return mumax * S / (Ks + S)
-def mu_sigmoidal(S, mumax, Ks, n):
-    return mumax * (S**n) / (Ks**n + S**n)
-def mu_completa(S, O2, P, mumax, Ks, KO, KP):
-    # Asegurarse que los valores no sean negativos para evitar errores matemáticos
-    S = max(0, S)
-    O2 = max(0, O2)
-    P = max(0, P)
-    # Término de inhibición por producto (modelo simple, ajustar si es necesario)
-    # Evitar división por cero si KP es muy pequeño o P es grande
-    inhibition_P = (1 - P / KP) if KP > 0 and P < KP else 0
-    inhibition_P = max(0, inhibition_P) # Asegurar que no sea negativo
-
-    # Monod para Sustrato y Oxígeno, con inhibición por Producto
-    mu = mumax * (S / (Ks + S)) * (O2 / (KO + O2)) * inhibition_P
-    return max(0, mu) # Asegurar que la tasa de crecimiento no sea negativa
-
-# --- Fin definiciones de ejemplo ---
+from Utils.kinetics import mu_monod, mu_sigmoidal, mu_completa
 
 def lote_alimentado_page():
     st.header("Operation Mode: Fedbatch ") 
@@ -76,7 +55,7 @@ def lote_alimentado_page():
         """)
         
         st.latex(r"""
-                    \mu = \mu_{\text{max}} \cdot \frac{S}{K_s + S} \cdot \frac{O_2}{K_O + O_2} \cdot (1-\frac{K_P}{P})
+                    \mu = \mu_{\text{max}} \cdot \frac{S}{K_s + S} \cdot \frac{O_2}{K_O + O_2} \cdot \frac{K_P}{K_P + P}
                     """)
 
         st.markdown("""

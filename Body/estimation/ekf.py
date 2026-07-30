@@ -5,7 +5,7 @@ import casadi as ca
 
 def ekf_page():
     st.header("Estimation of States and Parameters with Extended Kalman Filter (EKF)")
-    st.markdown("""
+    st.markdown(r"""
     This section simulates a batch bioprocess and uses an EKF to estimate the concentrations
     of Biomass (X), Substrate (S), Product (P), and two kinetic parameters
     ($\mu_{max}$, $Y_{X/S}$) based on simulated and noisy measurements of
@@ -151,7 +151,9 @@ def ekf_page():
                 Kk = P_pred @ Hk.T @ np.linalg.pinv(Sk) # Usar pinv
                 y_k = z_k - h_pred
                 x_upd = x_pred + Kk @ y_k
-                P_upd = (np.eye(n_states_ekf) - Kk @ Hk) @ P_pred
+                # Forma Joseph para garantizar simetría y semipositividad de P
+                I_KH = np.eye(n_states_ekf) - Kk @ Hk
+                P_upd = I_KH @ P_pred @ I_KH.T + Kk @ R_ekf @ Kk.T
 
                 # Actualizar
                 x_est_ekf = x_upd
