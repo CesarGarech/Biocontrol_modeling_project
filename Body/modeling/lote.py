@@ -73,9 +73,19 @@ def lote_page():
             - $K_O$ is the oxygen inhibition constant (mg/L)
             """)
     # Parámetros generales
-    
     mumax = st.sidebar.slider(r"$\mu_{\mathrm{max}}$", 0.1, 1.0, 0.3)
     Ks = st.sidebar.slider(r"$\ K_{\mathrm{s}}$", 0.01, 1.0, 0.1)
+
+    # Parámetros específicos por tipo de cinética
+    n_hill = 2  # valor por defecto
+    KO_restr = 0.5
+    KP_restr = 5.0
+    if tipo_mu == "Sigmoidal Monod":
+        n_hill = st.sidebar.slider("Hill coefficient (n)", 1, 5, 2)
+    elif tipo_mu == "Monod with restrictions":
+        KO_restr = st.sidebar.slider("O2 saturation constant KO [mg/L]", 0.01, 5.0, 0.5)
+        KP_restr = st.sidebar.slider("Product inhibition constant KP [g/L]", 0.1, 20.0, 5.0)
+
     Yxs = st.sidebar.slider("Yxs", 0.1, 1.0, 0.5)
     Ypx = st.sidebar.slider("Ypx", 0.1, 1.0, 0.3)
     Yxo = st.sidebar.slider("Yxo", 0.1, 1.0, 0.3)
@@ -92,8 +102,6 @@ def lote_page():
     P0 = st.sidebar.number_input("Initial Product (g/L)", 0.0, 50.0, 0.0)
     O0 = st.sidebar.number_input("Initial dissolved O2 (mg/L)", 0.0, 10.0, 5.0)
 
-    
-
     # Tiempo de simulación
     t_final = st.sidebar.slider("Final time (h)", 1, 100, 30)
     t_eval = np.linspace(0, t_final, 300)
@@ -104,30 +112,29 @@ def lote_page():
 
     def modelo_lote(t, y):
         X, S, P, O2 = y
+        S_safe = max(0.0, S)
         if tipo_mu == "Simple Monod":
-            mu = mu_monod(S, mumax, Ks)
-
-        elif tipo_mu == "Monod sigmoidal":
-            if S<=0:
-                S=0
-
+            mu = mu_monod(S_safe, mumax, Ks)
         elif tipo_mu == "Sigmoidal Monod":
-
-            mu = mu_sigmoidal(S, mumax, Ks, n=2)
-            if S<=0:
-                S=0
+            mu = mu_sigmoidal(S_safe, mumax, Ks, n=n_hill)
         elif tipo_mu == "Monod with restrictions":
-            mu = mu_completa(S, O2, P, mumax, Ks, KO=0.5, KP=0.5)
+            mu = mu_completa(S_safe, max(0.0, O2), max(0.0, P), mumax, Ks, KO=KO_restr, KP=KP_restr)
+        else:
+            mu = 0.0
         dXdt = mu * X - Kd * X
         dSdt = -1/Yxs * mu * X - ms * X
-        if S<=0:
-            dSdt=0
+        if S <= 0:
+            dSdt = max(0.0, dSdt)
         dPdt = Ypx * mu * X
         dOdt = Kla * (Cs - O2) - (1/Yxo) * mu * X - mo * X
         return [dXdt, dSdt, dPdt, dOdt]
 
     y0 = [X0, S0, P0, O0]
     sol = solve_ivp(modelo_lote, [0, t_final], y0, t_eval=t_eval, atol=atol, rtol=rtol)
+
+    if not sol.success:
+        st.error(f"Integration failed: {sol.message}")
+        st.stop()
 
     # Gráficas
     st.subheader("Simulation Results")
