@@ -67,6 +67,29 @@ def continuo_page():
         st.error(f"Integration failed: {sol.message}")
         st.stop()
 
+    if tipo_mu == "Simple Monod":
+        with st.expander("Analytical steady state (continuous Monod)"):
+            mu_target = D + Kd
+            if mumax <= mu_target:
+                st.warning("No feasible non-washout steady state: μmax must be greater than (D + Kd).")
+            else:
+                S_star = Ks * mu_target / (mumax - mu_target)
+                if S_star < 0 or S_star > Sin:
+                    st.warning("Analytical steady state is outside physical substrate bounds for current parameters.")
+                else:
+                    denom_x = (mu_target / max(Yxs, 1e-12)) + ms
+                    X_star = D * (Sin - S_star) / max(denom_x, 1e-12)
+                    P_star = (Ypx * mu_target * X_star) / max(D, 1e-12) if D > 0 else np.nan
+                    O2_star = (
+                        Kla * Cs - ((mu_target / max(Yxo, 1e-12)) + mo) * X_star
+                    ) / max(Kla + D, 1e-12)
+
+                    st.latex(r"\mu^\* = D + K_d,\quad S^\* = \frac{K_s(D+K_d)}{\mu_{max}-(D+K_d)}")
+                    st.write(
+                        f"Estimated steady state: X*={X_star:.4f} g/L, S*={S_star:.4f} g/L, "
+                        f"P*={P_star:.4f} g/L, O2*={O2_star:.4f} mg/L"
+                    )
+
     st.subheader("Simulation Results")
     fig, ax = plt.subplots()
     ax.plot(sol.t, sol.y[0], label='Biomass (X)')

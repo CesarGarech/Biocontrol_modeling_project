@@ -720,6 +720,9 @@ def ml_prediction_page():
             
             # Store in session state
             st.session_state["ml_df"] = df_ml
+            st.session_state.pop("ml_results", None)
+            st.session_state.pop("ml_test_data", None)
+            st.session_state.pop("ml_dwsim_results", None)
             st.success(f"✅ Data prepared — {len(df_ml)} samples with ethanol composition generated.")
     
     if "ml_df" in st.session_state:
@@ -825,6 +828,7 @@ def ml_prediction_page():
                         }
                         st.session_state["ml_scaler"] = scaler
                         st.session_state["ml_feature_cols"] = feature_cols
+                        st.session_state.pop("ml_dwsim_results", None)
                         
                     st.success(f"✅ Successfully trained {len(results)} models!")
             
@@ -948,70 +952,73 @@ def ml_prediction_page():
                     if "ml_dwsim_results" in st.session_state:
                         dwsim_results = st.session_state["ml_dwsim_results"]
                         y_dwsim_pred = dwsim_results['predictions']
-                        
+
                         # Get best model predictions
                         y_test = test_data['y_test']
                         y_ml_pred = results[best_model_name]['predictions']
                         timestamps = test_data['timestamps']
-                        
-                        # Calculate metrics for DWSIM
-                        r2_ml = r2_score(y_test, y_ml_pred)
-                        mae_ml = mean_absolute_error(y_test, y_ml_pred)
-                        rmse_ml = np.sqrt(mean_squared_error(y_test, y_ml_pred))
-                        
-                        r2_dwsim = r2_score(y_test, y_dwsim_pred)
-                        mae_dwsim = mean_absolute_error(y_test, y_dwsim_pred)
-                        rmse_dwsim = np.sqrt(mean_squared_error(y_test, y_dwsim_pred))
-                        
-                        # Comparison metrics table
-                        st.markdown("**Performance Comparison:**")
-                        comparison_df = pd.DataFrame({
-                            'Model': [best_model_name, 'DWSIM'],
-                            'R²': [r2_ml, r2_dwsim],
-                            'MAE': [mae_ml, mae_dwsim],
-                            'RMSE': [rmse_ml, rmse_dwsim]
-                        })
-                        
-                        st.dataframe(
-                            comparison_df.style.format({
-                                'R²': '{:.4f}',
-                                'MAE': '{:.4f}',
-                                'RMSE': '{:.4f}',
-                            }).highlight_max(subset=['R²'], color='lightgreen')
-                             .highlight_min(subset=['MAE', 'RMSE'], color='lightgreen'),
-                            use_container_width=True
-                        )
-                        
-                        # Three-way comparison plot
-                        fig_dwsim_comparison = _plot_dwsim_ml_comparison(
-                            y_test, y_ml_pred, y_dwsim_pred, best_model_name, timestamps
-                        )
-                        st.pyplot(fig_dwsim_comparison)
-                        plt.close(fig_dwsim_comparison)
-                        
-                        # Additional comparison insights
-                        with st.expander("📈 Comparison Insights"):
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                st.markdown(f"**{best_model_name} (ML Model)**")
-                                st.metric("R² Score", f"{r2_ml:.4f}")
-                                st.metric("MAE", f"{mae_ml:.4f}")
-                                st.metric("RMSE", f"{rmse_ml:.4f}")
-                            
-                            with col2:
-                                st.markdown("**DWSIM Simulation**")
-                                st.metric("R² Score", f"{r2_dwsim:.4f}")
-                                st.metric("MAE", f"{mae_dwsim:.4f}")
-                                st.metric("RMSE", f"{rmse_dwsim:.4f}")
-                            
-                            # Winner determination
-                            if r2_ml > r2_dwsim:
-                                st.success(f"🏆 **{best_model_name}** achieves better R² score!")
-                            elif r2_dwsim > r2_ml:
-                                st.success("🏆 **DWSIM** achieves better R² score!")
-                            else:
-                                st.info("Both models show similar R² performance.")
+                        if len(y_dwsim_pred) != len(y_test):
+                            st.warning("Stored DWSIM comparison is outdated for the current test split. Please run comparison again.")
+                            st.session_state.pop("ml_dwsim_results", None)
+                        else:
+                            # Calculate metrics for DWSIM
+                            r2_ml = r2_score(y_test, y_ml_pred)
+                            mae_ml = mean_absolute_error(y_test, y_ml_pred)
+                            rmse_ml = np.sqrt(mean_squared_error(y_test, y_ml_pred))
+
+                            r2_dwsim = r2_score(y_test, y_dwsim_pred)
+                            mae_dwsim = mean_absolute_error(y_test, y_dwsim_pred)
+                            rmse_dwsim = np.sqrt(mean_squared_error(y_test, y_dwsim_pred))
+
+                            # Comparison metrics table
+                            st.markdown("**Performance Comparison:**")
+                            comparison_df = pd.DataFrame({
+                                'Model': [best_model_name, 'DWSIM'],
+                                'R²': [r2_ml, r2_dwsim],
+                                'MAE': [mae_ml, mae_dwsim],
+                                'RMSE': [rmse_ml, rmse_dwsim]
+                            })
+
+                            st.dataframe(
+                                comparison_df.style.format({
+                                    'R²': '{:.4f}',
+                                    'MAE': '{:.4f}',
+                                    'RMSE': '{:.4f}',
+                                }).highlight_max(subset=['R²'], color='lightgreen')
+                                 .highlight_min(subset=['MAE', 'RMSE'], color='lightgreen'),
+                                use_container_width=True
+                            )
+
+                            # Three-way comparison plot
+                            fig_dwsim_comparison = _plot_dwsim_ml_comparison(
+                                y_test, y_ml_pred, y_dwsim_pred, best_model_name, timestamps
+                            )
+                            st.pyplot(fig_dwsim_comparison)
+                            plt.close(fig_dwsim_comparison)
+
+                            # Additional comparison insights
+                            with st.expander("📈 Comparison Insights"):
+                                col1, col2 = st.columns(2)
+
+                                with col1:
+                                    st.markdown(f"**{best_model_name} (ML Model)**")
+                                    st.metric("R² Score", f"{r2_ml:.4f}")
+                                    st.metric("MAE", f"{mae_ml:.4f}")
+                                    st.metric("RMSE", f"{rmse_ml:.4f}")
+
+                                with col2:
+                                    st.markdown("**DWSIM Simulation**")
+                                    st.metric("R² Score", f"{r2_dwsim:.4f}")
+                                    st.metric("MAE", f"{mae_dwsim:.4f}")
+                                    st.metric("RMSE", f"{rmse_dwsim:.4f}")
+
+                                # Winner determination
+                                if r2_ml > r2_dwsim:
+                                    st.success(f"🏆 **{best_model_name}** achieves better R² score!")
+                                elif r2_dwsim > r2_ml:
+                                    st.success("🏆 **DWSIM** achieves better R² score!")
+                                else:
+                                    st.info("Both models show similar R² performance.")
                     else:
                         st.info("👆 Press **⚗️ Run DWSIM Comparison** to compare with DWSIM simulations.")
                 

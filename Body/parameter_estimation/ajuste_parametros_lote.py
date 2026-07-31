@@ -73,7 +73,6 @@ def ajuste_parametros_page():
     # 3.1 Función para calcular Jacobiano
 
     def compute_jacobian(params_opt, t_exp, y_exp, X0_fit, S0_fit, P0_fit, O0_fit):
-        delta = 1e-6  # Perturbación pequeña
         jac = []
 
         # Simulación nominal
@@ -81,20 +80,25 @@ def ajuste_parametros_page():
                             [X0_fit, S0_fit, P0_fit, O0_fit],
                             args=(params_opt,),
                             t_eval=t_exp, atol=atol, rtol=rtol)
+        if not sol_nominal.success:
+            return np.full((len(t_exp) * 3, len(params_opt)), np.nan)
         y_nominal = np.vstack([sol_nominal.y[0], sol_nominal.y[1], sol_nominal.y[2]])
 
         # Calcular derivadas numéricas
         for i in range(len(params_opt)):
             params_perturbed = np.array(params_opt, dtype=float)
-            params_perturbed[i] += delta
+            delta_i = 1e-6 * max(1.0, abs(params_opt[i]))
+            params_perturbed[i] += delta_i
 
             sol_perturbed = solve_ivp(modelo_ode, [0, t_exp[-1]],
                                     [X0_fit, S0_fit, P0_fit, O0_fit],
                                     args=(params_perturbed,),
                                     t_eval=t_exp, atol=atol, rtol=rtol)
+            if not sol_perturbed.success:
+                return np.full((len(t_exp) * 3, len(params_opt)), np.nan)
 
             y_perturbed = np.vstack([sol_perturbed.y[0], sol_perturbed.y[1], sol_perturbed.y[2]])
-            derivative = (y_perturbed - y_nominal) / delta
+            derivative = (y_perturbed - y_nominal) / delta_i
             jac.append(derivative.flatten())  # Aplanar para todas las variables
 
         return np.array(jac).T  # Formato correcto (n_observaciones × n_parámetros)
@@ -106,6 +110,8 @@ def ajuste_parametros_page():
                         [X0_fit, S0_fit, P0_fit, O0_fit],  # Vector de estado inicial
                         args=(params,),  # Pasar parámetros correctamente
                         t_eval=t_exp, atol=atol, rtol=rtol)
+            if not sol.success:
+                return 1e6
 
             y_pred = np.vstack([sol.y[0], sol.y[1], sol.y[2]])
             rmse = np.sqrt(np.nanmean((y_pred - y_exp)**2))
@@ -121,7 +127,13 @@ def ajuste_parametros_page():
             initial_guess = [mumax_guess, Ks_guess, Yxs_guess, Kd_guess, Ypx_guess]
 
             if metodo == 'differential_evolution':
-                result = differential_evolution(objetivo, bounds, args=(t_exp, y_exp))
+                result = differential_evolution(
+                    objetivo,
+                    bounds,
+                    args=(t_exp, y_exp),
+                    maxiter=max_iter,
+                    seed=42
+                )
             else:
                 result = minimize(objetivo, initial_guess, args=(t_exp, y_exp),
                                 method=metodo, bounds=bounds,
@@ -133,6 +145,8 @@ def ajuste_parametros_page():
 
             # Resultados del ajuste
             st.subheader("📊 Adjustment Results")
+            if not result.success:
+                st.warning(f"Optimization finished without full convergence: {result.message}")
             params_opt = result.x
             st.write(f"** Final RMSE:** {result.fun:.4f}")
 
@@ -186,13 +200,17 @@ def ajuste_parametros_page():
 
                 # Calcular Jacobiano numérico
                 jac = compute_jacobian(params_opt, t_exp, y_exp, X0_fit, S0_fit, P0_fit, O0_fit)
-
-                # Calcular matriz de covarianza con estabilidad numérica
-                try:
-                    cov_matrix = np.linalg.pinv(jac.T @ jac) * (residuals_flat @ residuals_flat) / (len(residuals_flat) - len(params_opt))
-                    std_errors = np.sqrt(np.diag(cov_matrix))
-                except np.linalg.LinAlgError:
+                if np.isnan(jac).any():
+                    st.warning("Confidence intervals could not be computed reliably (Jacobian integration failed).")
                     std_errors = np.full(len(params_opt), np.nan)
+                else:
+                    # Calcular matriz de covarianza con estabilidad numérica
+                    try:
+                        dof = max(len(residuals_flat) - len(params_opt), 1)
+                        cov_matrix = np.linalg.pinv(jac.T @ jac) * (residuals_flat @ residuals_flat) / dof
+                        std_errors = np.sqrt(np.diag(cov_matrix))
+                    except np.linalg.LinAlgError:
+                        std_errors = np.full(len(params_opt), np.nan)
 
                 # Calcular intervalos de confianza
                 t_val = t.ppf(0.975, df=len(residuals_flat) - len(params_opt))

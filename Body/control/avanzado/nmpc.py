@@ -69,6 +69,35 @@ def nmpc_page():
         W_FS_weight = st.number_input("Weight W - Substrate Flow Change (ΔF_S)", value=0.1, key="W_FS")
         # Ajustar el peso de Qj según la escala (Watts vs L/h)
         W_Qj_weight = st.number_input("Weight W - Heat Load Change (ΔQ_j) [1/W^2]", value=1e-8, format="%e", key="W_Qj")
+        terminal_weight_factor = st.number_input(
+            "Terminal weight factor (Qf/Q)",
+            min_value=1.0,
+            value=5.0,
+            step=0.5,
+            key="Q_terminal_factor"
+        )
+        enable_terminal_band = st.checkbox(
+            "Enable terminal band constraint",
+            value=False,
+            key="enable_terminal_band",
+            help="Adds |y(N)-SP(N)| bounds to improve terminal stability."
+        )
+        terminal_band_x = st.number_input(
+            "Terminal band |X(N)-SPx| [g/L]",
+            min_value=0.0,
+            value=0.15,
+            step=0.01,
+            key="terminal_band_x",
+            disabled=not enable_terminal_band
+        )
+        terminal_band_t = st.number_input(
+            "Terminal band |T(N)-SPt| [K]",
+            min_value=0.0,
+            value=0.5,
+            step=0.05,
+            key="terminal_band_t",
+            disabled=not enable_terminal_band
+        )
 
         st.subheader("Initial Conditions and Setpoints")
         initial_X = st.number_input("Initial Biomass (X0) [g/L]", value=1.5, key="X0")
@@ -146,7 +175,7 @@ def nmpc_page():
     # ---------------------------------------------------
     class NMPCBioreactor:
         def __init__(self, dt, N, M, Q, W, model_ode, output_func, x_sym, u_sym, c_sym, params,
-                     lbx, ubx, lbu, ubu, lbdu, ubdu, m=3, pol='legendre'):
+                     lbx, ubx, lbu, ubu, lbdu, ubdu, q_terminal=None, terminal_band=None, m=3, pol='legendre'):
             """
             Inicializa el controlador NMPC.
              Args:
@@ -160,6 +189,7 @@ def nmpc_page():
             self.M = M
             self.Q = np.diag(Q) # Matriz diagonal de pesos de salida
             self.W = np.diag(W) # Matriz diagonal de pesos de entrada (tasa de cambio)
+            self.Q_terminal = np.diag(q_terminal if q_terminal is not None else Q)
             self.model_ode = model_ode
             self.output_func = output_func
             self.params = params
@@ -172,6 +202,7 @@ def nmpc_page():
             self.ubu = ubu
             self.lbdu = lbdu # Límites para tasa de cambio delta_u
             self.ubdu = ubdu
+            self.terminal_band = np.array(terminal_band, dtype=float) if terminal_band is not None else None
             self.m = m
             self.pol = pol
 
@@ -295,6 +326,18 @@ def nmpc_page():
                 Uk_prev = Uk_k
                 if k == self.M - 1:
                     Uk_prev_control_horizon = Uk_k # Guardar U_{M-1}
+
+            # Costo terminal para mayor estabilidad en el cierre del horizonte
+            C_terminal = self.output_func(Xk_iter)
+            sp_terminal = self.sp_sym[:, self.N - 1]
+            J += ca.mtimes([(C_terminal - sp_terminal).T, self.Q_terminal, (C_terminal - sp_terminal)])
+
+            # Restricción terminal opcional de banda alrededor del setpoint final
+            if self.terminal_band is not None:
+                terminal_error = C_terminal - sp_terminal
+                self.g.append(terminal_error)
+                self.lbg.extend((-self.terminal_band).tolist())
+                self.ubg.extend((self.terminal_band).tolist())
 
             # --- Crear el solver NLP ---
             nlp_dict = {
@@ -461,6 +504,7 @@ def nmpc_page():
         # Pesos NMPC
         Q_weights = [Q_X_weight, Q_T_weight]
         W_weights = [W_FS_weight, W_Qj_weight] # W para [delta_Fs, delta_Qj]
+        Q_terminal_weights = [terminal_weight_factor * Q_X_weight, terminal_weight_factor * Q_T_weight]
 
         # Límites para el NLP (inputs ya están en las unidades correctas [L/h, W])
         lbx_opt = [min_X_opt, min_S_opt, min_T_opt]
@@ -471,12 +515,14 @@ def nmpc_page():
         # Límites tasa de cambio delta_u = [delta_F_S, delta_Q_j]
         lbdu_nmpc = [-delta_FS_max, -delta_Qj_max]
         ubdu_nmpc = [ delta_FS_max,  delta_Qj_max]
+        terminal_band = [terminal_band_x, terminal_band_t] if enable_terminal_band else None
 
         # Crear instancia NMPC con configuración actual
         try:
             nmpc = NMPCBioreactor(dt_nmpc_input, N_input, M_input, Q_weights, W_weights,
                                   model_ode, output_func, x_sym, u_sym, c_sym, params,
-                                  lbx_opt, ubx_opt, lbu_nmpc, ubu_nmpc, lbdu_nmpc, ubdu_nmpc)
+                                  lbx_opt, ubx_opt, lbu_nmpc, ubu_nmpc, lbdu_nmpc, ubdu_nmpc,
+                                  q_terminal=Q_terminal_weights, terminal_band=terminal_band)
         except Exception as e:
             st.error(f"Error initializing NMPC: {e}")
             st.stop() # Detener ejecución si falla la inicialización

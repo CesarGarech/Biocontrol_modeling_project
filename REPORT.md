@@ -199,3 +199,15 @@ Cubre comportamiento físico de los modelos ODE:
 | 4 | `Body/modeling/lote.py` | Fix | Corregir rama "Sigmoidal Monod" y añadir sliders KO/KP |
 | 5 | `Body/modeling/lote_alimentado.py` | Fix | Importar cinéticas desde Utils, corregir LaTeX |
 | 6 | `Body/modeling/continuo.py` | Fix | Añadir sliders KO/KP para "Monod with restrictions" |
+
+---
+
+## 7. Mejoras adicionales implementadas (2026-07-31)
+
+| # | Archivo | Tipo | Descripción |
+|---|---------|------|-------------|
+| 1 | `Body/modeling/continuo.py` | Mejora | Estado estacionario analítico para Monod continuo con validación de factibilidad |
+| 2 | `Body/control/avanzado/nmpc.py` | Mejora | Costo terminal y banda terminal opcional para reforzar estabilidad del NMPC |
+| 3 | `Body/parameter_estimation/ajuste_parametros_lote.py` | Mejora | Jacobiano con perturbación adaptativa y validaciones de convergencia en integración/optimización |
+| 4 | `Body/digital_twin/ml_prediction.py` | Fix | Limpieza de resultados DWSIM obsoletos y validación de consistencia de dimensiones |
+| 5 | `Examples/EKF_NMPC_standalone.py` | Nuevo | Ejemplo EKF-NMPC ejecutable independiente del dashboard |
