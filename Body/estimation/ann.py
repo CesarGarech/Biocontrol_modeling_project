@@ -223,7 +223,7 @@ def plot_results(time_vec, x_real_hist, z_meas_hist, x_ann_hist):
 
     fig_params, axs_params = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
     fig_params.suptitle('ANN Prediction: Model Parameters', fontsize=16)
-    param_labels, param_ylabels = [r'$\mu_{max}$', r'$Y_{X/S}$'], [r'$\mu_{max}$ (1/h)', r'$Y_{X/S}$ (gX/gS)']
+    param_labels, param_ylabels = [r'$\mu_0$', r'$Y_{X/S}$'], [r'$\mu_0$ (1/h)', r'$Y_{X/S}$ (gX/gS)']
     for i in range(2):
         idx = i + 3
         axs_params[i].plot(time_vec, x_real_hist[idx, :], 'b-', label=f'{param_labels[i]} Real')

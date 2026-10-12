@@ -232,9 +232,9 @@ def ekf_page():
         fig2_ekf.suptitle('Parameter Estimation (EKF)', fontsize=14)
 
         # mu_max
-        axs2_ekf[0].plot(time_vec_ekf, x_real_hist[3, :], 'b-', label=r'$\mu_{max}$ real')
-        axs2_ekf[0].plot(time_vec_ekf, x_est_hist[3, :], 'r--', label=r'$\mu_{max}$ estimated')
-        axs2_ekf[0].set_ylabel(r'$\mu_{max}$ (1/h)')
+        axs2_ekf[0].plot(time_vec_ekf, x_real_hist[3, :], 'b-', label=r'$\mu_0$ real')
+        axs2_ekf[0].plot(time_vec_ekf, x_est_hist[3, :], 'r--', label=r'$\mu_0$ estimated')
+        axs2_ekf[0].set_ylabel(r'$\mu_0$ (1/h)')
         axs2_ekf[0].legend()
         axs2_ekf[0].grid(True)
 

@@ -476,6 +476,7 @@ def fermentacion_alcoholica_page():
         ax1b.set_ylabel('Volume [L]', color=color) # Traduzido
         ax1b.tick_params(axis='y', labelcolor=color)
         ax1.set_xlabel('Time [h]') # Traduzido
+        ax1.set_xticks([0, 5, 10, 15, 20]),
         ax1.grid(True)
         ax1.set_title('Feeding and Volume') # Traduzido
         add_phase_lines(ax1, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
@@ -487,7 +488,8 @@ def fermentacion_alcoholica_page():
         ax2.plot(t, X, 'g-')
         ax2.set_title('Biomass (X)') # Traduzido
         ax2.set_ylabel('[g/L]')
-        ax2.set_xlabel('Time [h]') # Traduzido
+        ax2.set_xlabel('Time [h]')
+        ax2.set_xticks([0, 5, 10, 15, 20])# Traduzido
         ax2.grid(True)
         add_phase_lines(ax2, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
 
@@ -498,6 +500,7 @@ def fermentacion_alcoholica_page():
         ax3.set_title('Substrate (S)') # Traduzido
         ax3.set_ylabel('[g/L]')
         ax3.set_xlabel('Time [h]') # Traduzido
+        ax3.set_xticks([0, 5, 10, 15, 20])
         ax3.grid(True); ax3.set_ylim(bottom=0)
         add_phase_lines(ax3, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
 
@@ -508,6 +511,7 @@ def fermentacion_alcoholica_page():
         ax4.set_title('Ethanol (P)') # Título já estava ok
         ax4.set_ylabel('[g/L]')
         ax4.set_xlabel('Time [h]') # Traduzido
+        ax4.set_xticks([0,5,10,15,20])
         ax4.grid(True); ax4.set_ylim(bottom=0)
         add_phase_lines(ax4, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
 
@@ -517,7 +521,9 @@ def fermentacion_alcoholica_page():
         ax5.plot(t, O2, 'c-')
         ax5.set_title('Dissolved Oxygen (O2)') # Traduzido
         ax5.set_ylabel('[mg/L]')
-        ax5.set_xlabel('Time [h]') # Traduzido
+        ax5.set_xlabel('Time [h]')
+        ax5.set_xticks([0,5,10,15,20])
+        ax5.set_ylim(bottom=-0.01)
         ax5.grid(True); ax5.set_ylim(bottom=-0.1, top=Cs*1.1 if 'Cs' in locals() and Cs is not None else 8.0) # Checagem adicional para Cs
         add_phase_lines(ax5, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
         # Linha comentada ax5.legend removida
@@ -578,7 +584,8 @@ def fermentacion_alcoholica_page():
         # Usando LaTeX para a letra grega mu para melhor renderização
         ax6.set_title(r'Specific Growth Rate ($\mu$)') # Traduzido e com LaTeX
         ax6.set_ylabel('[1/h]')
-        ax6.set_xlabel('Time [h]') # Traduzido
+        ax6.set_xlabel('Time [h]')
+        ax6.set_xticks([0,5,10,15,20])# Traduzido
         ax6.grid(True); ax6.set_ylim(bottom=0)
         add_phase_lines(ax6, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
 
