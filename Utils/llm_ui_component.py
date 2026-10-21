@@ -100,19 +100,23 @@ def render_llm_sidebar(current_page: str):
         # Model Installation Section
         st.divider()
         st.caption("📦 Model Management")
-        if st.button(f"⬇️ Download Model", key="llm_download_model", help=f"Downloads {st.session_state.llm_model} directly from Ollama servers."):
-            with st.spinner(f"Downloading {st.session_state.llm_model}... This may take several minutes depending on your internet connection."):
-                success, msg = pull_ollama_model(st.session_state.llm_model, ollama_url)
+        if st.button(
+            f"⬇️ Download Base Model ({BASE_MODEL})",
+            key="llm_download_model",
+            help=f"Downloads {BASE_MODEL}, required to build the Biocontrol assistant."
+        ):
+            with st.spinner(f"Downloading {BASE_MODEL}... This may take several minutes depending on your internet connection."):
+                success, msg = pull_ollama_model(BASE_MODEL, ollama_url)
                 if success:
                     st.success(msg)
                 else:
                     st.error(msg)
 
-        # Customized ("re-trained") assistant model creation
+        # Customized prompt-grounded assistant model creation
         st.caption("🧠 Biocontrol Assistant (grounded model)")
         st.caption(
             f"Builds the customized `{CUSTOM_MODEL_NAME}` model from `{BASE_MODEL}` "
-            f"with the Biocontrol system prompt embedded. Pull `{BASE_MODEL}` first."
+            f"with the Biocontrol system prompt embedded. Download the base model first."
         )
         if st.button("🛠️ Build Custom Assistant", key="llm_build_custom",
                      help=f"Creates the '{CUSTOM_MODEL_NAME}' Ollama model grounded on this app."):

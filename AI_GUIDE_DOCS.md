@@ -51,11 +51,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 **Windows:**
 Download the installer from [ollama.com/download](https://ollama.com/download)
 
-### Step 2: Download a Model
+### Step 2: Download the Base Model
 
 Choose one based on your system resources:
 
-**Recommended for most users (7-8B parameters):**
+**Required to build the default customized assistant (7-8B parameters):**
 ```bash
 ollama pull llama3.1:8b    # Meta's Llama 3.1, well-balanced
 ollama pull qwen2.5:7b     # Good multilingual support
@@ -251,7 +251,7 @@ Found a bug? Have a suggestion? Want to improve the curated references?
 - Per-screen knowledge base (`Utils/llm_knowledge_base.py`) covering all 24 screens
 - Automatic injection of page method/equations/parameters into the prompt
 - Screen-aware parameter suggestions + offline parameter table
-- Customized `biocontrol-llama` Ollama model (Modelfile + "Build Custom Assistant" button)
+- Customized `biocontrol-llama` Ollama model (prompt-grounded; it does not fine-tune model weights)
 - Full reference coverage for every screen
 
 **v1.0.0**

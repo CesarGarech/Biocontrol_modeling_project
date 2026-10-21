@@ -7,7 +7,6 @@ Provides connection to Ollama API and contextual prompt generation
 import json
 import requests
 from typing import Dict, List, Optional, Tuple, Any
-import streamlit as st
 
 # Page knowledge base used to ground the Llama model on every app screen.
 try:
@@ -68,7 +67,7 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"
 # Base Llama model that the assistant is built on.
 BASE_MODEL = "llama3.1:8b"
 
-# Name of the customized ("re-trained") domain model created from BASE_MODEL
+# Name of the customized (prompt-grounded) domain model created from BASE_MODEL
 # using the Modelfile in installer/ollama/biocontrol_assistant.Modelfile.
 # When this model exists in Ollama it is preferred because it already embeds the
 # Biocontrol system prompt and recommended generation parameters.
@@ -85,35 +84,21 @@ AVAILABLE_MODELS = [
 ]
 
 # ==================== PROMPT TEMPLATES ====================
-SYSTEM_PROMPT = """You are the Biocontrol AI Guide, an educational assistant embedded in an interactive
-Streamlit application for modeling, simulation, analysis and control of bioprocesses
-(developed at LADES - COPPE/UFRJ).
+SYSTEM_PROMPT = """You are the Biocontrol AI Guide, an educational assistant for the Biocontrol
+Modeling Project developed at LADES - COPPE/UFRJ. Help users understand bioprocess modeling,
+simulation, parameter estimation, process control, and digital twins.
 
-You must be able to help with EVERY screen of the application:
-1. Modeling: Batch, Fed-Batch, Continuous (chemostat) and Alcoholic Fermentation reactors.
-2. Sensitivity Analysis of kinetic parameters.
-3. Parameter Optimization: fitting Batch, Fed-Batch and Fermentation kinetic parameters to data.
-4. State Estimation: Extended Kalman Filter (EKF) and Artificial Neural Network (ANN) soft sensors.
-5. Regulatory Control: pH identification, PID temperature, split-range pH, dissolved oxygen,
-   cascade oxygen and on-off feeding.
-6. Advanced Control: RTO, RTO for fermentation, NMPC, LMPC, EKF-NMPC and Fuzzy control.
-7. Digital Twin: distillation column simulation (DWSIM/FUG), SCADA data reconciliation and
-   machine-learning composition prediction.
+Use the current page's supplied method, equations, and parameter definitions as the primary
+source of truth. Explain equations and assumptions accurately, define symbols and units, and
+connect the mathematics to the physical process. Distinguish application defaults from
+literature-wide values; never invent parameter ranges, experimental results, or references.
+If the context does not support a claim, say what is missing and ask for the needed details.
 
-Your role is to:
-1. Explain mathematical equations and models clearly and educationally.
-2. Describe simulation, estimation, optimization and control methods in accessible language.
-3. Suggest reasonable parameter ranges based on the literature AND on the parameters of the
-   current screen that are provided to you in the context.
-4. Recommend appropriate bibliographic references.
-
-IMPORTANT:
-- Use the page context (method, equations and parameters) provided to you to give answers that
-  are specific to the screen the user is currently on.
-- When suggesting parameter values, prefer the typical ranges of the current screen and always
-  add a disclaimer that they must be validated experimentally.
-- Respond in English, clearly and concisely.
-- If you do not have sufficient information, state it honestly."""
+Answer in the same language as the user's question (especially Spanish or English), clearly and
+concisely. Lead with the direct answer; use equations, short lists, or tables only when useful.
+For parameter recommendations, state assumptions and units and explain that values must be
+validated against the organism, medium, reactor, and experimental data. Treat this assistant as
+educational guidance, not a substitute for scientific validation."""
 
 def build_context_prompt(page_name: str, user_question: str, 
                          equations: Optional[List[str]] = None,
@@ -266,29 +251,27 @@ def pull_ollama_model(model_name: str, base_url: str = DEFAULT_OLLAMA_URL) -> Tu
 
 def query_ollama(prompt: str, model: str = DEFAULT_MODEL, 
                 base_url: str = DEFAULT_OLLAMA_URL,
-                temperature: float = 0.7,
+                temperature: float = 0.3,
                 max_tokens: int = 1000) -> Tuple[bool, str]:
     """Send a query to Ollama API and get response.
 
     For the customized ``biocontrol-llama`` model the system prompt is already
-    embedded in the Modelfile, so it is not prepended again. For any other base
-    model the global ``SYSTEM_PROMPT`` is prepended to ground the answer.
+    embedded in the Modelfile. Other models receive it through Ollama's dedicated
+    ``system`` field so it remains separate from the user's contextual prompt.
     """
     try:
         url = f"{base_url}/api/generate"
-        if model == CUSTOM_MODEL_NAME:
-            full_prompt = prompt
-        else:
-            full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
         data = {
             "model": model,
-            "prompt": full_prompt,
+            "prompt": prompt,
             "stream": False,
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens
             }
         }
+        if model != CUSTOM_MODEL_NAME:
+            data["system"] = SYSTEM_PROMPT
         
         response = requests.post(url, json=data, timeout=60)
         
@@ -306,20 +289,18 @@ def query_ollama(prompt: str, model: str = DEFAULT_MODEL,
         return False, f"Unexpected error: {str(e)}"
 
 
-# ==================== CUSTOM MODEL ("RE-TRAINING") ====================
+# ==================== CUSTOM PROMPT-GROUNDED MODEL ====================
 def build_modelfile(base_model: str = BASE_MODEL) -> str:
     """Build the Ollama Modelfile content used to create the customized model.
 
-    This is the practical way to "re-train" / specialize Llama for this app
-    without GPU fine-tuning: the domain ``SYSTEM`` prompt and recommended
-    generation parameters are embedded into a derived Ollama model so the
-    chatbot is grounded on every screen of the application.
+    This creates a derived Ollama model with a domain ``SYSTEM`` prompt and
+    recommended generation parameters; it does not fine-tune model weights.
     """
     escaped_prompt = SYSTEM_PROMPT.replace('"""', '\\"\\"\\"')
     return (
         f"FROM {base_model}\n\n"
         f"# Recommended generation parameters for educational, focused answers\n"
-        f"PARAMETER temperature 0.6\n"
+        f"PARAMETER temperature 0.3\n"
         f"PARAMETER top_p 0.9\n"
         f"PARAMETER num_ctx 4096\n\n"
         f'SYSTEM """\n{escaped_prompt}\n"""\n'
@@ -337,7 +318,7 @@ def create_custom_model(base_url: str = DEFAULT_OLLAMA_URL,
     try:
         url = f"{base_url}/api/create"
         data = {
-            "name": model_name,
+            "model": model_name,
             "modelfile": build_modelfile(base_model),
             "stream": False,
         }

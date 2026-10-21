@@ -34,14 +34,14 @@ The AI Guide is now available as an optional feature to assist with bioprocess m
 - **Screen-Aware Parameter Suggestions:** Suggests typical ranges using the actual parameters
   of the current screen; an offline parameter table is also shown when Ollama is not running.
 - **Reference Recommendations:** Curated bibliographic references for each topic/screen.
-- **Customized ("re-trained") Llama model:** A derived `biocontrol-llama` Ollama model embeds
+- **Customized (prompt-grounded) Llama model:** A derived `biocontrol-llama` Ollama model embeds
   the application's domain system prompt. Build it from the sidebar
   (**🛠️ Build Custom Assistant**), via `python installer/ollama/build_model.py`, or with
   `ollama create biocontrol-llama -f installer/ollama/biocontrol_assistant.Modelfile`.
 - **Free & Local:** Uses Ollama (no API costs, data stays local).
 - **Graceful Fallback:** App works normally if Ollama is unavailable.
 
-> **How the grounding works:** instead of GPU fine-tuning, Llama is specialized in two
+> **How the grounding works:** this does not fine-tune model weights. Llama is specialized in two
 > complementary ways: (1) the `biocontrol-llama` Ollama model embeds the domain system prompt,
 > and (2) at query time the per-screen method, equations and parameter ranges are injected into
 > the prompt from `Utils/llm_knowledge_base.py`. This lets the chatbot answer and suggest
@@ -58,9 +58,9 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Download from https://ollama.com/download
 ```
 
-#### 2. Download a model
+#### 2. Download the base model
 ```bash
-# Recommended: Fast and capable
+# Required to build the default Biocontrol assistant
 ollama pull llama3.1:8b
 
 # Alternatives:
@@ -81,6 +81,7 @@ ollama create biocontrol-llama -f installer/ollama/biocontrol_assistant.Modelfil
 python installer/ollama/build_model.py
 ```
 You can also click **🛠️ Build Custom Assistant** in the app sidebar.
+The sidebar's **Download Base Model** button downloads the required `llama3.1:8b` model.
 
 #### 5. Enable in the app
 - Open the application (`streamlit run main.py`)
