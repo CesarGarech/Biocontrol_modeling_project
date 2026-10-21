@@ -691,6 +691,7 @@ def rto_fermentation_page():
                ax1b.set_ylabel('Volume [L]', color=color) # Traduzido
                ax1b.tick_params(axis='y', labelcolor=color)
                ax1.set_xlabel('Time [h]') # Traduzido
+               ax1.set_xticks([0,5,10,15])
                ax1.grid(True)
                ax1.set_title('Optimized Feeding and Volume') # Traduzido
                add_phase_lines(ax1, t_fase1, t_fase2_end) # Chamada mantida
@@ -704,6 +705,7 @@ def rto_fermentation_page():
                ax2.set_title('Biomass (X)') # Traduzido
                ax2.set_ylabel('[g/L]')
                ax2.set_xlabel('Time [h]') # Traduzido
+               ax2.set_xticks([0,5,10,15])
                ax2.grid(True); ax2.set_ylim(bottom=0)
                add_phase_lines(ax2, t_fase1, t_fase2_end)
 
@@ -713,6 +715,7 @@ def rto_fermentation_page():
                ax3.set_title('Substrate (S)') # Traduzido
                ax3.set_ylabel('[g/L]')
                ax3.set_xlabel('Time [h]') # Traduzido
+               ax3.set_xticks([0,5,10,15])
                ax3.grid(True); ax3.set_ylim(bottom=0)
                # Linha de restrição (sem label)
                smax_val = all_params.get('Smax_constraint', np.nan)
@@ -727,6 +730,7 @@ def rto_fermentation_page():
                ax4.set_title('Ethanol (P)') # Título já estava ok
                ax4.set_ylabel('[g/L]')
                ax4.set_xlabel('Time [h]') # Traduzido
+               ax4.set_xticks([0,5,10,15])
                ax4.grid(True); ax4.set_ylim(bottom=0)
                # Linha de restrição (sem label)
                pmax_val = all_params.get('Pmax_constraint', np.nan)
@@ -741,6 +745,7 @@ def rto_fermentation_page():
                ax5.set_title(r'$O_2$ and Inhibition Factor $P$') # Traduzido (usando LaTeX)
                ax5.set_ylabel(r'$O_2$ [mg/L]', color='c') # Usando LaTeX
                ax5.set_xlabel('Time [h]') # Traduzido
+               ax5.set_xticks([0,5,10,15])
                ax5.grid(True)
                o2_top = max(all_params.get('Cs',0)*1000*1.1, np.max(O2_sim_mgL)*1.1 if len(O2_sim_mgL[np.isfinite(O2_sim_mgL)])>0 else all_params.get('Cs',0)*1000*1.1)
                o2_top = max(o2_top, 0.1)
@@ -760,6 +765,7 @@ def rto_fermentation_page():
                ax6.set_title(r'Specific Growth Rate ($\mu$)') # Traduzido e LaTeX
                ax6.set_ylabel('[1/h]')
                ax6.set_xlabel('Tempo [h]') # Traduzido
+               ax6.set_xticks([0,5,10,15])
                ax6.grid(True); ax6.set_ylim(bottom=0)
                add_phase_lines(ax6, t_fase1, t_fase2_end)
 

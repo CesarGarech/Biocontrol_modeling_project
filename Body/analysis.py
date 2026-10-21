@@ -13,7 +13,7 @@ def analysis_page():
 
         # 1. Analyzed parameter
         parametro = st.selectbox("Key parameter",
-                               ["μ_max", "K_s", "Yxs", "Kd"])
+                               ["μ_0", "K_s", "Yxs", "Kd"])
 
         # 2. Variation range
         rango = st.slider("Percentage variation",
@@ -107,16 +107,17 @@ def analysis_page():
             # Set graphs
             variables = ['Biomass [g/L]', 'Substrate [g/L]', 'Product [g/L]']
             for ax, var in zip(axs, variables):
-                ax.set_title(var, fontsize=12, pad=10)
+                ax.set_title(var, fontsize=14, pad=10)
                 ax.grid(True, alpha=0.3)
                 ax.set_xlim(0, t_final)
-            axs[-1].set_xlabel("Time [h]", fontsize=10)
+                ax.tick_params(axis='both', labelsize=14)
+            axs[-1].set_xlabel("Time [h]", fontsize=14)
 
             # Color bar
             sm = plt.cm.ScalarMappable(cmap='viridis',
                                       norm=plt.Normalize(valores.min(), valores.max()))
             cbar = fig.colorbar(sm, ax=axs, location='right', pad=0.02)
-            cbar.set_label(f'Factor de {parametro}', rotation=270, labelpad=20)
+            cbar.set_label(f'Factor de {parametro}', rotation=270, labelpad=20,fontsize=14)
 
             st.pyplot(fig)
 
