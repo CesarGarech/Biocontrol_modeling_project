@@ -5,8 +5,12 @@ Provides connection to Ollama API and contextual prompt generation
 """
 
 import json
-import requests
+import os
+import subprocess
+import tempfile
 from typing import Dict, List, Optional, Tuple, Any
+
+import requests
 
 # Page knowledge base used to ground the Llama model on every app screen.
 try:
@@ -310,31 +314,40 @@ def build_modelfile(base_model: str = BASE_MODEL) -> str:
 def create_custom_model(base_url: str = DEFAULT_OLLAMA_URL,
                         base_model: str = BASE_MODEL,
                         model_name: str = CUSTOM_MODEL_NAME) -> Tuple[bool, str]:
-    """Create the customized Biocontrol model in Ollama via the /api/create API.
+    """Create the customized Biocontrol model using the Ollama CLI.
 
     Requires that the base model (e.g. llama3.1:8b) is already pulled. The call
     can take a while the first time because Ollama materializes the new model.
     """
     try:
-        url = f"{base_url}/api/create"
-        data = {
-            "model": model_name,
-            "modelfile": build_modelfile(base_model),
-            "stream": False,
-        }
-        response = requests.post(url, json=data, timeout=600)
-        if response.status_code == 200:
-            return True, (
-                f"✅ Custom model '{model_name}' created from '{base_model}'. "
-                f"Select it in the model list to use the grounded assistant."
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelfile_path = os.path.join(temp_dir, "Modelfile")
+            with open(modelfile_path, "w", encoding="utf-8") as modelfile:
+                modelfile.write(build_modelfile(base_model))
+
+            environment = os.environ.copy()
+            environment["OLLAMA_HOST"] = base_url
+            result = subprocess.run(
+                ["ollama", "create", model_name, "-f", modelfile_path],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                env=environment,
+                check=False,
             )
-        return False, f"Server error while creating model: {response.status_code} - {response.text[:200]}"
-    except requests.exceptions.Timeout:
+    except FileNotFoundError:
+        return False, "Ollama CLI not found. Install Ollama and ensure 'ollama' is on PATH."
+    except subprocess.TimeoutExpired:
         return False, "⏳ Model creation timed out. It may still be finishing in the background."
-    except requests.exceptions.ConnectionError:
-        return False, "Cannot connect to Ollama. Verify it is running (ollama serve)."
-    except Exception as e:
-        return False, f"Unexpected error: {str(e)}"
+    except OSError as error:
+        return False, f"Could not prepare the Ollama Modelfile: {error}"
+
+    output = (result.stdout or result.stderr).strip()
+    if result.returncode == 0:
+        message = f"Custom model '{model_name}' created from '{base_model}'."
+        return True, f"{message}\n{output}" if output else message
+    detail = output or f"Ollama CLI exited with code {result.returncode}."
+    return False, f"Error creating model with Ollama CLI: {detail}"
 
 
 def format_response_with_references(llm_response: str, references: List[str]) -> str:

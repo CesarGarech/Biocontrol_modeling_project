@@ -21,20 +21,39 @@ class TestLLMHelper(unittest.TestCase):
         self.assertIn(SYSTEM_PROMPT, modelfile)
         self.assertIn("same language as the user's question", modelfile)
 
-    @patch("Utils.llm_helper.requests.post")
-    def test_create_custom_model_uses_current_ollama_api_field(self, mock_post):
-        mock_post.return_value = SimpleNamespace(status_code=200)
+    @patch("Utils.llm_helper.subprocess.run")
+    def test_create_custom_model_uses_ollama_cli_and_generated_modelfile(self, mock_run):
+        modelfile_contents = []
 
-        success, message = create_custom_model()
+        def run_cli(command, **kwargs):
+            modelfile_path = command[command.index("-f") + 1]
+            with open(modelfile_path, encoding="utf-8") as modelfile:
+                modelfile_contents.append(modelfile.read())
+            return SimpleNamespace(returncode=0, stdout="success", stderr="")
+
+        mock_run.side_effect = run_cli
+        success, message = create_custom_model(
+            "http://ollama.example:11434",
+            "qwen2.5:7b",
+            "biocontrol-test",
+        )
 
         self.assertTrue(success)
-        self.assertIn(CUSTOM_MODEL_NAME, message)
-        args, kwargs = mock_post.call_args
-        self.assertEqual(args[0], "http://localhost:11434/api/create")
-        self.assertEqual(kwargs["json"]["model"], CUSTOM_MODEL_NAME)
-        self.assertNotIn("name", kwargs["json"])
-        self.assertFalse(kwargs["json"]["stream"])
-        self.assertTrue(kwargs["json"]["modelfile"].startswith(f"FROM {BASE_MODEL}\n"))
+        self.assertIn("biocontrol-test", message)
+        self.assertEqual(
+            mock_run.call_args.args[0][:4],
+            ["ollama", "create", "biocontrol-test", "-f"],
+        )
+        self.assertEqual(mock_run.call_args.kwargs["env"]["OLLAMA_HOST"], "http://ollama.example:11434")
+        self.assertTrue(modelfile_contents[0].startswith("FROM qwen2.5:7b\n"))
+        self.assertEqual(mock_run.call_args.kwargs["timeout"], 600)
+
+    @patch("Utils.llm_helper.subprocess.run", side_effect=FileNotFoundError)
+    def test_create_custom_model_reports_missing_ollama_cli(self, _mock_run):
+        success, message = create_custom_model()
+
+        self.assertFalse(success)
+        self.assertIn("Ollama CLI not found", message)
 
     @patch("Utils.llm_helper.requests.post")
     def test_query_ollama_sends_system_prompt_separately_for_base_model(self, mock_post):

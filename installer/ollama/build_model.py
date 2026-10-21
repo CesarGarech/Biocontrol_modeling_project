@@ -3,9 +3,9 @@
 Build the customized Biocontrol Ollama model (``biocontrol-llama``).
 
 This is a thin command-line wrapper around
-``Utils.llm_helper.create_custom_model`` so the grounded assistant model can be
-created without opening the Streamlit UI. The base model (default
-``llama3.1:8b``) must already be pulled in Ollama.
+``Utils.llm_helper.create_custom_model``, which invokes the Ollama CLI, so the
+grounded assistant model can be created without opening the Streamlit UI. The
+base model (default ``llama3.1:8b``) must already be pulled in Ollama.
 
 Usage:
     python installer/ollama/build_model.py
