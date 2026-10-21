@@ -6,6 +6,7 @@ from scipy.optimize import minimize, differential_evolution
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
+from .ci_band import model_confidence_band, draw_band
 import openpyxl # Necesario para leer el input
 import seaborn as sns
 # import io # Ya no es necesario sin descarga
@@ -584,7 +585,7 @@ def ajuste_parametros_fedbatch_page():
                  st.write("**Final Objective Function (RMSE):** Not available")
 
             # --- Tabla de parámetros optimizados - ¡Añadido Ksi! ---
-            param_names = ['μmax', 'Ks', 'Yxs', 'Kd', 'Ypx', 'Ksi'] # 6 nombres
+            param_names = ['μ_0', 'Ks', 'Yxs', 'Kd', 'Ypx', 'Ksi'] # 6 nombres
             param_units = ['1/h', 'g/L', 'g/g', '1/h', 'g/g', 'g/L'] # 6 unidades
             parametros_df = pd.DataFrame({
                 'Parameter': param_names,
@@ -641,9 +642,14 @@ def ajuste_parametros_fedbatch_page():
                 variables = ['Biomass', 'Substrate', 'Product']
                 unidades = ['g/L', 'g/L', 'g/L']
                 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+                def _simulate_ci(p):
+                    s_ = solve_ivp(modelo_ode_fedbatch, [t_exp_res[0], t_exp_res[-1]], y0_res, args=(p, feed_params_res), t_eval=t_exp_res, atol=atol_res, rtol=rtol_res, method='LSODA')
+                    return s_.y[0:3, :]
+                band = model_confidence_band(_simulate_ci, params_opt, y_exp_res[0:3, :], sol.y[0:3, :])
                 for i in range(3):
                     axes[i].plot(t_exp_res, y_exp_res[i], 'o', markersize=5, alpha=0.7, label=f'{variables[i]} Exp.')
                     axes[i].plot(sol.t, sol.y[i], '-', linewidth=2, label=f'{variables[i]} Mod.')
+                    if band is not None: draw_band(axes[i], sol.t, band[0][i], band[1][i], color=colors[i])
                     axes[i].set_ylabel(f"{variables[i]} [{unidades[i]}]")
                     axes[i].legend()
                     axes[i].grid(True, linestyle='--', alpha=0.6)

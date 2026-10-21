@@ -6,6 +6,7 @@ from scipy.optimize import minimize, differential_evolution
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
+from .ci_band import model_confidence_band, draw_band
 import openpyxl
 import seaborn as sns
 
@@ -152,7 +153,7 @@ def ajuste_parametros_page():
 
             # Tabla de parámetros
             parametros = pd.DataFrame({
-                'Parameter': ['μmax', 'Ks', 'Yxs', 'Kd', 'Ypx'],
+                'Parameter': ['μ_0', 'Ks', 'Yxs', 'Kd', 'Ypx'],
                 'Value': params_opt,
                 'Units': ['1/h', 'g/L', 'g/g', '1/h', 'g/g']
             })
@@ -182,9 +183,17 @@ def ajuste_parametros_page():
             variables = ['Biomass', 'Substrate', 'Product']
             unidades = ['g/L', 'g/L', 'g/L']
 
+            def _simulate_ci(p):
+                s_ = solve_ivp(modelo_ode, [0, t_exp[-1]], [X0_fit, S0_fit, P0_fit, O0_fit],
+                               args=(p,), t_eval=t_exp, atol=atol, rtol=rtol)
+                return np.vstack([s_.y[0], s_.y[1], s_.y[2]])
+            band = model_confidence_band(_simulate_ci, params_opt, y_exp, y_pred)
+
             for i in range(3):
                 ax[i].plot(t_exp, y_exp[i], 'o', label='Experimental')
                 ax[i].plot(sol.t, sol.y[i], '--', label='Model')
+                if band is not None:
+                    draw_band(ax[i], sol.t, band[0][i], band[1][i], color='tab:orange')
                 ax[i].set_title(f"{variables[i]} ({unidades[i]})")
                 ax[i].legend()
                 ax[i].grid(True)

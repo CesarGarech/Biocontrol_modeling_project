@@ -234,15 +234,15 @@ def ekf_page():
         # mu_max
         axs2_ekf[0].plot(time_vec_ekf, x_real_hist[3, :], 'b-', label=r'$\mu_0$ real')
         axs2_ekf[0].plot(time_vec_ekf, x_est_hist[3, :], 'r--', label=r'$\mu_0$ estimated')
-        axs2_ekf[0].set_ylabel(r'$\mu_0$ (1/h)')
+        axs2_ekf[0].set_ylabel(r'$\mu_0$ (1/h)',fontsize=14)
         axs2_ekf[0].legend()
         axs2_ekf[0].grid(True)
 
         # Yxs
         axs2_ekf[1].plot(time_vec_ekf, x_real_hist[4, :], 'b-', label=r'$Y_{X/S}$ real')
         axs2_ekf[1].plot(time_vec_ekf, x_est_hist[4, :], 'r--', label=r'$Y_{X/S}$ estimated')
-        axs2_ekf[1].set_xlabel('Time (h)')
-        axs2_ekf[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)')
+        axs2_ekf[1].set_xlabel('Time (h)',fontsize=14)
+        axs2_ekf[1].set_ylabel(r'$Y_{X/S}$ (gX/gS)',fontsize=14)
         axs2_ekf[1].legend()
         axs2_ekf[1].grid(True)
 

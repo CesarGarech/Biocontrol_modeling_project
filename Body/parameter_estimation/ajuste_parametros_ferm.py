@@ -7,6 +7,7 @@ from scipy.optimize import minimize, differential_evolution
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 from scipy.stats import t
+from .ci_band import model_confidence_band, draw_band
 import openpyxl
 import seaborn as sns
 import traceback
@@ -418,9 +419,16 @@ def ajuste_parametros_ferm_page():
                 st.subheader("📉 Comparative Data")
                 fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharex=True); axes = axes.flatten()
                 variables = ['Biomass', 'Substrat', 'Product', 'Oxygen']; unidades = ['g/L', 'g/L', 'g/L', 'mg/L']; colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+                def _simulate_ci(p):
+                    pf = fixed_params_res.copy()
+                    for n_, v_ in zip(param_names_res, p): pf[n_] = v_
+                    s_ = solve_ivp(modelo_fermentacion, [t_exp_res[0], t_exp_res[-1]], y0_res, args=(pf,), t_eval=t_exp_res, atol=atol_res, rtol=rtol_res, method='LSODA')
+                    return s_.y[0:4, :]
+                band = model_confidence_band(_simulate_ci, params_opt, y_exp_res[0:4, :], sol.y[0:4, :])
                 for i in range(4):
                     ax = axes[i]; ax.plot(t_exp_res, y_exp_res[i], 'o', markersize=5, alpha=0.7, label=f'{variables[i]} Exp.', color=colors[i])
                     ax.plot(sol.t, sol.y[i], '-', linewidth=2, label=f'{variables[i]} Mod.', color=colors[i])
+                    if band is not None: draw_band(ax, sol.t, band[0][i], band[1][i], color=colors[i])
                     ax.set_ylabel(f"{variables[i]} [{unidades[i]}]"); ax.legend(); ax.grid(True, linestyle='--', alpha=0.6)
                     if i >= 2: ax.set_xlabel("Time [h]")
                     ax.axvline(fixed_params_res["t_batch_inicial_fin"], color='gray', linestyle=':', lw=1, alpha=0.8)
