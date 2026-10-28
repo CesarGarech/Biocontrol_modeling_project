@@ -13,7 +13,7 @@
 
 #define AppName        "Biocontrol Dashboard"
 #define AppVersion     "1.0.5"
-#define AppPublisher   "Cesar Augusto Garcia Echeverry"
+#define AppPublisher   "Mateo Franco"
 #define AppURL         "https://github.com/CesarGarech/Biocontrol_modeling_project"
 #define AppExeName     "run_dashboard.bat"
 

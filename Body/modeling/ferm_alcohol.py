@@ -523,8 +523,8 @@ def fermentacion_alcoholica_page():
         ax5.set_ylabel('[mg/L]')
         ax5.set_xlabel('Time [h]')
         ax5.set_xticks([0,5,10,15,20])
-        ax5.set_ylim(bottom=-0.01)
-        ax5.grid(True); ax5.set_ylim(bottom=-0.1, top=Cs*1.1 if 'Cs' in locals() and Cs is not None else 8.0) # Checagem adicional para Cs
+        ax5.set_yticks([-0.01, 0.00, 0.05, 0.10])
+        ax5.grid(True); # Checagem adicional para Cs
         add_phase_lines(ax5, t_batch_inicial_fin, t_alim_inicio, t_alim_fin)
         # Linha comentada ax5.legend removida
 
