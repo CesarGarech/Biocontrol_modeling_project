@@ -29,6 +29,17 @@ def ajuste_parametros_page():
 
             t_exp = df_exp['time'].values
             y_exp = df_exp[['biomass', 'substrate', 'product']].values.T
+            
+            # --- MODIFICACIÓN: Extraer desviaciones estándar si existen ---
+            std_cols = ['biomass_std', 'substrate_std', 'product_std']
+            y_exp_std = []
+            for col in std_cols:
+                if col in df_exp.columns:
+                    y_exp_std.append(df_exp[col].fillna(0).values)
+                else:
+                    y_exp_std.append(np.zeros(len(df_exp)))
+            y_exp_std = np.array(y_exp_std)
+            # --------------------------------------------------------------
 
     # 2. Configuración del ajuste
     with st.sidebar:
@@ -72,10 +83,8 @@ def ajuste_parametros_page():
         return [dXdt, dSdt, dPdt, dO2dt]
 
     # 3.1 Función para calcular Jacobiano
-
     def compute_jacobian(params_opt, t_exp, y_exp, X0_fit, S0_fit, P0_fit, O0_fit):
         jac = []
-
         # Simulación nominal
         sol_nominal = solve_ivp(modelo_ode, [0, t_exp[-1]],
                             [X0_fit, S0_fit, P0_fit, O0_fit],
@@ -140,10 +149,6 @@ def ajuste_parametros_page():
                                 method=metodo, bounds=bounds,
                                 options={'maxiter': max_iter})
 
-            # result = minimize(objetivo, initial_guess, args=(t_exp, y_exp),
-            #                  method=metodo, bounds=bounds,
-            #                  options={'maxiter': max_iter})
-
             # Resultados del ajuste
             st.subheader("📊 Adjustment Results")
             if not result.success:
@@ -190,30 +195,33 @@ def ajuste_parametros_page():
             band = model_confidence_band(_simulate_ci, params_opt, y_exp, y_pred)
 
             for i in range(3):
-                ax[i].plot(t_exp, y_exp[i], 'o', label='Experimental')
-                ax[i].plot(sol.t, sol.y[i], '--', label='Model')
+                # --- MODIFICACIÓN: Graficar con barras de error si hay desviaciones ---
+                if np.any(y_exp_std[i] > 0):
+                    ax[i].errorbar(t_exp, y_exp[i], yerr=y_exp_std[i], fmt='o', label='Experimental', color='tab:blue', capsize=3)
+                else:
+                    ax[i].plot(t_exp, y_exp[i], 'o', label='Experimental', color='tab:blue')
+                # ----------------------------------------------------------------------
+                ax[i].plot(sol.t, sol.y[i], '--', label='Model', color='tab:orange')
                 if band is not None:
                     draw_band(ax[i], sol.t, band[0][i], band[1][i], color='tab:orange')
                 ax[i].set_title(f"{variables[i]} ({unidades[i]})")
                 ax[i].legend()
                 ax[i].grid(True)
+                ax[i].set_ylim(bottom=-(np.nanmax(y_exp[i]) * 0.05))
 
             plt.tight_layout()
             st.pyplot(fig)
 
             # 7. Intervalos de confianza (metodología numérica)
             with st.spinner("Calculating confidence intervals..."):
-                # Calcular residuos
                 residuals = y_exp - y_pred
-                residuals_flat = residuals.flatten()  # Aplanar para todas las variables
+                residuals_flat = residuals.flatten() 
 
-                # Calcular Jacobiano numérico
                 jac = compute_jacobian(params_opt, t_exp, y_exp, X0_fit, S0_fit, P0_fit, O0_fit)
                 if np.isnan(jac).any():
-                    st.warning("Confidence intervals could not be computed reliably (Jacobian integration failed).")
+                    st.warning("Confidence intervals could not be computed reliably.")
                     std_errors = np.full(len(params_opt), np.nan)
                 else:
-                    # Calcular matriz de covarianza con estabilidad numérica
                     try:
                         dof = max(len(residuals_flat) - len(params_opt), 1)
                         cov_matrix = np.linalg.pinv(jac.T @ jac) * (residuals_flat @ residuals_flat) / dof
@@ -221,11 +229,9 @@ def ajuste_parametros_page():
                     except np.linalg.LinAlgError:
                         std_errors = np.full(len(params_opt), np.nan)
 
-                # Calcular intervalos de confianza
                 t_val = t.ppf(0.975, df=len(residuals_flat) - len(params_opt))
                 intervals = t_val * std_errors
 
-                # Mostrar resultados
                 parametros['Interval ±'] = intervals
                 parametros['95% CI - Lower bound'] = parametros['Value'] - intervals
                 parametros['95% CI - Upper bound'] = parametros['Value'] + intervals
@@ -238,10 +244,7 @@ def ajuste_parametros_page():
                     '95% CI - Upper bound': '{:.4f}'
                 }))
 
-            # Gráficos de Intervalos de Confianza
-            # -------------------------
             st.subheader("📐 Parameter Confidence Intervals")
-
             fig_ci, ax = plt.subplots(figsize=(10, 6))
             y_pos = np.arange(len(parametros))
             ax.barh(y_pos, parametros['Value'], xerr=parametros['Interval ±'],
@@ -255,9 +258,7 @@ def ajuste_parametros_page():
             plt.tight_layout()
             st.pyplot(fig_ci)
 
-        # Histogramas de Residuales
         st.subheader("📉 Error Distribution")
-
         fig_hist, axs = plt.subplots(1, 3, figsize=(15, 5))
         variables = ['Biomass', 'Substrate', 'Product']
         colors = ['#2ca02c', '#9467bd', '#d62728']
@@ -270,13 +271,10 @@ def ajuste_parametros_page():
             axs[i].set_ylabel('Frecuence')
             axs[i].axvline(0, color='k', linestyle='--')
             axs[i].grid(True, alpha=0.3)
-
         plt.tight_layout()
         st.pyplot(fig_hist)
 
-        # Gráficos de Correlación de Parámetros
         st.subheader("📌 Parameter Correlation Matrix")
-
         fig_corr, ax = plt.subplots(figsize=(8, 6))
         corr_matrix = pd.DataFrame(jac, columns=parametros['Parameter']).corr()
         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
